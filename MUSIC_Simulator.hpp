@@ -17,9 +17,9 @@
 #include <fstream>
 #include <string>
 
-#include "EnergyLoss.hpp"
-#include "FourVector.hpp"
-#include "Particle.hpp"
+#include "../../PhysicsTools/EnergyLoss.hpp"
+#include "../../PhysicsTools/FourVector.hpp"
+#include "../../PhysicsTools/Particle.hpp"
 
 // NOTE: The inclusion of the header files in this .hpp instad of the .cpp file is
 //       justified by "Headers and Includes: Why and How"  (see section 5 of 
