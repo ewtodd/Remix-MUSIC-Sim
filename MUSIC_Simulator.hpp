@@ -49,10 +49,10 @@ public:
   MUSIC_Simulator();
   void CalculateCMEnergyRange();
   void CalculateExcEnergyRange();
-  double* CalculateELoss(Particle* P, EnergyLoss* PInTgt);
-  void CreateMUSIC();
+  double* CalculateELoss(Particle* P, EnergyLoss* PInTgt, int Event);
   void DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 to 100*/);
   void DrawTrajecotries(TEveManager* gEve);
+  void SetAnode(int Stps, int Cols, double** dx, double dy, double** dz, short** Colors, short Trans);
   void SetBeamParticle(string ParticleName, double M, int Q, int Color, double KineticE);
   bool SetEnergyLossFile(string ParticleName, string TgtELossFile);
   void SetFusedParticle(string ParticleName, double M, int Q, int NEexc=0, double* Eexc=0);
@@ -65,7 +65,6 @@ public:
   void SetTargetParticle(string ParticleName, double M, int Q);
   void ShowCMEnergyRange();
   void ShowPreviousCrossSection(float XMin, float XMax, float YMin, float YMax);
-  void Simulate(int NEvents);
   void Simulate(int Reaction, int StpNum, int NEvents);
   void WriteTraces(char* FileName);
 
@@ -112,8 +111,20 @@ private:
   TGraph** Trace;
   int NTraces;
 
+  int NEvents;
+  TEveStraightLineSet** TrajH;
+  TEveStraightLineSet** TrajL;
+
 
   // Geometry stuff.
+  int AnodeStps;
+  int AnodeCols;
+  double AnodeDepth;
+  double AnodeLength;
+  double AnodeHeight;
+  double** AnodeDX;
+  double AnodeDY;
+  double** AnodeDZ;
   TGeoManager* Geo;
   TGeoMaterial* MatAl;
   TGeoMaterial* MatSi;
