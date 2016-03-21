@@ -28,6 +28,8 @@ MUSIC_Simulator::MUSIC_Simulator()
   NTraces = 0;
   ParamDirectory = "";
 
+  NuF = new NuclideFinder();
+
   // Initialize selected pointers to zero (non-zero pointers initialized below).
   Beam = 0;
   Target = 0;
@@ -243,8 +245,8 @@ double* MUSIC_Simulator::CalculateELoss(Particle* P, EnergyLoss* PInTgt)
     zf = zi + TrackLength*cos(theta);
     cout << "ri = " << xi << "," << yi << "," << zi << endl;
     cout << "rf = " << xf << "," << yf << "," << zf << endl;
-    
-    P->Trajectory->AddLine(xi,yi,zi, xf,yf,zf);
+        
+
     
     // Check whether the final point is within the detector volume.
     if (fabs(xf)>VolW/2 || fabs(yf)>VolH/2 || zf>VolL || zf<0)
@@ -283,6 +285,7 @@ double* MUSIC_Simulator::CalculateELoss(Particle* P, EnergyLoss* PInTgt)
       z1 = z2;
       K1 = K2;
     }
+    P->Trajectory->AddLine(xi,yi,zi, x1,y1,z1);
   }
 
   delete TrackLengthInSeg;
@@ -398,13 +401,13 @@ void MUSIC_Simulator::CreateMUSIC()
   for (int stp=0; stp<NumStps; stp++) {
     VolAnode[stp] = new TGeoVolume*[NumCols];
     z0 += 2*dz;
-    double x0 = -dx;// - WidthFrac[stp][0]*dx/2;1
+    double x0 = -dx;
     for (int col=0; col<NumCols; col++) {
       if (WidthFrac[stp][col]>0) {
 	VolAnode[stp][col] = Geo->MakeBox(Form("VolAnode%d%d",stp,col), Vacuum, 
 					   WidthFrac[stp][col]*dx, dy, dz);
 	VolAnode[stp][col]->SetLineColor(ColorCol[col]);
-	VolAnode[stp][col]->SetTransparency(85);
+	VolAnode[stp][col]->SetTransparency(95);
 	x0 += WidthFrac[stp][col]*dx;
 	VolTop->AddNode(VolAnode[stp][col], 1, new TGeoTranslation(x0,0,z0));
 	x0 += WidthFrac[stp][col]*dx;
@@ -450,13 +453,50 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
 
 
 
+///////////////////////////////////////////////////////////////////////////////////
+// 
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::DrawTrajecotries(TEveManager* gEve)
+{
+  short C, W, S;
+  TEveStraightLineSet* Traj;
+  if (Beam!=0 && Beam->SaveTrajectory) {
+    Beam->GetTrajectoryAtt(C,S,W);
+    Traj = Beam->Trajectory;
+    Traj->SetLineColor(C);
+    Traj->SetLineStyle(S);
+    Traj->SetLineWidth(W);
+    gEve->AddElement(Traj);
+  }
+  if (Light[0]!=0 && Light[0]->SaveTrajectory) {
+    Light[0]->GetTrajectoryAtt(C,S,W);
+    Traj = Light[0]->Trajectory;
+    Traj->SetLineColor(C);
+    Traj->SetLineStyle(S);
+    Traj->SetLineWidth(W);
+    gEve->AddElement(Traj);
+  }
+  if (Heavy[0]!=0 && Heavy[0]->SaveTrajectory) {
+    Heavy[0]->GetTrajectoryAtt(C,S,W);
+    Traj = Heavy[0]->Trajectory;
+    Traj->SetLineColor(C);
+    Traj->SetLineStyle(S);
+    Traj->SetLineWidth(W);
+    gEve->AddElement(Traj);
+  }
+  gEve->FullRedraw3D(kTRUE);
+  return;
+}
+
+
 
 ///////////////////////////////////////////////////////////////////////////////////
 // Create the beam particle object.
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetBeamParticle(string ParticleName, double M, int Q, double KineticE)
+void MUSIC_Simulator::SetBeamParticle(string ParticleName, double M, int Q, int Color, double KineticE)
 {
-  Beam = new Particle(ParticleName, M, Q);
+  Beam = new Particle(ParticleName, M, Q, true);
+  Beam->SetTrajectoryAtt((short)Color);
   Kb_after_window = KineticE;
   return;
 }
@@ -568,11 +608,13 @@ void MUSIC_Simulator::SetFusedParticle(string ParticleName, double M, int Q, int
 ///////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetHeavyParticle(string ParticleName, double M, int Q, int NEexc, double* Eexc)
+void MUSIC_Simulator::SetHeavyParticle(string ParticleName, double M, int Q, int Color, 
+				       int NEexc, double* Eexc)
 {
   int p = NHeavyParticles;
   if (p<MaxParticles) {
-    Heavy[p] = new Particle(ParticleName, M, Q);
+    Heavy[p] = new Particle(ParticleName, M, Q, true);
+    Heavy[p]->SetTrajectoryAtt((short)Color);
     Heavy[p]->SetExcEnergies(NEexc, Eexc);
     NHeavyParticles++;
   }
@@ -585,11 +627,12 @@ void MUSIC_Simulator::SetHeavyParticle(string ParticleName, double M, int Q, int
 ///////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetLightParticle(string ParticleName, double M, int Q)
+void MUSIC_Simulator::SetLightParticle(string ParticleName, double M, int Q, int Color)
 {
   int p = NLightParticles;
   if (p<MaxParticles) {
-    Light[p] = new Particle(ParticleName, M, Q);
+    Light[p] = new Particle(ParticleName, M, Q, true);
+    Light[p]->SetTrajectoryAtt((short)Color);
     NLightParticles++;
   }
   else

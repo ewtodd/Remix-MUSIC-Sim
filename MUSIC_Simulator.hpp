@@ -36,6 +36,7 @@
 #include "../../PhysicsTools/FourVector.hpp"
 #include "../../PhysicsTools/Particle.hpp"
 #include "../../PhysicsTools/SRIM_Table_Maker.hpp"
+#include "../../NuclideFinder/NuclideFinder.hpp"
 
 
 // NOTE: The inclusion of the header files in this .hpp instad of the .cpp file is
@@ -51,11 +52,12 @@ public:
   double* CalculateELoss(Particle* P, EnergyLoss* PInTgt);
   void CreateMUSIC();
   void DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 to 100*/);
-  void SetBeamParticle(string ParticleName, double M, int Q, double KineticE);
+  void DrawTrajecotries(TEveManager* gEve);
+  void SetBeamParticle(string ParticleName, double M, int Q, int Color, double KineticE);
   bool SetEnergyLossFile(string ParticleName, string TgtELossFile);
   void SetFusedParticle(string ParticleName, double M, int Q, int NEexc=0, double* Eexc=0);
-  void SetHeavyParticle(string ParticleName, double M, int Q, int NEexc=0, double* Eexc=0);
-  void SetLightParticle(string ParticleName, double M, int Q); 
+  void SetHeavyParticle(string ParticleName, double M, int Q, int Color, int NEexc=0, double* Eexc=0);
+  void SetLightParticle(string ParticleName, double M, int Q, int Color); 
   void SetParamDirectory(string Dir);
   void SetPreviousCrossSection(string FileName, string Format, short Marker, short Color);
   void SetSegmentLength(int NSegments, float* SegLength /*cm*/);
@@ -151,7 +153,9 @@ private:
 
   // For energy loss tables.
   SRIM_Table_Maker* SRIM;
-
+ 
+  // Nuclide finder
+  NuclideFinder* NuF;
 
 
   static const double c = 29.9792458;  // Speed of light in cm/ns.
