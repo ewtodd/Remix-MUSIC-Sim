@@ -173,6 +173,7 @@ private:
 
 
   static const double c = 29.9792458;  // Speed of light in cm/ns.
+  static const double pi = 3.14159265359;
 
 };
 

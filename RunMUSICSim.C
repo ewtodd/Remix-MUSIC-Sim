@@ -19,13 +19,34 @@
   string fused = "24Mg";
   string light = "4He";
   string heavy = "20Ne";
-
   // Energy of the beam after the window.
-  double Kb = 70;
+  double Kb = 55;
+  
+  int Strip = 4;
+  int NEvents = 100;
+
+  // Target gas related stuff
+  float GasP = 350; // Torr
+  float GasT = 293; // K
+  int GasIndex = 3;
+  // You have to use the same index numbers as in the SRIM_Table_Maker class.
+  //   0 - CD2
+  //   1 - CF4 (gas)
+  //   2 - Helium-3 (gas)
+  //   3 - Helium-4 (gas)
+  //   4 - Kapton
+  //   5 - Silicon
+  //   6 - LiF
+  //   7 - Havar
+  //   8 - Oxygen-16 (gas)
+  //   9 - Oxygen-18 (gas)
+  //  10 - Deuterium (gas)
   //=======================================================================
 
 
-  gRandom->SetSeed();
+  /////////////////////////////////////////////////////////////////////////////
+  // Load the necessary libraries for the script to run.
+  /////////////////////////////////////////////////////////////////////////////
   gStyle->SetOptStat("");
   gSystem->Load("../../PhysicsTools/EnergyLoss.so"); 
   gSystem->Load("../../PhysicsTools/FourVector.so"); 
@@ -48,23 +69,13 @@
   double mh = NuF->GetMass(heavy, "MeV/c^2");
   int Zh = NuF->GetZ(heavy);
 
-  SRIM_Table_Maker* SRIM = new SRIM_Table_Maker("/home/dasago/.wine/drive_c/Program\ Files\ \(x86\)/SRIM/SR\ Module/");
-
-  // Have to use the same index numbers as in the SRIM_Table_Maker class.
-  //   0 - CD2
-  //   1 - CF4 (gas)
-  //   2 - Helium-3 (gas)
-  //   3 - Helium-4 (gas)
-  //   4 - Kapton
-  //   5 - Silicon
-  //   6 - LiF
-  //   7 - Havar
-  //   8 - Oxygen-16 (gas)
-  //   9 - Oxygen-18 (gas)
-  //  10 - Deuterium (gas)
-  float GasP = 500; // Torr
-  float GasT = 293; // K
-  SRIM->SetGasDensity(3, GasP, GasT);
+  /////////////////////////////////////////////////////////////////////////////
+  // In this part, energy loss tables are created using a SRIM_Table_Maker
+  // object. Alternatively, the tables can be generated 'by hand'.
+  /////////////////////////////////////////////////////////////////////////////
+  string SRModPath = "/home/dasago/.wine/drive_c/Program\ Files\ \(x86\)/SRIM/SR\ Module/";
+  SRIM_Table_Maker* SRIM = new SRIM_Table_Maker(SRModPath);
+  SRIM->SetGasDensity(GasIndex, GasP, GasT);
   string particle[4];
   particle[0] = beam;
   particle[1] = fused;
@@ -76,17 +87,22 @@
     SRIMFile[p] = particle[p] + Form("_in_4He_%.0fTorr_%.0fK.srim", GasP, GasT);
   }
   double Conv = 931.494061; // from u to MeV/c^2
-  SRIM->MakeTable(ParamDir+SRIMFile[0], 3, Zb, mb/Conv);
-  SRIM->MakeTable(ParamDir+SRIMFile[1], 3, Zf, mf/Conv);
-  SRIM->MakeTable(ParamDir+SRIMFile[2], 3, Zl, ml/Conv);
-  SRIM->MakeTable(ParamDir+SRIMFile[3], 3, Zh, mh/Conv);
+  SRIM->MakeTable(ParamDir+SRIMFile[0], GasIndex, Zb, mb/Conv);
+  SRIM->MakeTable(ParamDir+SRIMFile[1], GasIndex, Zf, mf/Conv);
+  SRIM->MakeTable(ParamDir+SRIMFile[2], GasIndex, Zl, ml/Conv);
+  SRIM->MakeTable(ParamDir+SRIMFile[3], GasIndex, Zh, mh/Conv);
 
+
+
+  /////////////////////////////////////////////////////////////////////////////
+  // Simulator stuff
+  /////////////////////////////////////////////////////////////////////////////
+  gRandom->SetSeed();
   MUSIC_Simulator* MUSIC = new MUSIC_Simulator();
   MUSIC->SetStripEnergyResolution(0.05);
   MUSIC->SetParamDirectory(ParamDir);
   // Geometry
   MUSIC->SetAnode(AnodeGeom, 90);
- 
   // Beam
   MUSIC->SetBeamParticle("beam", mb, Zb, kBlack, Kb);
   MUSIC->SetEnergyLossFile("beam", SRIMFile[0]);
@@ -95,19 +111,15 @@
   // Fused particle
   MUSIC->SetFusedParticle(fused, mf, Zf);
   MUSIC->SetEnergyLossFile(fused, SRIMFile[1]);
-
-  // Outgoing particles in Reaction 0
+  // Light outgoing particle (e.g. proton)
   MUSIC->SetLightParticle(light, ml, Zl, kRed);
   MUSIC->SetEnergyLossFile(light, SRIMFile[2]);
+  // Heavy outgoing particle (e.g. 23Na)
   MUSIC->SetHeavyParticle(heavy, mh, Zh, kBlue);
   MUSIC->SetEnergyLossFile(heavy, SRIMFile[3]);
- 
-
   int Reaction = 0;
-  int Strip = 4;
-  int NEvents = 20;
   MUSIC->Simulate(Reaction, Strip, NEvents);
-  MUSIC->WriteTraces(Form("TracesR%d_Stp%d_a.root",Reaction,Strip));
+  MUSIC->WriteTraces(Form("TracesR%d_Stp%d_%s_%s.root",Reaction,Strip,target.c_str(),light.c_str()));
 
   TEveManager* Eve = new TEveManager(1000, 1000, kTRUE, "V");
   // Axes

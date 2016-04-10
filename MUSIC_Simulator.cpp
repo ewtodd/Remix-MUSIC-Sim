@@ -3,9 +3,9 @@
 
 using namespace std;
 
-//----------------------------------------------------------------------------------------------------
-// Most common constructor.
-//----------------------------------------------------------------------------------------------------
+///////////////////////////////////////////////////////////////////////////////////
+// Constructor
+///////////////////////////////////////////////////////////////////////////////////
 MUSIC_Simulator::MUSIC_Simulator()
 {
   Name = "MUSIC_Simulator";
@@ -149,8 +149,8 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
     // Center-of-mass energy at the beginning of MUSIC (the CM energy is the sum of the kinetic
     // energies).
     CMEMax = CME_beg = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
-    cout << "Full CM energy range covered in " << TotalLength << "cm:\n CME(beg) = " 
-	 << CME_beg << " MeV";
+    //    cout << "Full CM energy range covered in " << TotalLength << "cm:\n CME(beg) = " 
+    //	 << CME_beg << " MeV";
     // Now get the CM energy at the end of the segments.
     Kb_min = BeamInTgt->GetFinalEnergy(Kb, TotalLength, 0.001);
     pb = sqrt(2*mb*Kb_min*(1 + Kb_min/(2*mb)));
@@ -159,9 +159,9 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
     Ptot = Pb + Pt;
     pCM = sqrt((Ptot*Ptot - pow(mt+mb,2))*(Ptot*Ptot - pow(mt-mb,2))/(4*(Ptot*Ptot)));
     CMEMin = CME_end = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
-    cout << "   CME(end) = " << CME_end << " MeV" << endl;
+    //   cout << "   CME(end) = " << CME_end << " MeV" << endl;
 
-    cout << "CM energy range in each segment:" << endl;
+    //   cout << "CM energy range in each segment:" << endl;
    
 
     for (int i=0; i<NSegments; i++) {
@@ -179,8 +179,8 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
       // In this case the CM energy is the sum of the kinetic energies.
       CME_end = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
       SegCMERange[i] = CME_beg - CME_end;
-      cout << i << "\t" << SegLength[i] << " cm \t" << SegCMERange[i] << " MeV \t(Kb=" 
-	   << Kb << " MeV)"<< endl;
+      // cout << i << "\t" << SegLength[i] << " cm \t" << SegCMERange[i] << " MeV \t(Kb=" 
+      // 	   << Kb << " MeV)"<< endl;
       // The excitation energy at the end of this segment is the excitation energy at the beginnig
       // of the next segment.
       if (i+1<NSegments) 
@@ -218,15 +218,15 @@ double* MUSIC_Simulator::CalculateELoss(Particle* P, EnergyLoss* PInTgt, int Eve
   P->AllTraj[Event]->SetName(Form("%s evt %d", P->Name.c_str(),Event));
   
   // Get the initial conditions from the Particle object.
-  cout << "\nTraj of " << P->Name << endl;
+  //  cout << "\nTraj of " << P->Name << endl;
   P->GetX(t, xi, yi, zi);
-  P->X.Print();
+  //  P->X.Print();
   P->GetP(E, px, py, pz);
-  P->P.Print();
+  //  P->P.Print();
   Ki = E - m;
 
-  cout << "Ki = " << Ki << " MeV   theta = " << theta*180/TMath::Pi() << " deg   phi = "
-       << phi*180/TMath::Pi() << " deg" << endl;
+  //  cout << "Ki = " << Ki << " MeV   theta = " << theta*180/TMath::Pi() << " deg   phi = "
+  //     << phi*180/TMath::Pi() << " deg" << endl;
   // Exit if the energy loss object has not been created or if the charge of the
   // particle is zero.
   if (PInTgt==0 || Q==0)
@@ -237,21 +237,21 @@ double* MUSIC_Simulator::CalculateELoss(Particle* P, EnergyLoss* PInTgt, int Eve
     TrackLength = AnodeDepth;
   TOF = PInTgt->GetTimeOfFlight(Ki, TrackLength, 0.01);
   
-  cout << "TrackLength = " << TrackLength << " cm   TOF = " << TOF << " ns" << endl;
+  //  cout << "TrackLength = " << TrackLength << " cm   TOF = " << TOF << " ns" << endl;
   
   if (TrackLength>0) {
     // Get the final position (where the particle stops).
     xf = xi + TrackLength*sin(theta)*cos(phi);
     yf = yi + TrackLength*sin(theta)*sin(phi);
     zf = zi + TrackLength*cos(theta);
-    cout << "ri = " << xi << "," << yi << "," << zi << endl;
-    cout << "rf = " << xf << "," << yf << "," << zf << endl;
+    // cout << "ri = " << xi << "," << yi << "," << zi << endl;
+    // cout << "rf = " << xf << "," << yf << "," << zf << endl;
  
     // Check whether the final point is within the detector volume.
-    if (fabs(xf)>AnodeLength/2 || fabs(yf)>AnodeHeight/2 || zf>AnodeDepth || zf<0)
-      cout << "Out!" << endl;
-    else 
-      cout << "In!" << endl;    
+    // if (fabs(xf)>AnodeLength/2 || fabs(yf)>AnodeHeight/2 || zf>AnodeDepth || zf<0)
+    //   cout << "Out!" << endl;
+    // else 
+    //   cout << "In!" << endl;    
     
     x1 = xi;
     y1 = yi;
@@ -277,8 +277,8 @@ double* MUSIC_Simulator::CalculateELoss(Particle* P, EnergyLoss* PInTgt, int Eve
 	break;
 
       DeltaE[n] = K1 - K2;
-      cout << "S" << n << "  EL=" << K1-K2 << endl;
-     
+      //  cout << "S" << n << "  EL=" << K1-K2 << endl;
+           
       x1 = x2;
       y1 = y2;
       z1 = z2;
@@ -499,7 +499,7 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
 	  line_counter++;
       } while (!GeomFile.eof());
       GeomFile.close();
-      cout << "Total lines: " << line_counter << endl;
+      //     cout << "Total lines: " << line_counter << endl;
       // Now that the number of lines has been established reopen the
       // text file to load the parameters
       GeomFile.open(AnodeGeomFile.c_str());
@@ -523,8 +523,9 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
 	AnodeDY[stp][col] = dy;
 	AnodeDZ[stp][col] = dz;
 	AnodeColor[stp][col] = color;
-	cout << nl << "\t" << AnodeSegName[stp][col] << "\t" << AnodeDX[stp][col] << "\t" 
-	     << AnodeDY[stp][col] << "\t" << AnodeDZ[stp][col] << "\t" << AnodeColor[stp][col] << endl;
+ 	// cout << nl << "\t" << AnodeSegName[stp][col] << "\t" << AnodeDX[stp][col] << "\t" 
+	//      << AnodeDY[stp][col] << "\t" << AnodeDZ[stp][col] << "\t" << AnodeColor[stp][col] 
+	//      << endl;
       }
       GeomFile.close();
     
@@ -543,12 +544,11 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
       AnodeHeight = AnodeDY[0][0];
 
       // Define anode volumes
-      double z0 = -AnodeDZ[0][0]/2;
+      double z0 = 0;
       VolAnode = new TGeoVolume**[AnodeStps];
       for (int stp=0; stp<AnodeStps; stp++) {
 	VolAnode[stp] = new TGeoVolume*[AnodeCols];
-	z0 += AnodeDZ[stp][0];
-	cout << "z0=" << z0; 
+	z0 += AnodeDZ[stp][0]/2;
 	double x0 = -AnodeLength/2;
 	for (int col=0; col<AnodeCols; col++) {
 	  if (AnodeDX[stp][col]>0) {
@@ -558,14 +558,13 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
 	    VolAnode[stp][col]->SetLineColor(AnodeColor[stp][col]);
 	    VolAnode[stp][col]->SetTransparency(Trans);
 	    x0 += AnodeDX[stp][col]/2;
-	    cout << "  x0=" << x0; 
 	    VolTop->AddNode(VolAnode[stp][col], 1, new TGeoTranslation(x0,0,z0));
 	    x0 += AnodeDX[stp][col]/2;
 	  }
 	  else 
 	    VolAnode[stp][col] = 0;
-	  cout << "\n";
-	}      
+	}
+	z0 += AnodeDZ[stp][0]/2;
       }
     } // end if (AnodeStps>0 && AnodeCols>0)
     
@@ -963,7 +962,6 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
   double El, pl, theta_l, phi_l;
   double BetaX, BetaY, BetaZ;
   FourVector Ptot;
-  double pi = TMath::Pi();    
   double mb = Beam->Mass;
   double mt = Target->Mass;
   double mf = Fused[0]->Mass;
@@ -988,7 +986,9 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
     Gaussian = new TF1("Gaussian","gaus",0, 100);
 
   cout << "Simulating reactions ... " << endl;
-  TCanvas* Can = new TCanvas("Can","Traces",0,0,1918,630);
+  cout << "Gas volume = " << AnodeLength << "x"<< AnodeHeight << "x"<< AnodeDepth << endl;
+  
+  TCanvas* Can = new TCanvas("Can","Traces", 0, 0, 1918, 630);
   HELoss->Draw();
 
   Trace = new TGraph*[NEvents];
@@ -996,20 +996,20 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
   Kb1 = Kb_after_window;
   zb1 = 0; 
   zb2 = 0;
-  Kb1 = BeamInTgt->GetFinalEnergy(Kb1,3.522, 0.001);
-
+  // Get the beam energy loss for all strips. This quantity will be
+  // subtracted from the total energy loss of the residual particles
+  // (as it is done for the data analysis).
   for (int n=0; n<AnodeStps; n++) {
-    cout << AnodeDZ[n][0] << endl;
     zb2 += AnodeDZ[n][0];
     DeltaEB_mid[n] = 0;
-
     Kb2 = BeamInTgt->GetFinalEnergy(Kb1, zb2-zb1, 0.01);
     DeltaEB_mid[n] = Kb1 - Kb2;
-    cout << "Beam S=" << n << "  DeltaEB_mid = " << DeltaEB_mid[n] << endl;  
+    cout << "Beam  stp=" << AnodeSegName[n][0] << "  DeltaEB_mid=" << DeltaEB_mid[n] 
+	 << " MeV  dz=" << AnodeDZ[n][0] << " cm" << endl;
     zb1 = zb2;
     Kb1 = Kb2;
   }
-  cout << "Gas volume = " << AnodeLength << "x"<< AnodeHeight << "x"<< AnodeDepth << endl;
+
   
   // Get the beam energy limits in the selected strip.
   MinZ = 0;
@@ -1018,18 +1018,18 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
     MinZ += AnodeDZ[n-1][0];
     MaxZ += AnodeDZ[n][0];
   }
-  cout << "MinZ = " << MinZ << "    MaxZ = "<< MaxZ << endl;
+  cout << "\nMinZ = " << MinZ << "    MaxZ = "<< MaxZ << endl;
   Kb_max = BeamInTgt->GetFinalEnergy(Kb_after_window, MinZ, 0.01);
   Kb_min = BeamInTgt->GetFinalEnergy(Kb_after_window, MaxZ, 0.01);
   cout << "MaxKb = " << Kb_max << "    MinKb = "<< Kb_min << endl;
 
   for (int e=0; e<NEvents; e++) {
-    cout << "\n***************** Event " << e << "\n" << endl;
+    //    cout << "\n***************** Event " << e << "\n" << endl;
    
     // Within the selected strip select randomly the energy at which the beam particle
     // interacts with the target and from this value calculate the reaction z.
     Kbr = Rdm->Uniform(Kb_min, Kb_max);
-    zr = BeamInTgt->GetPathLength(Kb_after_window, Kbr, 0.1/*ns*/);
+    zr = BeamInTgt->GetPathLength(Kb_after_window, Kbr, 0.01/*ns*/);
     cout << "Kbr = " << Kbr << "  zr = " << zr << endl;
     
     Kb1 = Kb_after_window;
@@ -1045,12 +1045,12 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
       else if (!skip) {
 	Kb2 = BeamInTgt->GetFinalEnergy(Kb1, zr-zb1, 0.01);
 	DeltaEB[n] = Kb1 - Kb2;
-	cout << "Beam S=" << n << "  DeltaE = " << DeltaEB[n] << endl;  
+	//	cout << "Beam S=" << n << "  DeltaE = " << DeltaEB[n] << endl;  
 	skip = 1;
       }
       if (!skip) { 
 	DeltaEB[n] = Kb1 - Kb2;
-	cout << "Beam S=" << n << "  DeltaE = " << DeltaEB[n] << endl;  
+	//	cout << "Beam S=" << n << "  DeltaE = " << DeltaEB[n] << endl;  
 	zb1 = zb2;
 	Kb1 = Kb2;
       }
@@ -1066,7 +1066,7 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
     BetaX = pb*sin(theta_b)*cos(phi_b)/(Eb+mt);
     BetaY = pb*sin(theta_b)*sin(phi_b)/(Eb+mt);
     BetaZ = pb*cos(theta_b)/(Eb+mt);
-    cout << "BetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ << endl; 
+    //    cout << "BetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ << endl; 
 
     // Four-momentum of the beam.
     Pb.SetCoords(Eb, pb*sin(theta_b)*cos(phi_b), pb*sin(theta_b)*sin(phi_b), pb*cos(theta_b));
@@ -1090,16 +1090,16 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
 
     // Total four momentum in the lab.
     Ptot = Pb + Pt;
-    Ptot.SetName("Total four-mom. in the lab");
+    //   Ptot.SetName("Total four-mom. in the lab");
   
     // Exc. energy of fused particle.
-    cout << "Eexc(21Ne) = " << sqrt(Ptot*Ptot) - mf << " MeV" << endl;
+    //    cout << "Eexc(21Ne) = " << sqrt(Ptot*Ptot) - mf << " MeV" << endl;
 
     // Randomly select the scattering angle in the center of mass, then go to the laboratory
     // reference frame.
     theta_CM = acos(Rdm->Uniform(-1,1));
     phi_CM = Rdm->Uniform(-pi,pi);
-    cout << "theta_cm=" << theta_CM*180/pi << "   phi_cm=" << phi_CM*180/pi << endl;
+    //   cout << "theta_cm=" << theta_CM*180/pi << "   phi_cm=" << phi_CM*180/pi << endl;
 
     // Select randomly the energy of excitation of the heavy particle from 0 to the 
     // maximum possible value (skip in case of elastic scattering).
@@ -1107,12 +1107,12 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
     //  if ((mb+mt)!=(mh+ml)) 
     //Ex = Rdm->Uniform(0, sqrt(Ptot*Ptot) - ml - mh);
     //else 
-      Ex = 0;
+    Ex = 0;
     Mh = mh + Ex;
 
     // Final momentum in the CM reference frame (Ptot*Ptot is an invariant quantity).
     pf_CM = sqrt((Ptot*Ptot - pow(ml+Mh,2))*(Ptot*Ptot - pow(ml-Mh,2))/(4*(Ptot*Ptot)));
-    cout << "Ex = " << Ex << " MeV    pf_CM = " << pf_CM << endl;
+    //   cout << "Ex = " << Ex << " MeV    pf_CM = " << pf_CM << endl;
     
     // Set the four-momentum components of the light particle in the center of mass.
     Pl.SetCoords(sqrt(ml*ml + pf_CM*pf_CM), -pf_CM*sin(theta_CM)*cos(phi_CM),
@@ -1145,7 +1145,7 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
     for (int n=0; n<AnodeStps; n++) {
       DeltaE = DeltaEB[n] + DeltaEL[n] + DeltaEH[n]-(DeltaEB_mid[n]-DeltaEB_mid[0]);
 
-      cout<< "Energy loss L: "<<DeltaEL[n]<<  "Energy loss H: "<<DeltaEH[n]<<endl;
+      //cout<< "Energy loss L: "<<DeltaEL[n]<<  "Energy loss H: "<<DeltaEH[n]<<endl;
       if (EneSigma!=0 && Gaussian!=0 && DeltaE>0) {
 	Gaussian->SetRange(0.0, 2*DeltaE);
 	Gaussian->SetParameters(1.0, DeltaE, EneSigma);
@@ -1160,7 +1160,7 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
    
 
     average=total/7;
-    cout<<"Average= "<<average<<endl;
+    //    cout<<"Average= "<<average<<endl;
     Trace[e]->Draw("*l same");
     NTraces++;
     Can->Update();
