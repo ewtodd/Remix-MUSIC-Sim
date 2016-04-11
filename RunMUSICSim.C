@@ -17,12 +17,12 @@
   string beam = "20Ne";
   string target = "4He";
   string fused = "24Mg";
-  string light = "4He";
+  string light = "a";
   string heavy = "20Ne";
   // Energy of the beam after the window.
   double Kb = 55;
   
-  int Strip = 4;
+  int Strip = 2;
   int NEvents = 100;
 
   // Target gas related stuff

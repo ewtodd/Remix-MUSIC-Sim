@@ -232,6 +232,7 @@ double* MUSIC_Simulator::CalculateELoss(Particle* P, EnergyLoss* PInTgt, int Eve
   if (PInTgt==0 || Q==0)
     return DeltaE;
 
+  // Calculate the total track lenght (until the particle has nearly lost all its energy)
   TrackLength = PInTgt->GetPathLength(Ki, 0.005/*MeV*/, 1.0/*ns*/);
   if (TrackLength==0) 
     TrackLength = AnodeDepth;
@@ -248,16 +249,18 @@ double* MUSIC_Simulator::CalculateELoss(Particle* P, EnergyLoss* PInTgt, int Eve
     // cout << "rf = " << xf << "," << yf << "," << zf << endl;
  
     // Check whether the final point is within the detector volume.
-    // if (fabs(xf)>AnodeLength/2 || fabs(yf)>AnodeHeight/2 || zf>AnodeDepth || zf<0)
-    //   cout << "Out!" << endl;
-    // else 
-    //   cout << "In!" << endl;    
+    if (fabs(xf)>AnodeLength/2 || fabs(yf)>AnodeHeight/2 || zf>AnodeDepth || zf<0)
+      cout << "Out!" << endl;
+    else 
+      cout << "In!" << endl;    
     
     x1 = xi;
     y1 = yi;
     z1 = zi;
     K1 = Ki;
     z2 = 0;
+
+    // Determine energy loss in each strip
     for (int n=0; n<AnodeStps; n++) {
       TrackLengthInSeg[n] = 0;
       z2 += AnodeDZ[n][0];
@@ -272,7 +275,7 @@ double* MUSIC_Simulator::CalculateELoss(Particle* P, EnergyLoss* PInTgt, int Eve
 	break;
 
       TrackLengthInSeg[n] = sqrt(pow(x2-x1,2) + pow(y2-y1,2) + pow(z2-z1,2));
-      K2 = PInTgt->GetFinalEnergy(K1, TrackLengthInSeg[n], 0.01);
+      K2 = PInTgt->GetFinalEnergy(K1, TrackLengthInSeg[n], TrackLengthInSeg[n]/100);
       if (K2<0) 
 	break;
 
@@ -533,7 +536,7 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
       // all segment depths for the first column
       for (int stp=0; stp<AnodeStps; stp++)
 	AnodeDepth += AnodeDZ[stp][0];
-    
+
       // The total anode length (distance along the x axis) is the sum
       // of all segment lengths for the first strip
       for (int col=0; col<AnodeCols; col++)
@@ -568,10 +571,10 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
       }
     } // end if (AnodeStps>0 && AnodeCols>0)
     
-    HELoss = new TH2F("HELoss","HELoss", AnodeStps,-0.5, AnodeStps-0.5, 400,0,6);
+    HELoss = new TH2F("HELoss","HELoss", AnodeStps,-0.5, AnodeStps-0.5, 400,-4,6);
     HELoss->GetXaxis()->SetTitle("Strip number");
     HELoss->GetXaxis()->CenterTitle();
-    HELoss->GetYaxis()->SetTitle("Energy loss [MeV]");
+    HELoss->GetYaxis()->SetTitle("Energy loss - average beam energy loss (middle of strip) [MeV]");
     HELoss->GetYaxis()->CenterTitle(); 
   }
   
@@ -1143,7 +1146,15 @@ void MUSIC_Simulator::Simulate(int Reaction, int SegNum, int NEvents)
     Trace[e] = new TGraph();
     Trace[e]->SetName(Form("evt %d",e));
     for (int n=0; n<AnodeStps; n++) {
-      DeltaE = DeltaEB[n] + DeltaEL[n] + DeltaEH[n]-(DeltaEB_mid[n]-DeltaEB_mid[0]);
+
+      // Previously we were normalizing to the energy loss of the beam
+      // minus the energy loss in the the dead layer, which in this
+      // version of the code is typically strip 1.
+      //  DeltaE = DeltaEB[n] + DeltaEL[n] + DeltaEH[n] - (DeltaEB_mid[n]-DeltaEB_mid[1]);
+
+      // In this version, we normalize to the average energy loss of
+      // the beam in the middle of the strip.
+      DeltaE = DeltaEB[n] + DeltaEL[n] + DeltaEH[n] - DeltaEB_mid[n];
 
       //cout<< "Energy loss L: "<<DeltaEL[n]<<  "Energy loss H: "<<DeltaEH[n]<<endl;
       if (EneSigma!=0 && Gaussian!=0 && DeltaE>0) {

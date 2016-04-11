@@ -36,7 +36,7 @@
 
 
   TCanvas* Can = new TCanvas("Can","Traces",0,0,1000,800);
-  TH2F* HELoss = new TH2F("HELoss","^{20}Ne+^{4}He (350 Torr, E_{b} = 56 MeV)", 18,-0.5, 18-0.5, 400,0.2,2);
+  TH2F* HELoss = new TH2F("HELoss","^{20}Ne+^{4}He (350 Torr, E_{b} = 55 MeV)", 18,-0.5, 18-0.5, 400,0.2,2);
   HELoss->SetStats(0);
   Can->SetGrid();
   HELoss->GetXaxis()->SetTitle("Segment number");
