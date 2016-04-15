@@ -9,21 +9,23 @@
 {
   //=======================================================================
   // CONTROL PANEL
-  string ParamDir = "/home/dasago/Dropbox/Codes/MUSIC/Simulator/SRIM_files/";
+  string SRIM_dir = "/home/dasago/Dropbox/Codes/MUSIC/Simulator/SRIM_files/";
 
   // Geometrical parameters (all distances in cm)
   string AnodeGeom = "AnodeGeometry";
 
   string beam = "20Ne";
   string target = "4He";
-  string fused = "24Mg";
-  string light = "a";
-  string heavy = "20Ne";
+  string compound = "24Mg";
+  string light = "p";
+  string heavy = "23Na";
   // Energy of the beam after the window.
   double Kb = 55;
   
-  int Strip = 2;
-  int NEvents = 100;
+  int Strip = 4;
+  int NEvents = 2;
+  double MaxTime = 1000; // ns
+  double UserDT = 0.1;     // ns
 
   // Target gas related stuff
   float GasP = 350; // Torr
@@ -56,18 +58,7 @@
   gSystem->Load("MUSIC_Simulator_cpp.so"); 
 
 
-  NuclideFinder* NuF = new NuclideFinder();
-  // Masses (must be in MeV/c^2) and charges (in e)
-  double mb = NuF->GetMass(beam, "MeV/c^2");
-  int Zb = NuF->GetZ(beam);
-  double mt = NuF->GetMass(target, "MeV/c^2");
-  int Zt = NuF->GetZ(target);
-  double mf = NuF->GetMass(fused, "MeV/c^2");
-  int Zf = NuF->GetZ(fused);
-  double ml = NuF->GetMass(light, "MeV/c^2");
-  int Zl = NuF->GetZ(light);
-  double mh = NuF->GetMass(heavy, "MeV/c^2");
-  int Zh = NuF->GetZ(heavy);
+
 
   /////////////////////////////////////////////////////////////////////////////
   // In this part, energy loss tables are created using a SRIM_Table_Maker
@@ -78,49 +69,60 @@
   SRIM->SetGasDensity(GasIndex, GasP, GasT);
   string particle[4];
   particle[0] = beam;
-  particle[1] = fused;
+  particle[1] = compound;
   particle[2] = light;
   particle[3] = heavy;
   string SRIMFile[4];
   for (int p=0; p<4; p++) {
     cout << "Creating SRIM files for " << particle[p] << " ..." << endl;
-    SRIMFile[p] = particle[p] + Form("_in_4He_%.0fTorr_%.0fK.srim", GasP, GasT);
+    SRIMFile[p] = SRIM_dir + particle[p] + Form("_in_4He_%.0fTorr_%.0fK.srim", GasP, GasT);
   }
-  double Conv = 931.494061; // from u to MeV/c^2
-  SRIM->MakeTable(ParamDir+SRIMFile[0], GasIndex, Zb, mb/Conv);
-  SRIM->MakeTable(ParamDir+SRIMFile[1], GasIndex, Zf, mf/Conv);
-  SRIM->MakeTable(ParamDir+SRIMFile[2], GasIndex, Zl, ml/Conv);
-  SRIM->MakeTable(ParamDir+SRIMFile[3], GasIndex, Zh, mh/Conv);
+  // Before making the tables we need the masses (in u) and atomic numbers (in e).
+  NuclideFinder* NuF = new NuclideFinder();
+  double mb = NuF->GetMass(beam, "u");
+  int Zb = NuF->GetZ(beam);
+  double mt = NuF->GetMass(target, "u");
+  int Zt = NuF->GetZ(target);
+  double mc = NuF->GetMass(compound, "u");
+  int Zc = NuF->GetZ(compound);
+  double ml = NuF->GetMass(light, "u");
+  int Zl = NuF->GetZ(light);
+  double mh = NuF->GetMass(heavy, "u");
+  int Zh = NuF->GetZ(heavy);
+  // Now we have all the information to make the energy loss tables.
+  SRIM->MakeTable(SRIMFile[0], GasIndex, Zb, mb);
+  SRIM->MakeTable(SRIMFile[1], GasIndex, Zc, mc);
+  SRIM->MakeTable(SRIMFile[2], GasIndex, Zl, ml);
+  SRIM->MakeTable(SRIMFile[3], GasIndex, Zh, mh);
 
 
 
   /////////////////////////////////////////////////////////////////////////////
   // Simulator stuff
   /////////////////////////////////////////////////////////////////////////////
-  gRandom->SetSeed();
+  // gRandom->SetSeed();
   MUSIC_Simulator* MUSIC = new MUSIC_Simulator();
   MUSIC->SetStripEnergyResolution(0.05);
-  MUSIC->SetParamDirectory(ParamDir);
   // Geometry
   MUSIC->SetAnode(AnodeGeom, 90);
   // Beam
-  MUSIC->SetBeamParticle("beam", mb, Zb, kBlack, Kb);
-  MUSIC->SetEnergyLossFile("beam", SRIMFile[0]);
+  MUSIC->SetBeamParticle(beam, kBlack, SRIMFile[0], Kb);
   // Target
-  MUSIC->SetTargetParticle("target", mt, Zt);
-  // Fused particle
-  MUSIC->SetFusedParticle(fused, mf, Zf);
-  MUSIC->SetEnergyLossFile(fused, SRIMFile[1]);
-  // Light outgoing particle (e.g. proton)
-  MUSIC->SetLightParticle(light, ml, Zl, kRed);
-  MUSIC->SetEnergyLossFile(light, SRIMFile[2]);
-  // Heavy outgoing particle (e.g. 23Na)
-  MUSIC->SetHeavyParticle(heavy, mh, Zh, kBlue);
-  MUSIC->SetEnergyLossFile(heavy, SRIMFile[3]);
-  int Reaction = 0;
-  MUSIC->Simulate(Reaction, Strip, NEvents);
-  MUSIC->WriteTraces(Form("TracesR%d_Stp%d_%s_%s.root",Reaction,Strip,target.c_str(),light.c_str()));
+  MUSIC->SetTargetParticle(target);
+  // Compound particle
+  MUSIC->SetCompoundParticle(compound);
+  // Light evaporation residue (e.g. proton)
+  MUSIC->SetLightParticle(light, kRed, SRIMFile[2]);
+  // Heavy evaporation residue (e.g. 23Na)
+  MUSIC->SetHeavyParticle(heavy, kBlue, SRIMFile[3]);
 
+  // Release the Kracken!!
+  MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT);
+  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root",Strip,target.c_str(),light.c_str()));
+
+  /////////////////////////////////////////////////////////////////////////////
+  // 3D stuff
+  /////////////////////////////////////////////////////////////////////////////
   TEveManager* Eve = new TEveManager(1000, 1000, kTRUE, "V");
   // Axes
   TEveArrow* Xaxis = new TEveArrow(20,0,0,-10,0,0);

@@ -36,67 +36,50 @@
 #include "../../PhysicsTools/EnergyLoss.hpp"
 #include "../../PhysicsTools/FourVector.hpp"
 #include "../../PhysicsTools/Particle.hpp"
-#include "../../PhysicsTools/SRIM_Table_Maker.hpp"
 #include "../../NuclideFinder/NuclideFinder.hpp"
 
-
-// NOTE: The inclusion of the header files in this .hpp instad of the .cpp file is
+// NOTE: The inclusion of the header files in this .hpp instead of the .cpp file is
 //       justified by "Headers and Includes: Why and How"  (see section 5 of 
 //       http://www.cplusplus.com/forum/articles/10627/).
-
 
 class MUSIC_Simulator {
 public:
   MUSIC_Simulator();
-  void CalculateCMEnergyRange();
-  void CalculateExcEnergyRange();
-  double* CalculateELoss(Particle* P, EnergyLoss* PInTgt, int Event);
+  void CalculateCMEnergyRange();   // <- Do we need this?
+  void CalculateExcEnergyRange();  // <- Do we need this?
+  double* CalculateELoss(Particle* P, int Event);
   void DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 to 100*/);
   void DrawTrajecotries(TEveManager* gEve);
-  void SetAnode(std::string AnodeGeomFile, short Trans);
-  void SetBeamParticle(std::string ParticleName, double M, int Q, int Color, double KineticE);
-  bool SetEnergyLossFile(std::string ParticleName, std::string TgtELossFile);
-  void SetFusedParticle(std::string ParticleName, double M, int Q, int NEexc=0, double* Eexc=0);
-  void SetHeavyParticle(std::string ParticleName, double M, int Q, int Color, int NEexc=0, 
-			double* Eexc=0);
-  void SetLightParticle(std::string ParticleName, double M, int Q, int Color); 
-  void SetParamDirectory(std::string Dir);
-  void SetPreviousCrossSection(std::string FileName, std::string Format, short Marker, short Color);
-  void SetSegmentLength(int NSegments, float* SegLength /*cm*/);
-  void SetStripEnergyResolution(float Sigma);
-  void SetTargetParticle(std::string ParticleName, double M, int Q);
-  void ShowCMEnergyRange();
-  void ShowPreviousCrossSection(float XMin, float XMax, float YMin, float YMax);
-  void Simulate(int Reaction, int StpNum, int NEvents);
+  void SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/);
+  void SetBeamParticle(std::string Name, int Color, std::string ELossFile, double KineticE/*MeV*/);
+  //  void SetBeamSpot(double diameter);
+  void SetCompoundParticle(std::string Name);
+  void SetHeavyParticle(std::string Name, int Color, std::string ELossFile, int NEexc=0, 
+			double* Eexc=0/*MeV*/);
+  void SetLightParticle(std::string Name, int Color, std::string ELossFile); 
+  void SetStripEnergyResolution(float Sigma/*MeV*/);
+  void SetTargetParticle(std::string Name);
+  void Simulate(int StpNum, int NEvents, double MaxTime, double UserDT);
   void WriteTraces(char* FileName);
 
 private:
+  void SetInitialKinematics(double Kbi);
+  void SetReactionKinematics(double Kbr, double zr);
+  double* CalcAverageBeamELoss();
+  double** PropagateParticle(Particle* PO, int Event, double MaxTime, double UserDT);
+
   // Useful random number.
   TRandom3* Rdm;
 
   // Particle related stuff.
   Particle* Beam;
   Particle* Target;
-  Particle** Fused;
-  Particle** Heavy;
-  Particle** Light;
-  EnergyLoss* BeamInTgt;
-  EnergyLoss** FusedInTgt;
-  EnergyLoss** HeavyInTgt;
-  EnergyLoss** LightInTgt;
-
-  int MaxParticles;
-  int MaxPrevCS;
-  int NFusedParticles;
-  int NHeavyParticles;
-  int NLightParticles;
-  int NPrevCS;
-  int NSegments;
-
+  Particle* Compound;
+  Particle* Heavy;
+  Particle* Light;
   double Kb_after_window;
   double EneSigma;
 
-  std::string ParamDirectory;
   std::string Name;
  
   double* SegLength;
@@ -107,7 +90,6 @@ private:
   double EexcMax;
   double EexcMin;
 
-  TGraph** PrevCS;
   TH2F* HELoss;
   TGraph** Trace;
   int NTraces;
@@ -120,9 +102,9 @@ private:
   // Geometry stuff.
   int AnodeStps;
   int AnodeCols;
-  double AnodeDepth;
-  double AnodeLength;
-  double AnodeHeight;
+  double AnodeDepth;  // distance along z-axis
+  double AnodeLength; // distance along x-axis
+  double AnodeHeight; // distance along y-axis
   short** AnodeColor;
   double** AnodeDX;
   double** AnodeDY;
@@ -150,11 +132,6 @@ private:
   TGeoVolume* VolICPSGFrame;
   TGeoVolume** VolICSec;
   TGeoVolume* VolICWin;
-  TGeoVolume* VolRDBody;// New recoil det
-  TGeoVolume* VolRDFace;// New recoil det
-  TGeoVolume* VolRDSi1;   // New recoil det
-  TGeoVolume* VolRDSi2;   // New recoil det
-  TGeoVolume* VolRDSi3;   // New recoil det
   TGeoVolume* VolSD;
   TGeoVolume* VolSolDSDoor;
   TGeoVolume*** VolAnode;
@@ -164,9 +141,6 @@ private:
   TGeoVolume* VolTgtWinDS;
   TGeoVolume* VolTgtWinUS;
   TGeoVolume* VolTop;
-
-  // For energy loss tables.
-  SRIM_Table_Maker* SRIM;
  
   // Nuclide finder
   NuclideFinder* NuF;
