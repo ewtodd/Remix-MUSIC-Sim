@@ -23,7 +23,7 @@
   double Kb = 55;
   
   int Strip = 4;
-  int NEvents = 1;
+  int NEvents = 3;
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
 
@@ -120,21 +120,4 @@
   MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT);
   //  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root",Strip,target.c_str(),light.c_str()));
 
-  /////////////////////////////////////////////////////////////////////////////
-  // 3D stuff
-  /////////////////////////////////////////////////////////////////////////////
-  TEveManager* Eve = new TEveManager(1000, 1000, kTRUE, "V");
-  // Axes
-  TEveArrow* Xaxis = new TEveArrow(20,0,0,-10,0,0);
-  Xaxis->SetMainColor(kGreen); 
-  Eve->AddElement(Xaxis);
-  TEveArrow* Yaxis = new TEveArrow(0,20,0,0,-10,0);
-  Yaxis->SetMainColor(kYellow);
-  Eve->AddElement(Yaxis);
-  TEveArrow* Zaxis = new TEveArrow(0,0,30,0,0,0);
-  Eve->AddElement(Zaxis);
-  Zaxis->SetMainTransparency(65);
-
-  MUSIC->DrawTrajecotries(Eve);
-  MUSIC->DrawMUSIC(Eve, 85);
 }

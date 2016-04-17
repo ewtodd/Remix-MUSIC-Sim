@@ -19,6 +19,7 @@
 #include <TMath.h>
 #include <TPolyLine.h>
 #include <TRandom3.h>
+#include <TEveArrow.h>
 #include <TEveGeoNode.h>
 #include <TEveManager.h>
 #include <TGeoManager.h>
@@ -100,7 +101,8 @@ private:
   int NEvents;
   TEveStraightLineSet** TrajH;
   TEveStraightLineSet** TrajL;
-
+  TEveManager* Eve;
+  TEveGeoTopNode* TopNode;
 
   // Geometry stuff.
   int AnodeStps;

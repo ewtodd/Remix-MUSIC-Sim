@@ -91,6 +91,12 @@ MUSIC_Simulator::MUSIC_Simulator()
   Rdm = new TRandom3();
   Rdm->SetSeed();     // Provide a seed that depends on the time.
 
+
+  // Canvas for drawing traces
+
+
+  // TEveManager for drawing 3D particle trajectories
+  Eve = new TEveManager(960, 1018, kTRUE, "V");
 }
 
 
@@ -387,8 +393,18 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
     */
     Geo->CloseGeometry();
     
-    TEveGeoTopNode* TopNode = new TEveGeoTopNode(Geo, Geo->GetTopNode());
+    TopNode = new TEveGeoTopNode(Geo, Geo->GetTopNode());
     gEve->AddGlobalElement(TopNode);
+    // Axes
+    TEveArrow* Xaxis = new TEveArrow(20,0,0,-10,0,0);
+    Xaxis->SetMainColor(kGreen); 
+    gEve->AddElement(Xaxis);
+    TEveArrow* Yaxis = new TEveArrow(0,20,0,0,-10,0);
+    Yaxis->SetMainColor(kYellow);
+    gEve->AddElement(Yaxis);
+    TEveArrow* Zaxis = new TEveArrow(0,0,30,0,0,0);
+    Zaxis->SetMainTransparency(65);
+    gEve->AddElement(Zaxis);
     gEve->Redraw3D(kTRUE);
   }
   return;
@@ -753,6 +769,8 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
     }
   }
   
+  DrawMUSIC(Eve, 85);
+
   cout << "Anode dimensions: " << AnodeLength << "x" << AnodeHeight << "x" 
        << AnodeDepth << "cm^3" << endl;
   return;
@@ -1012,8 +1030,6 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
   // Canvas for displaying the traces
   TCanvas* Can = new TCanvas("Can","Traces", 0, 0, 960, 1018);
   Can->Divide(1,2);
-  Can->cd(1)->SetGrid();
-  HELoss->Draw();
   Can->cd(2)->SetGrid();
   HELossB->Draw();
   
@@ -1071,7 +1087,10 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
   // Event for-loop
   for (int evt=0; evt<NEvents; evt++) {
     cout << "\n***************** Event " << evt << "\n" << endl;
-
+    
+    Can->cd(1)->SetGrid();
+    HELoss->Draw();
+    
     // Reset the detector response
     for (int stp=0; stp<AnodeStps; stp++) 
       for (int col=0; col<AnodeCols; col++) {
@@ -1150,14 +1169,36 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
       Trace[evt][AnodeCols]->SetPoint(stp, stp, DeltaE);
     }
     
-    // 8. Display trace and particle trajecories
+    // 8. Display trace and particle trajecories    
+    short C,S,W;
+    if (Light!=0 && Light->SaveTrajectory) {
+      Light->GetTrajectoryAtt(C,S,W);
+      TrajL[evt]->SetLineColor(C);
+      TrajL[evt]->SetLineStyle(S);
+      TrajL[evt]->SetLineWidth(W);
+      Eve->AddElement(TrajL[evt]);
+    }
+    if (Heavy!=0 && Heavy->SaveTrajectory) {
+      Heavy->GetTrajectoryAtt(C,S,W);
+      TrajH[evt]->SetLineColor(C);
+      TrajH[evt]->SetLineStyle(S);
+      TrajH[evt]->SetLineWidth(W);
+      Eve->AddElement(TrajH[evt]);
+    } 
+    Eve->Redraw3D(kTRUE);
     Can->cd(1);
     for (int col=0; col<AnodeCols; col++)
       Trace[evt][col]->Draw("l same");
     Trace[evt][AnodeCols]->Draw("*l same");
     NTraces++;
     Can->Update();
-    //Can->WaitPrimitive();
+    Can->WaitPrimitive();
+    // Remove the 3D trajecories (make space for the trajectories of
+    // the next event).
+    if (Light!=0 && Light->SaveTrajectory)
+      Eve->RemoveElement(TrajL[evt], (TEveElement*)Eve->GetCurrentEvent());
+    if (Heavy!=0 && Heavy->SaveTrajectory)
+      Eve->RemoveElement(TrajH[evt], (TEveElement*)Eve->GetCurrentEvent());
   }
   
   return;
