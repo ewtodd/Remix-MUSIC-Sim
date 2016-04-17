@@ -118,6 +118,6 @@
 
   // Release the Kracken!!
   MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT);
-  //  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root",Strip,target.c_str(),light.c_str()));
+  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root",Strip,target.c_str(),light.c_str()));
 
 }

@@ -48,9 +48,7 @@ public:
   MUSIC_Simulator();
   void CalculateCMEnergyRange();   // <- Do we need this?
   void CalculateExcEnergyRange();  // <- Do we need this?
-  double* CalculateELoss(Particle* P, int Event);
   void DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 to 100*/);
-  void DrawTrajecotries(TEveManager* gEve);
   void SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/);
   void SetBeamParticle(std::string Name, int Color, std::string ELossFile, double KineticE/*MeV*/);
   //  void SetBeamSpot(double diameter);
@@ -66,7 +64,6 @@ public:
 private:
   void SetInitialKinematics(double Kbi);
   void SetReactionKinematics(double Kbr, double zr);
-  double* CalcAverageBeamELoss();
   double** PropagateParticle(Particle* PO, int Event, double MaxTime, double UserDT);
 
   // Useful random number.
@@ -116,35 +113,9 @@ private:
   double** AnodeDZ;
   std::string** AnodeSegName;
   TGeoManager* Geo;
-  TGeoMaterial* MatAl;
-  TGeoMaterial* MatSi;
   TGeoMaterial* MatVacuum;
-  TGeoMedium* Al;
-  TGeoMedium* CD2;
-  TGeoMedium* CF4;
-  TGeoMedium* D2;
-  TGeoMedium* He3;
-  TGeoMedium* He4;
-  TGeoMedium* Kapton;
-  TGeoMedium* LiF;
-  TGeoMedium* Mylar;
-  TGeoMedium* Si;
-  TGeoMedium* Ti;
   TGeoMedium* Vacuum;
-  TGeoVolume* VolIC;
-  TGeoVolume* VolICBkFlange;
-  TGeoVolume* VolICFlange;
-  TGeoVolume* VolICPSGFrame;
-  TGeoVolume** VolICSec;
-  TGeoVolume* VolICWin;
-  TGeoVolume* VolSD;
-  TGeoVolume* VolSolDSDoor;
   TGeoVolume*** VolAnode;
-  TGeoVolume* VolSolUSDoor;
-  TGeoVolume* VolTgt;
-  TGeoVolume* VolTgtFrame;
-  TGeoVolume* VolTgtWinDS;
-  TGeoVolume* VolTgtWinUS;
   TGeoVolume* VolTop;
  
   // Nuclide finder

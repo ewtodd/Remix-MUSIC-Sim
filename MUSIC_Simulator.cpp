@@ -45,56 +45,21 @@ MUSIC_Simulator::MUSIC_Simulator()
   // Geometry manager
   Geo = new TGeoManager("Geo", "MUSIC geometry manager");  
 
-  // Define some materials
+  // Define some materials and media
   MatVacuum = new TGeoMaterial("Vac", 0, 0, 0);
-  MatAl = new TGeoMaterial("Al", 26.9815, 13, 2.7);
-  MatSi = new TGeoMaterial("Si", 28.0855, 14, 2.329);
   // NOTE: Not sure about units of arguments
-
-  // Define some media
   Vacuum = new TGeoMedium("Vacuum", 1, MatVacuum);
-  Al = new TGeoMedium("Aluminium", 1, MatAl); 
-  Si = new TGeoMedium("Silicon", 1, MatSi); 
   
-  // Special media (empty, just using their address)
-  CD2 = new TGeoMedium("CD2", 1, MatVacuum); 
-  CF4 = new TGeoMedium("CF4", 1, MatVacuum); 
-  D2 = new TGeoMedium("D2", 1, MatVacuum); 
-  He3 = new TGeoMedium("He3", 1, MatVacuum); 
-  He4 = new TGeoMedium("He4", 1, MatVacuum); 
-  Kapton = new TGeoMedium("Kapton", 1, MatVacuum); 
-  LiF = new TGeoMedium("LiF", 1, MatVacuum); 
-  Mylar = new TGeoMedium("Mylar", 1, MatVacuum); 
-  Ti = new TGeoMedium("Ti", 1, MatVacuum); 
-
   // Make the top container volume
   VolTop = Geo->MakeBox("VolTop", Vacuum, 300., 300., 300.);
   Geo->SetTopVolume(VolTop);
-
   // Zero other volume pointers
   VolAnode = 0;
-  VolIC = 0;
-  VolICBkFlange = 0;
-  VolICFlange = 0;
-  VolICPSGFrame = 0;
-  VolICSec = 0;
-  VolICWin = 0;
-  VolSD = 0;
-  VolSolDSDoor = 0;
-  VolSolUSDoor = 0;
-  VolTgt = 0;
-  VolTgtFrame = 0;
-  VolTgtWinDS = 0;
-  VolTgtWinUS = 0;
-
+  
   // Pseudo-random number generator.
   Rdm = new TRandom3();
   Rdm->SetSeed();     // Provide a seed that depends on the time.
-
-
-  // Canvas for drawing traces
-
-
+  
   // TEveManager for drawing 3D particle trajectories
   Eve = new TEveManager(960, 1018, kTRUE, "V");
 }
@@ -182,135 +147,6 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
 
 
 ///////////////////////////////////////////////////////////////////////////////////
-// Calculate and array with the beam energy loss for all strips and return it. 
-// This quantity will be subtracted from the total energy loss of the residual 
-// particles (as it is done in the data analysis). This method assumes the beam
-// momentum is parallel to the z-axis and it does not account for the anode
-// x splitting.
-///////////////////////////////////////////////////////////////////////////////////
-double* MUSIC_Simulator::CalcAverageBeamELoss()
-{
-  double* DeltaEB_ave = new double[AnodeStps];  // average beam energy loss
-  double Kb1 = Kb_after_window;
-  double Kb2 = 0;
-  double zb1 = 0; 
-  double zb2 = 0;
-  for (int n=0; n<AnodeStps; n++) {
-    zb2 += AnodeDZ[n][0];
-    DeltaEB_ave[n] = 0;
-    // Calculate the finial energy starting from Kb1 for a distance of
-    // (zb2-zb1) in 100 steps.
-    Kb2 = Beam->GetFinalEnergy(0, Kb1, zb2-zb1, (zb2-zb1)/100);
-    DeltaEB_ave[n] = Kb1 - Kb2;
-    zb1 = zb2;
-    Kb1 = Kb2;
-  }
-  return DeltaEB_ave;
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////
-// 
-///////////////////////////////////////////////////////////////////////////////////
-double* MUSIC_Simulator::CalculateELoss(Particle* P, int Event)
-{
-  double t, xi,yi,zi, xf,yf,zf;
-  double x1,y1,z1, x2,y2,z2;
-  double vx,vy,vz;
-  double E,px,py,pz;
-  double Q = P->Q;
-  double m = P->Mass;
-  double Ki = 0, K1 = 0, K2 = 0;
-  double theta = P->GetTheta();
-  double phi = P->GetPhi();
-  double TOF, TrackLength;
-  double* TrackLengthInSeg = new double[AnodeStps];
-  double* DeltaE = new double[AnodeStps];
-
-  for (int n=0; n<AnodeStps; n++)
-    DeltaE[n] = 0;
-
-  P->AllTraj[Event]->SetName(Form("%s evt %d", P->Name.c_str(),Event));
-  
-  // Get the initial conditions from the Particle object.
-  //  cout << "\nTraj of " << P->Name << endl;
-  P->GetX(t, xi, yi, zi);
-  //  P->X.Print();
-  P->GetP(E, px, py, pz);
-  //  P->P.Print();
-  Ki = E - m;
-
-  //  cout << "Ki = " << Ki << " MeV   theta = " << theta*180/TMath::Pi() << " deg   phi = "
-  //     << phi*180/TMath::Pi() << " deg" << endl;
-  // Exit if the energy loss object has not been created or if the charge of the
-  // particle is zero.
-  if (Q==0)
-    return DeltaE;
-
-  // Calculate the total track lenght (until the particle has nearly lost all its energy)
-  TrackLength = P->GetPathLength(0, Ki, 0.005/*MeV*/, 1.0/*ns*/);
-  if (TrackLength==0) 
-    TrackLength = AnodeDepth;
-  TOF = P->GetTimeOfFlight(0, Ki/*MeV*/, TrackLength/*cm*/, 0.01/*cm*/);
-  
-  //  cout << "TrackLength = " << TrackLength << " cm   TOF = " << TOF << " ns" << endl;
-  
-  if (TrackLength>0) {
-    // Get the final position (where the particle stops).
-    xf = xi + TrackLength*sin(theta)*cos(phi);
-    yf = yi + TrackLength*sin(theta)*sin(phi);
-    zf = zi + TrackLength*cos(theta);
-    // cout << "ri = " << xi << "," << yi << "," << zi << endl;
-    // cout << "rf = " << xf << "," << yf << "," << zf << endl;
- 
-    // Check whether the final point is within the detector volume.
-    if (fabs(xf)>AnodeLength/2 || fabs(yf)>AnodeHeight/2 || zf>AnodeDepth || zf<0)
-      cout << "Out!" << endl;
-    else 
-      cout << "In!" << endl;    
-    
-    x1 = xi;
-    y1 = yi;
-    z1 = zi;
-    K1 = Ki;
-    z2 = 0;
-
-    // Determine energy loss in each strip
-    for (int n=0; n<AnodeStps; n++) {
-      TrackLengthInSeg[n] = 0;
-      z2 += AnodeDZ[n][0];
-
-      if (z2<zi)
-	continue;
-
-      y2 = (yf-yi)*(z2-zi)/(zf-zi) + yi;
-      x2 = (xf-xi)*(z2-zi)/(zf-zi) + xi;
-
-      if (fabs(x2)>AnodeLength/2 || fabs(y2)>AnodeHeight/2)
-	break;
-
-      TrackLengthInSeg[n] = sqrt(pow(x2-x1,2) + pow(y2-y1,2) + pow(z2-z1,2));
-      K2 = P->GetFinalEnergy(0, K1, TrackLengthInSeg[n], TrackLengthInSeg[n]/100);
-      if (K2<0) 
-	break;
-
-      DeltaE[n] = K1 - K2;
-      //  cout << "S" << n << "  EL=" << K1-K2 << endl;
-           
-      x1 = x2;
-      y1 = y2;
-      z1 = z2;
-      K1 = K2;
-    }
-    P->AllTraj[Event]->AddLine(xi,yi,zi, x1,y1,z1);
-  }
-  delete TrackLengthInSeg;
-  return DeltaE;
-}
-
-
-
-///////////////////////////////////////////////////////////////////////////////////
 //
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::CalculateExcEnergyRange()
@@ -385,12 +221,11 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
       Transparency = 0;
     }
     
-    /* From: http://root.cern.ch/root/html/TGeoManager.html#TGeoManager:CloseGeometry
-      Closing geometry implies checking the geometry validity, fixing shapes
-      with negative parameters (run-time shapes) building the cache manager,
-      voxelizing all volumes, counting the total number of physical nodes and
-      registring the manager class to the browser.
-    */
+    // From: http://root.cern.ch/root/html/TGeoManager.html#TGeoManager:CloseGeometry
+    // Closing geometry implies checking the geometry validity, fixing shapes
+    // with negative parameters (run-time shapes) building the cache manager,
+    // voxelizing all volumes, counting the total number of physical nodes and
+    // registring the manager class to the browser.
     Geo->CloseGeometry();
     
     TopNode = new TEveGeoTopNode(Geo, Geo->GetTopNode());
@@ -407,47 +242,6 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
     gEve->AddElement(Zaxis);
     gEve->Redraw3D(kTRUE);
   }
-  return;
-}
-
-
-
-///////////////////////////////////////////////////////////////////////////////////
-// 
-///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::DrawTrajecotries(TEveManager* gEve)
-{
-  short C, W, S;
-  // if (Beam!=0 && Beam->SaveTrajectory) {
-  //   Beam->GetTrajectoryAtt(C,S,W);
-  //   for (int e=0; e<NEvents; e++) {
-  //     TrajB[e]->SetLineColor(C);
-  //     TrajB[e]->SetLineStyle(S);
-  //     TrajB[e]->SetLineWidth(W);
-  //     gEve->AddElement(TrajB[e]);
-  //   }
-  // }
-  
-  if (Light!=0 && Light->SaveTrajectory) {
-    Light->GetTrajectoryAtt(C,S,W);
-    for (int e=0; e<NEvents; e++) {
-      TrajL[e]->SetLineColor(C);
-      TrajL[e]->SetLineStyle(S);
-      TrajL[e]->SetLineWidth(W);
-      gEve->AddElement(TrajL[e]);
-    }
-  }
-  if (Heavy!=0 && Heavy->SaveTrajectory) {
-    Heavy->GetTrajectoryAtt(C,S,W);
-    for (int e=0; e<NEvents; e++) {
-      TrajH[e]->SetLineColor(C);
-      TrajH[e]->SetLineStyle(S);
-      TrajH[e]->SetLineWidth(W);
-      gEve->AddElement(TrajH[e]);
-    }
-  } 
-
-  gEve->FullRedraw3D(kTRUE);
   return;
 }
 
@@ -471,7 +265,6 @@ double** MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxT
   bool Skip = 0;
   int step = 0;
   // Get the initial conditions from the Particle object.
-  double Z = PO->Z;
   double m = PO->Mass;
   double ti, xi, yi, zi;
   PO->GetX(ti, xi, yi, zi);
@@ -721,7 +514,10 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
       // of the segment in the first strip and first column
       AnodeHeight = AnodeDY[0][0];
 
-      // Define anode volumes
+      // Define anode volumes. The Vacuum medium used below is just
+      // because a medium is needed when defining a Volume, it has
+      // nothing to do with the energy loss. The actual stopping power
+      // tables are contained in the Particle objects.
       double z0 = 0;
       VolAnode = new TGeoVolume**[AnodeStps];
       for (int stp=0; stp<AnodeStps; stp++) {
@@ -730,7 +526,8 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
 	double x0 = -AnodeLength/2;
 	for (int col=0; col<AnodeCols; col++) {
 	  if (AnodeDX[stp][col]>0) {
-	    VolAnode[stp][col] = Geo->MakeBox(Form("VolAnode%d%d",stp,col), Vacuum, 
+	    VolAnode[stp][col] = Geo->MakeBox(Form("VolAnode%d%d",stp,col),
+					      Vacuum /*just because a medium is need*/,
 					      AnodeDX[stp][col]/2, AnodeDY[stp][col]/2,
 					      AnodeDZ[stp][col]/2);
 	    VolAnode[stp][col]->SetLineColor(AnodeColor[stp][col]);
@@ -790,8 +587,6 @@ void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, 
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   Beam->SetMedium(ELossFile);
   Kb_after_window = K;
-  double E = K + m;
-
   return;
 }
 
@@ -1193,12 +988,14 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
     NTraces++;
     Can->Update();
     Can->WaitPrimitive();
-    // Remove the 3D trajecories (make space for the trajectories of
-    // the next event).
-    if (Light!=0 && Light->SaveTrajectory)
-      Eve->RemoveElement(TrajL[evt], (TEveElement*)Eve->GetCurrentEvent());
-    if (Heavy!=0 && Heavy->SaveTrajectory)
-      Eve->RemoveElement(TrajH[evt], (TEveElement*)Eve->GetCurrentEvent());
+    // Remove the 3D trajecories. Make space for the trajectories of
+    // the next event, but don't remove the ones of the last event.
+    if (evt<NEvents) {
+      if (Light!=0 && Light->SaveTrajectory)
+	Eve->RemoveElement(TrajL[evt], (TEveElement*)Eve->GetCurrentEvent());
+      if (Heavy!=0 && Heavy->SaveTrajectory)
+	Eve->RemoveElement(TrajH[evt], (TEveElement*)Eve->GetCurrentEvent());
+    }
   }
   
   return;
