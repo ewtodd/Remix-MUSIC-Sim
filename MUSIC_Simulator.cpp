@@ -87,19 +87,14 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
   double Kb = Kb_after_window;
   double Kb_min;
   float TotalLength = 0;
-  Kb = Beam->GetFinalEnergy(0, Kb,3.522, 0.001);
-
-  if (BeamInTgt!=0) { 
-    for (int i=0; i<NSegments; i++) 
-      TotalLength += SegLength[i];
-    
-    // Linear momentum and total energy of the beam particle in the lab with the current
-    // value of the kinetic energy.
-    pb = sqrt(2*mb*Kb*(1 + Kb/(2*mb)));
-    Eb = sqrt(mb*mb + pb*pb);
-    Pb.SetCoords(Eb, 0, 0, pb);
-    // Total four momentum
-    Ptot = Pb + Pt;
+  
+  // Linear momentum and total energy of the beam particle in the lab with the current
+  // value of the kinetic energy.
+  pb = sqrt(2*mb*Kb*(1 + Kb/(2*mb)));
+  Eb = sqrt(mb*mb + pb*pb);
+  Pb.SetCoords(Eb, 0, 0, pb);
+  // Total four momentum
+  Ptot = Pb + Pt;
     // Calculate the initial momentum (of beam and target) in the CM.
     pCM = sqrt((Ptot*Ptot - pow(mt+mb,2))*(Ptot*Ptot - pow(mt-mb,2))/(4*(Ptot*Ptot)));
     // Center-of-mass energy at the beginning of MUSIC (the CM energy is the sum of the kinetic
@@ -247,6 +242,57 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
     gEve->AddElement(Zaxis);
     gEve->Redraw3D(kTRUE);
   }
+  return;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////
+// 
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
+{
+  double mb = Beam->Mass;
+  double mt = Target->Mass;
+  double mc = Compound->Mass;
+  double pb, Eb;
+  FourVector Ptot;
+
+  cout.width(5);
+  cout << "Stp";
+  cout.width(15);
+  cout << "EexcMax[MeV]";
+  cout.width(15);
+  cout << "EexcMin[MeV]" << endl;
+
+  for (int stp=0; stp<AnodeStps+1; stp++) {
+    // Exc. energy of compound particle.
+    cout.width(5);
+    cout << stp;
+    // Upper limit
+    // Linear momentum and total energy of the beam particle in the lab.
+    pb = sqrt(2*mb*Kb*(1 + Kb/2/mb));
+    Eb = sqrt(mb*mb + pb*pb);
+    // Total four momentum in the lab.
+    Ptot.SetCoords(Eb+mt, 0, 0, pb);
+    cout.width(15);
+    cout.precision(4);
+    cout << sqrt(Ptot*Ptot) - mc;
+    // Lower limit
+    Kb -= DeltaEB[stp][AnodeCols];
+    cout.width(15);
+    if (Kb>0) {
+      // Linear momentum and total energy of the beam particle in the lab.
+      pb = sqrt(2*mb*Kb*(1 + Kb/2/mb));
+      Eb = sqrt(mb*mb + pb*pb);
+      // Total four momentum in the lab.
+      Ptot.SetCoords(Eb+mt, 0, 0, pb);
+      cout.precision(4);
+      cout << sqrt(Ptot*Ptot) - mc << endl;
+    }
+    else
+      cout << "0" << endl;
+  }
+
   return;
 }
 
@@ -705,8 +751,9 @@ void MUSIC_Simulator::SetPrintLevel(int Level/*0-2*/)
 ///////////////////////////////////////////////////////////////////////////////////
 // Establish the kinematics of the particles at the reaction point.
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, double tof/*ns*/)
+int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, double tof/*ns*/)
 {
+  int ReactionAllowed = 1;
   if (PrintLevel>0)
     cout << "\nReaction kine" << endl;
   double mb = Beam->Mass;
@@ -750,41 +797,50 @@ void MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, 
     Compound->Print();
   if (PrintLevel>0)
     cout << "Eexc(" << Compound->Name << ") = " << sqrt(Ptot*Ptot) - mc << " MeV" << endl;
-  
+
   // Randomly select the scattering angle in the center of mass, then
   // go to the laboratory reference frame.
   double theta_CM = acos(Rdm->Uniform(-1,1));
   double phi_CM = Rdm->Uniform(-pi,pi);
   if (PrintLevel>0)
     cout << "theta_cm=" << theta_CM*180/pi << "   phi_cm=" << phi_CM*180/pi << endl;
-
-  // Final momentum in the CM reference frame (Ptot*Ptot is an invariant quantity).
-  double pf_CM = sqrt((Ptot*Ptot - pow(ml+mh,2))*(Ptot*Ptot - pow(ml-mh,2))/(4*(Ptot*Ptot)));
-  //   cout << "Ex = " << Ex << " MeV    pf_CM = " << pf_CM << endl;
+  
+  // Verify that the reaction can occur.
+  if (Ptot*Ptot<pow(ml+mh,2)) {
+    Light->SetP(ml, 0, 0, 0);
+    Light->SetX(tof, 0, 0, zr);
+    Heavy->SetP(mh, 0, 0, 0);
+    Heavy->SetX(tof, 0, 0, zr);
+    ReactionAllowed = 0;
+  }
+  else {
+    // Final momentum in the CM reference frame (Ptot*Ptot is an invariant quantity).
+    double pf_CM = sqrt((Ptot*Ptot - pow(ml+mh,2))*(Ptot*Ptot - pow(ml-mh,2))/(4*(Ptot*Ptot)));
+        
+    // Set the four-momentum components of the light particle in the center of mass.
+    double plxCM = -pf_CM*sin(theta_CM)*cos(phi_CM);
+    double plyCM = -pf_CM*sin(theta_CM)*sin(phi_CM);
+    double plzCM = -pf_CM*cos(theta_CM);
+    double ElCM = sqrt(ml*ml + pf_CM*pf_CM);
+    Light->SetP(ElCM, plxCM, plyCM, plzCM);
     
-  // Set the four-momentum components of the light particle in the center of mass.
-  double plxCM = -pf_CM*sin(theta_CM)*cos(phi_CM);
-  double plyCM = -pf_CM*sin(theta_CM)*sin(phi_CM);
-  double plzCM = -pf_CM*cos(theta_CM);
-  double ElCM = sqrt(ml*ml + pf_CM*pf_CM);
-  Light->SetP(ElCM, plxCM, plyCM, plzCM);
+    // Do a Lorentz transformation (boost) into the lab reference frame.
+    // I've double checked the sign of the boost and is correct (-Beta).
+    Light->Boost(-BetaX, -BetaY, -BetaZ);
+    
+    // Initial position of the light particle (at the target).
+    Light->SetX(tof, 0, 0, zr);
+    if (PrintLevel>0)
+      Light->Print();
+    
+    // Four-momentum of the heavy recoil (lab).
+    Heavy->SetP(Beam->GetP() + Target->GetP() - Light->GetP());
+    Heavy->SetX(tof, 0, 0, zr);
+    if (PrintLevel>0)
+      Heavy->Print();
+  }
 
-  // Do a Lorentz transformation (boost) into the lab reference frame.
-  // I've double checked the sign of the boost and is correct (-Beta).
-  Light->Boost(-BetaX, -BetaY, -BetaZ);
-
-  // Initial position of the light particle (at the target).
-  Light->SetX(tof, 0, 0, zr);
-  if (PrintLevel>0)
-    Light->Print();
-  
-  // Four-momentum of the heavy recoil (lab).
-  Heavy->SetP(Beam->GetP() + Target->GetP() - Light->GetP());
-  Heavy->SetX(tof, 0, 0, zr);
-  if (PrintLevel>0)
-    Heavy->Print();
-  
-  return;
+  return ReactionAllowed;
 }
 
 
@@ -899,7 +955,8 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
 
   SetInitialKinematics(Kb_after_window);   
 
-  // Get the average beam energy loss
+  // Get the average beam energy loss and print the exc energy of the
+  // compound nucleus sampled by each strip.
   Particle* BeamCopy = new Particle("beam copy");
   BeamCopy->Copy(Beam);
   if (PrintLevel>0)
@@ -912,6 +969,7 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
   for (int col=0; col<AnodeCols; col++)
     TraceB[col]->Draw("l same");
   TraceB[AnodeCols]->Draw("*l same");
+  PrintCompoundEexc(Kb_after_window, DeltaEB_ave);
 
   // Get the beam energy limits in the selected strip (assuming the
   // beam direction is parallel to the z-axis).
@@ -963,7 +1021,13 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
     DeltaEB = PropagateParticle(Beam, evt, TOF, UserDT);
 
     // 4. Set the kinematics of all particles at the reaction point
-    SetReactionKinematics(Kbr, zr, TOF);
+    int ReacAllowed = SetReactionKinematics(Kbr, zr, TOF);
+    if (ReacAllowed==0) {
+      cout << "Warninig: reaction energetically not allowed for event " << evt 
+	   << " (Kbr= " << Kbr << " MeV)." << endl;
+      continue;
+    }
+    // Update the kinematics label    
     LabelKine->Clear();
     LabelKine->AddText("Kinematics");
     LabelKine->AddLine(0.0,0.76,1.0,0.76);
@@ -974,20 +1038,21 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
     LabelKine->AddText(Form("%s: K=%.2f MeV  #theta_{lab}=%.1f deg  #phi_{lab}=%.1f deg",
 			    Light->Name.c_str(), Light->GetKE(), Light->GetTheta()*180/pi,
 			    Light->GetPhi()*180/pi));
-
+    
     // 5. Propagate heavy particle and calculate energy loss in the
     // anode elements
     DeltaEH = PropagateParticle(Heavy, evt, MaxTime, UserDT);
+
     // 6. Propagate light particle and calculate energy loss in the
     // anode elements
     DeltaEL = PropagateParticle(Light, evt, MaxTime, UserDT);
 
+    // 7. Compute detector response (i.e. DE for beam + light + heavy)
     // Clone the particle trajectories
     if (evt<Particle::MaxEvents) {
       TrajH[evt] = (TEveStraightLineSet*)Heavy->AllTraj[evt]->Clone();
       TrajL[evt] = (TEveStraightLineSet*)Light->AllTraj[evt]->Clone();
     }
-
     // Create energy loss trace for this event (detector
     // response). The last column has the energy loss deposited in the
     // whole strip.
@@ -1024,17 +1089,16 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
 	TraceL[evt][col]->SetLineWidth(2);
       }
     }
-    
-    // 7. Compute detector response (i.e. DE for beam + light + heavy)
+    // Loop over the anode's strips and columns
     for (int stp=0; stp<AnodeStps; stp++) {
       DeltaE = 0;
       for (int col=0; col<AnodeCols+1; col++) {
-	// Previously we were normalizing to the energy loss of the beam
-	// minus the energy loss in the the dead layer, which in this
-	// version of the code is typically strip 1.
-	//  DeltaE = DeltaEB[n] + DeltaEL[n] + DeltaEH[n] - (DeltaEB_ave[n]-DeltaEB_ave[1]);
-	// In this version, we normalize to the average energy loss of
-	// the beam in each strip.
+	// Previously we were normalizing to the energy loss of the
+	// beam minus the energy loss in the the dead layer, which in
+	// this version of the code is typically strip 1.  
+	// DeltaE = DeltaEB[n] + DeltaEL[n] + DeltaEH[n] - (DeltaEB_ave[n]-DeltaEB_ave[1]);
+	// In this version, we do not normalize to the average energy
+	// loss of the beam in each strip.
 	TraceH[evt][col]->SetPoint(stp, stp, DeltaEH[stp][col]);
 	TraceL[evt][col]->SetPoint(stp, stp, DeltaEL[stp][col]);
 	DeltaE = DeltaEB[stp][col] + DeltaEL[stp][col] + DeltaEH[stp][col];
@@ -1074,16 +1138,19 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
       Trace[evt][col]->Draw("l same");
     Trace[evt][AnodeCols]->Draw("*l same");
     // Legend
-    if (evt==0) {
+    if (LegCol->GetNRows()==0) {
       LegCol->AddEntry(Trace[evt][AnodeCols],"All columns","l");
       for (int col=0; col<AnodeCols; col++)
-	LegCol->AddEntry(Trace[evt][col], Form("Column %d", col),"l");      
+	LegCol->AddEntry(Trace[evt][col], Form("Column %d", col),"l");
+      Can->cd(3);
+      LegCol->Draw();
+      Can->cd(1);      
     }
     LegCol->Draw();
     // Traces of particles' energy loss and total.
     Can->cd(2);
     // Legend
-    if (evt==0) {
+    if (LegPart->GetNRows()==0) {
       LegPart->AddEntry(Trace[evt][AnodeCols], "All particles", "l");
       LegPart->AddEntry(TraceH[evt][AnodeCols], Form("%s",Heavy->Name.c_str()), "l");
       LegPart->AddEntry(TraceL[evt][AnodeCols], Form("%s",Light->Name.c_str()), "l");
@@ -1099,7 +1166,7 @@ void MUSIC_Simulator::Simulate(int SegNum, int NEvents, double MaxTime, double U
       Can->WaitPrimitive();
     // Remove the 3D trajecories. Make space for the trajectories of
     // the next event, but don't remove the ones of the last event.
-    if (evt<NEvents) {
+    if (evt<NEvents-1) {
       if (Light!=0 && Light->SaveTrajectory)
 	Eve->RemoveElement(TrajL[evt], (TEveElement*)Eve->GetCurrentEvent());
       if (Heavy!=0 && Heavy->SaveTrajectory)
@@ -1119,11 +1186,13 @@ void MUSIC_Simulator::WriteTraces(char* FileName)
   TFile* Output = new TFile(FileName, "RECREATE");
   if (Trace!=0)
     for (int n=0; n<NTraces; n++)
-      for (int col=0; col<AnodeCols+1; col++) {
-	if (col==AnodeCols)
-	  Trace[n][col]->Write(Form("Trace%d",n), TObject::kOverwrite);
-	else
-	  Trace[n][col]->Write(Form("Trace%dc%d",n,col), TObject::kOverwrite);
+      if (Trace[n]!=0) {
+	for (int col=0; col<AnodeCols+1; col++) {
+	  if (col==AnodeCols) 
+	    Trace[n][col]->Write(Form("Trace%d",n), TObject::kOverwrite);
+	  else
+	    Trace[n][col]->Write(Form("Trace%dc%d",n,col), TObject::kOverwrite);
+	}
       }
   Output->Close();
   return;

@@ -76,8 +76,9 @@ public:
 
 private:
   void SetInitialKinematics(double Kbi);
-  void SetReactionKinematics(double Kbr, double zr, double tof);
+  int SetReactionKinematics(double Kbr, double zr, double tof);
   double** PropagateParticle(Particle* PO, int Event, double MaxTime, double UserDT);
+  void PrintCompoundEexc(double Kb, double** DeltaEB);
 
   // Useful random number.
   TRandom3* Rdm;

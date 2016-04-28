@@ -17,18 +17,18 @@
   string beam = "20Ne";
   string target = "4He";
   string compound = "24Mg";
-  string light = "4He";
-  string heavy = "20Ne";
+  string light = "n";
+  string heavy = "23Mg";
   // Energy of the beam after the window.
   double Kb = 55;
   
-  int Strip = 4;
-  int NEvents = 20;
+  int Strip = 3;
+  int NEvents = 50;
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
 
   // Target gas related stuff
-  float GasP = 350; // Torr
+  float GasP = 400; // Torr
   float GasT = 293; // K
   int GasIndex = 3;
   // You have to use the same index numbers as in the SRIM_Table_Maker class.

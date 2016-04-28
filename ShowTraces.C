@@ -1,6 +1,6 @@
 {
-  int NTraces = 20;
-  int stp = 4;
+  int NTraces = 50;
+  int stp = 5;
  
   TFile* TFaa = new TFile(Form("Traces_Stp%d_4He_4He.root",stp));
   TFile* TFap = new TFile(Form("Traces_Stp%d_4He_p.root",stp));
@@ -36,7 +36,8 @@
 
 
   TCanvas* Can = new TCanvas("Can","Traces",0,0,1000,800);
-  TH2F* HELoss = new TH2F("HELoss","^{20}Ne+^{4}He (350 Torr, E_{b} = 55 MeV)", 18,-0.5, 18-0.5, 400,0.2,2);
+  TH2F* HELoss = new TH2F("HELoss","^{20}Ne+^{4}He (400 Torr, E_{b} = 60 MeV)", 
+			  18,-0.5,18-0.5, 400,0.0,3.5);
   HELoss->SetStats(0);
   Can->SetGrid();
   HELoss->GetXaxis()->SetTitle("Segment number");
@@ -44,7 +45,7 @@
   HELoss->GetYaxis()->SetTitle("#DeltaE [MeV]");
   HELoss->GetYaxis()->CenterTitle(); 
   HELoss->GetXaxis()->SetLimits(0,18);
-  HELoss->GetYaxis()->SetLimits(0.0,10);
+  //  HELoss->GetYaxis()->SetLimits(0.0,10);
   HELoss->Draw();
   for (int n=0; n<NTraces; n++) 
     if (Taa[n]!=0)
@@ -55,4 +56,9 @@
   for (int n=0; n<NTraces; n++) 
     if (Tan[n]!=0)
       Tan[n]->Draw("l same");
+  TLegend* Leg = new TLegend(0.174,0.156,0.346,0.374);
+  Leg->AddEntry(Taa[0], "(#alpha,#alpha)", "l");
+  Leg->AddEntry(Tap[0], "(#alpha,p)", "l");
+  Leg->AddEntry(Tan[0], "(#alpha,n)", "l");
+  Leg->Draw();
 }
