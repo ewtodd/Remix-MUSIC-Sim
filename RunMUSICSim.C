@@ -9,7 +9,7 @@
 {
   //=======================================================================
   // CONTROL PANEL
-  string SRIM_dir = "/home/dasago/Dropbox/Codes/MUSIC/Simulator/SRIM_files/";
+  string SRIM_dir = "/home/mavila/Research/Experiments/MUSIC_23Na/music_simulator/srim/";
 
   // Geometrical parameters (all distances in cm)
   string AnodeGeom = "AnodeGeometry";
@@ -23,7 +23,7 @@
   double Kb = 55;
   
   int Strip = 3;
-  int NEvents = 50;
+  int NEvents = 2;
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
 
@@ -50,12 +50,13 @@
   // Load the necessary libraries for the script to run.
   /////////////////////////////////////////////////////////////////////////////
   gStyle->SetOptStat("");
-  gSystem->Load("../../PhysicsTools/EnergyLoss.so"); 
-  gSystem->Load("../../PhysicsTools/FourVector.so"); 
-  gSystem->Load("../../PhysicsTools/Particle.so"); 
-  gSystem->Load("../../PhysicsTools/SRIM_Table_Maker_cpp.so");
-  gSystem->Load("../../NuclideFinder/NuclideFinder_cpp.so"); 
+  gSystem->Load("../physicstools/EnergyLoss.so"); 
+  gSystem->Load("../physicstools/FourVector.so"); 
+  gSystem->Load("../physicstools/Particle.so"); 
+  gSystem->Load("../physicstools/NuclideFinder_cpp.so"); 
   gSystem->Load("MUSIC_Simulator_cpp.so"); 
+  // Special lib
+  gSystem->Load("../physicstools/SRIM_Table_Maker_cpp.so");
 
 
 
@@ -64,7 +65,8 @@
   // In this part, energy loss tables are created using a SRIM_Table_Maker
   // object. Alternatively, the tables can be generated 'by hand'.
   /////////////////////////////////////////////////////////////////////////////
-  string SRModPath = "/home/dasago/.wine/drive_c/Program\ Files\ \(x86\)/SRIM/SR\ Module/";
+  string SRModPath = "/home/mavila/.wine/drive_c/SR\ Module/";
+
   SRIM_Table_Maker* SRIM = new SRIM_Table_Maker(SRModPath);
   SRIM->SetGasDensity(GasIndex, GasP, GasT);
   string particle[4];
@@ -117,13 +119,13 @@
   MUSIC->SetHeavyParticle(heavy, kBlue, SRIMFile[3]);
 
   // Release the Kraken!!
-  // MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
+  MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
 
   // Generates a collection of traces for all angles (theta, phi) for
   // all strips. The generated data base can be compared to
   // experimental traces.
   //  MUSIC->SetPrintLevel(1);
-  MUSIC->GenerateTraceDatabase(Form("TDB_%s_%s.root",target.c_str(),light.c_str()), MaxTime, UserDT);
+  //  MUSIC->GenerateTraceDatabase(Form("TDB_%s_%s.root",target.c_str(),light.c_str()), MaxTime, UserDT);
 
   // MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root",Strip,target.c_str(),light.c_str()));
 

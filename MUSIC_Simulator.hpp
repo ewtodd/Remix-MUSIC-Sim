@@ -46,10 +46,10 @@
 #include <TTree.h>
 
 // Useful libraries
-#include "../../PhysicsTools/EnergyLoss.hpp"
-#include "../../PhysicsTools/FourVector.hpp"
-#include "../../PhysicsTools/Particle.hpp"
-#include "../../NuclideFinder/NuclideFinder.hpp"
+#include "../physicstools/EnergyLoss.hpp"
+#include "../physicstools/FourVector.hpp"
+#include "../physicstools/Particle.hpp"
+#include "../physicstools/NuclideFinder.hpp"
 
 // NOTE: The inclusion of the header files in this .hpp instead of the .cpp file is
 //       justified by "Headers and Includes: Why and How"  (see section 5 of 
