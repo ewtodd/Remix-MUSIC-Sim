@@ -1,6 +1,6 @@
 {
   int NTraces = 50;
-  int stp = 5;
+  int stp = 4;
  
   TFile* TFaa = new TFile(Form("Traces_Stp%d_4He_4He.root",stp));
   TFile* TFap = new TFile(Form("Traces_Stp%d_4He_p.root",stp));
@@ -36,8 +36,8 @@
 
 
   TCanvas* Can = new TCanvas("Can","Traces",0,0,1000,800);
-  TH2F* HELoss = new TH2F("HELoss","^{20}Ne+^{4}He (400 Torr, E_{b} = 60 MeV)", 
-			  18,-0.5,18-0.5, 400,0.0,3.5);
+  TH2F* HELoss = new TH2F("HELoss","^{23}Na+^{4}He (400 Torr, E_{b} = 46 MeV)", 
+			  18,-0.5,18-0.5, 400,0.0,6.5);
   HELoss->SetStats(0);
   Can->SetGrid();
   HELoss->GetXaxis()->SetTitle("Segment number");

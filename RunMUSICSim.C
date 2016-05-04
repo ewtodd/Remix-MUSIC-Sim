@@ -14,16 +14,17 @@
   // Geometrical parameters (all distances in cm)
   string AnodeGeom = "AnodeGeometry";
 
-  string beam = "20Ne";
+  string beam = "23Na";
   string target = "4He";
-  string compound = "24Mg";
-  string light = "p";
+  string compound = "27Al";
+  string light = "4He";
   string heavy = "23Na";
   // Energy of the beam after the window.
-  double Kb = 55;
+  //  double Kb = 55;
+  double Kb = 46;
   
-  int Strip = 3;
-  int NEvents = 50;
+  int Strip = 4;
+  int NEvents = 30;
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
 
@@ -53,8 +54,8 @@
   gSystem->Load("../../PhysicsTools/EnergyLoss.so"); 
   gSystem->Load("../../PhysicsTools/FourVector.so"); 
   gSystem->Load("../../PhysicsTools/Particle.so"); 
-  gSystem->Load("../../PhysicsTools/SRIM_Table_Maker_cpp.so");
-  gSystem->Load("../../NuclideFinder/NuclideFinder_cpp.so"); 
+  gSystem->Load("../../PhysicsTools/SRIM_Table_Maker_cpp.so"); // Need the version compiled with CINT
+  gSystem->Load("../../PhysicsTools/NuclideFinder_cpp.so");    // Need the version compiled with CINT
   gSystem->Load("MUSIC_Simulator_cpp.so"); 
 
 
@@ -115,16 +116,16 @@
   MUSIC->SetLightParticle(light, kRed, SRIMFile[2]);
   // Heavy evaporation residue (e.g. 23Na)
   MUSIC->SetHeavyParticle(heavy, kBlue, SRIMFile[3]);
-
+  
+  MUSIC->SetPrintLevel(1);
+  
   // Release the Kraken!!
-  // MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
+  MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
+  //  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root", Strip, target.c_str(), light.c_str()));
 
   // Generates a collection of traces for all angles (theta, phi) for
   // all strips. The generated data base can be compared to
   // experimental traces.
-  //  MUSIC->SetPrintLevel(1);
-  MUSIC->GenerateTraceDatabase(Form("TDB_%s_%s.root",target.c_str(),light.c_str()), MaxTime, UserDT);
-
-  // MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root",Strip,target.c_str(),light.c_str()));
+  // MUSIC->GenerateTraceDatabase(Form("TDB_%s_%s.root",target.c_str(),light.c_str()), MaxTime, UserDT);
 
 }
