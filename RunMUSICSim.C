@@ -23,7 +23,14 @@
   //  double Kb = 55;
   double Kb = 46;
   
-  int Strip = 4;
+  double ThCMMin = 2;
+  double ThCMMax = 178;
+  int ThSteps = 4;
+  double PhiCMMin = 2;
+  double PhiCMMax = 358;
+  int PhiSteps = 8;
+
+  int Strip = 17;
   int NEvents = 30;
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
@@ -117,15 +124,17 @@
   // Heavy evaporation residue (e.g. 23Na)
   MUSIC->SetHeavyParticle(heavy, kBlue, SRIMFile[3]);
   
-  MUSIC->SetPrintLevel(1);
+  // MUSIC->SetPrintLevel(1);
   
   // Release the Kraken!!
-  MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
+  //MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
   //  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root", Strip, target.c_str(), light.c_str()));
 
   // Generates a collection of traces for all angles (theta, phi) for
   // all strips. The generated data base can be compared to
   // experimental traces.
-  // MUSIC->GenerateTraceDatabase(Form("TDB_%s_%s.root",target.c_str(),light.c_str()), MaxTime, UserDT);
+  string TraceDB = Form("TDB_%s_%s.root",target.c_str(),light.c_str());
+  MUSIC->GenerateTraceDatabase(TraceDB, ThCMMin, ThCMMax, ThSteps, PhiCMMin, PhiCMMax, PhiSteps,
+			       MaxTime, UserDT, 1);
 
 }

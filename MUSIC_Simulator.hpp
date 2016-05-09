@@ -60,7 +60,10 @@ public:
   MUSIC_Simulator();
   void CalculateCMEnergyRange();   // <- Do we need this?
   void CalculateExcEnergyRange();  // <- Do we need this?
-  void GenerateTraceDatabase(std::string FileName, double MaxTime, double UserDT, int Wait=0);
+  void GenerateTraceDatabase(std::string FileName,
+			     double ThCMMin, double ThCMMax, int ThSteps,
+			     double PhiCMMin, double PhiCMMax, int PhiSteps,
+			     double MaxTime, double UserDT, int Wait=0);
   void SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/);
   void SetBeamParticle(std::string Name, int Color, std::string ELossFile, double KineticE/*MeV*/);
   //  void SetBeamSpot(double diameter);

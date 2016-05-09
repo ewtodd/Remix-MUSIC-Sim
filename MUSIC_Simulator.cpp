@@ -71,10 +71,10 @@ MUSIC_Simulator::MUSIC_Simulator()
 
   // Canvas and legends for traces
   TraceCan = new TCanvas("TraceCan","Traces", 0, 0, 960, 1018);
-  TraceCan->Divide(1,3);
+  TraceCan->Divide(1,2);
   TraceCan->cd(1)->SetGrid();
   TraceCan->cd(2)->SetGrid();
-  TraceCan->cd(3)->SetGrid();
+  //  TraceCan->cd(3)->SetGrid();
   LegCol = new TLegend(0.692,0.616,0.826,0.861);
   LegPart = new TLegend(0.692,0.616,0.826,0.861);
   LabelKine = new TPaveText(0.152,0.679,0.437,0.875,"NDC");
@@ -269,22 +269,22 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
       DeltaE = DeltaEB[stp][col] + DeltaEL[stp][col] + DeltaEH[stp][col];
       //DeltaE = DeltaEL[stp][col] + DeltaEH[stp][col];
 
-      // Fill tree leafs
+      // Fill tree leaves
       if (SimTree!=0) {
 	int stpid = AnodeStpID[stp][col];
 	if (stpid>=0) {
-	  seg[stpid-1] = stpid;
 	  cathode += DeltaE;
 	  if (stpid==0)
 	    strip0 += DeltaE;
-	  else if (stpid<17) {
+	  else if (stpid==17)
+	    strip17 += DeltaE;
+	  else if (stpid-1<ExpAnodeStps) {
+	    seg[stpid-1] = stpid;
 	    if (col==0) 
 	      andr[stpid-1] += DeltaE;
 	    else if (col==1)
 	      andl[stpid-1] += DeltaE;
 	  }
-	  else if (stpid==17)
-	    strip17 += DeltaE;	
 	}
       }
       // if (EneSigma!=0 && Gaussian!=0 && DECol>0) {
@@ -427,9 +427,12 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
 
 
 ///////////////////////////////////////////////////////////////////////////////////
-//
+// Angles in degrees
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::GenerateTraceDatabase(string FileName, double MaxTime, double UserDT, int Wait)
+void MUSIC_Simulator::GenerateTraceDatabase(string FileName, 
+					    double ThCMMin, double ThCMMax, int ThSteps,
+					    double PhiCMMin, double PhiCMMax, int PhiSteps,
+					    double MaxTime, double UserDT, int Wait)
 {
   // Verify that the anode geometry has been set
   if (VolAnode==0) {
@@ -458,14 +461,11 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName, double MaxTime, dou
   if (PrintLevel>0)
     SimTree->Print();
 
-  // Number of angular steps
-  int phi_steps = 10;
-  int theta_steps = 6;
   // Angles in radians
   double theta = 0;
   double phi = 0;
   
-  NEvents = phi_steps*theta_steps*AnodeStps;
+  NEvents = PhiSteps*ThSteps*AnodeStps;
   NTraces = 0;
     
   // Create new traces and trajectories (objectrs) for visualizing the
@@ -487,21 +487,22 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName, double MaxTime, dou
     for (int col=0; col<AnodeCols+1; col++) 
       TraceB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
   // Draw the beam trace in the 3rd pad (over a background histogram)
-  TraceCan->cd(3);
-  HCTB->Draw();
-  for (int col=0; col<AnodeCols; col++)
-    TraceB[col]->Draw("l same");
-  TraceB[AnodeCols]->Draw("*l same");
+  // TraceCan->cd(3);
+  // HCTB->Draw();
+  // for (int col=0; col<AnodeCols; col++)
+  //   TraceB[col]->Draw("l same");
+  // TraceB[AnodeCols]->Draw("*l same");
   PrintCompoundEexc(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
   // Some kinematic variables
   double Kb_min, Kb_max, MinZ, MaxZ, MinT, MaxT;
   int evt = 0; 
-  double theta_min = 0.01;
-  double theta_max = pi-0.01;
-  double phi_min = 0.01;
-  double phi_max = 2*pi-0.01;
+  // Converting degrees in radians
+  double theta_min = ThCMMin*pi/180;
+  double theta_max = ThCMMax*pi/180;
+  double phi_min = PhiCMMin*pi/180;
+  double phi_max = PhiCMMax*pi/180;
 
   // Loop over all strips with a non-negative ID (defined in the
   // argument of the SetAnode method).
@@ -541,10 +542,10 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName, double MaxTime, dou
 	cout.width(9);    cout << "MeV";   cout << "|\n";
 	cout << "|--------------------------------------------------" << endl; 
       }
-      for (int ths=0; ths<theta_steps; ths++) {
-	theta = ths*(theta_max - theta_min)/(theta_steps - 1) + theta_min;
-	for (int phs=0; phs<phi_steps; phs++) {
-	  phi = phs*(phi_max - phi_min)/(phi_steps - 1) + phi_min;
+      for (int ths=0; ths<ThSteps; ths++) {
+	theta = ths*(theta_max - theta_min)/(ThSteps - 1) + theta_min;
+	for (int phs=0; phs<PhiSteps; phs++) {
+	  phi = phs*(phi_max - phi_min)/(PhiSteps - 1) + phi_min;
 	  
 	  if (PrintLevel>0)
 	    cout << "\n***************** Event " << evt << "\n" << endl;
@@ -584,7 +585,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName, double MaxTime, dou
 	  
 	  // 4. Propagate the beam particle (backwards in time) from
 	  // the reaction point to the entrance of MUSIC
-	  DeltaEB = PropagateParticle(Beam, evt, TOF, -UserDT);
+	  DeltaEB = PropagateParticle(Beam, evt, MaxTime, -UserDT);
 	  
 	  // 5. Propagate heavy particle and calculate energy loss in the
 	  // anode elements
@@ -597,7 +598,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName, double MaxTime, dou
 	  // 7. Compute detector response (i.e. DE for beam + light + heavy)
 	  // Clone the particle trajectories
 	  ComputeDetectorResponse(evt);
-	  //	  SimTree->Fill();
+	  SimTree->Fill();
 	  
 	  // 8. Display trace and particle trajecories   
 	  UpdateVisuals(evt, Kbr, zr, TOF, Wait);	  
@@ -1339,11 +1340,11 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     for (int col=0; col<AnodeCols+1; col++) 
       TraceB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
   // Draw the beam trace in the 3rd pad (over a background histogram)
-  TraceCan->cd(3);
-  HCTB->Draw();
-  for (int col=0; col<AnodeCols; col++)
-    TraceB[col]->Draw("l same");
-  TraceB[AnodeCols]->Draw("*l same");
+  // TraceCan->cd(3);
+  // HCTB->Draw();
+  // for (int col=0; col<AnodeCols; col++)
+  //   TraceB[col]->Draw("l same");
+  // TraceB[AnodeCols]->Draw("*l same");
   PrintCompoundEexc(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
@@ -1470,7 +1471,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
     TrajH[evt]->SetLineWidth(W);
     Eve->AddElement(TrajH[evt]);
   } 
-  Eve->Redraw3D(kTRUE);
+  Eve->Redraw3D();
 
   // 2D stuff
   // Traces of energy loss in columns as a function of the strip
@@ -1484,8 +1485,8 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
     LegCol->AddEntry(Trace[evt][AnodeCols],"All columns","l");
     for (int col=0; col<AnodeCols; col++)
       LegCol->AddEntry(Trace[evt][col], Form("Column %d", col),"l");
-    TraceCan->cd(3);
-    LegCol->Draw();
+    // TraceCan->cd(3);
+    // LegCol->Draw();
     TraceCan->cd(1);      
   }
   LegCol->Draw();
