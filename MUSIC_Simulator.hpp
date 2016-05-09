@@ -60,7 +60,10 @@ public:
   MUSIC_Simulator();
   void CalculateCMEnergyRange();   // <- Do we need this?
   void CalculateExcEnergyRange();  // <- Do we need this?
-  void GenerateTraceDatabase(std::string FileName, double MaxTime, double UserDT, int Wait=0);
+  void GenerateTraceDatabase(std::string FileName,
+			     double ThCMMin, double ThCMMax, int ThSteps,
+			     double PhiCMMin, double PhiCMMax, int PhiSteps,
+			     double MaxTime, double UserDT, int Wait=0);
   void SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/);
   void SetBeamParticle(std::string Name, int Color, std::string ELossFile, double KineticE/*MeV*/);
   //  void SetBeamSpot(double diameter);
@@ -174,6 +177,9 @@ private:
   float theta_h;
   float phi_l;
   float phi_h;
+
+  // Log file
+  ofstream Log;
 
   static const double c = 29.9792458;  // Speed of light in cm/ns.
   static const double pi = 3.14159265359;

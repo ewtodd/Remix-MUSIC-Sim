@@ -17,15 +17,22 @@
   string beam = "23Na";
   string target = "4He";
   string compound = "27Al";
-  string light = "n";
-  string heavy = "26Al"; 
-  // string light = "4He";
-  //string heavy = "23Na";
+  string light = "4He";
+  string heavy = "23Na";
   // Energy of the beam after the window.
+  //  double Kb = 55;
   double Kb = 46;
   
-  int Strip = 7;
-  int NEvents = 25;
+  double ThCMMin = 2;
+  double ThCMMax = 178;
+  int ThSteps = 4;
+  double PhiCMMin = 2;
+  double PhiCMMax = 358;
+  int PhiSteps = 8;
+
+  int Strip = 17;
+  int NEvents = 30;
+
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
 
@@ -52,6 +59,7 @@
   // Load the necessary libraries for the script to run.
   /////////////////////////////////////////////////////////////////////////////
   gStyle->SetOptStat("");
+
   gSystem->Load("../physicstools/EnergyLoss.so"); 
   gSystem->Load("../physicstools/FourVector.so"); 
   gSystem->Load("../physicstools/Particle.so"); 
@@ -119,16 +127,19 @@
   MUSIC->SetLightParticle(light, kRed, SRIMFile[2]);
   // Heavy evaporation residue (e.g. 23Na)
   MUSIC->SetHeavyParticle(heavy, kBlue, SRIMFile[3]);
-
+  
+  // MUSIC->SetPrintLevel(1);
+  
   // Release the Kraken!!
-  MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
+  //MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
+  //  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root", Strip, target.c_str(), light.c_str()));
+
 
   // Generates a collection of traces for all angles (theta, phi) for
   // all strips. The generated data base can be compared to
   // experimental traces.
-  //  MUSIC->SetPrintLevel(1);
-  //  MUSIC->GenerateTraceDatabase(Form("TDB_%s_%s.root",target.c_str(),light.c_str()), MaxTime, UserDT);
-
-  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root",Strip,target.c_str(),light.c_str()));
+  string TraceDB = Form("TDB_%s_%s.root",target.c_str(),light.c_str());
+  MUSIC->GenerateTraceDatabase(TraceDB, ThCMMin, ThCMMax, ThSteps, PhiCMMin, PhiCMMax, PhiSteps,
+			       MaxTime, UserDT, 1);
 
 }
