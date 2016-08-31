@@ -5,4 +5,5 @@
   TString CompilerString = gSystem->GetMakeSharedLib();
   CompilerString.ReplaceAll("-Wshadow", "");
   gSystem->SetMakeSharedLib(CompilerString);
+  cout << CompilerString << endl;
 }

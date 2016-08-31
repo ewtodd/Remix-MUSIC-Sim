@@ -9,7 +9,7 @@
 {
   //=======================================================================
   // CONTROL PANEL
-  string SRIM_dir = "/home/mavila/Research/Experiments/MUSIC_23Na/music_simulator/srim/";
+  string Computer = "azkatl";   // Options: azkatl, alpha or ??
 
   // Geometrical parameters (all distances in cm)
   string AnodeGeom = "AnodeGeometry";
@@ -17,21 +17,23 @@
   string beam = "23Na";
   string target = "4He";
   string compound = "27Al";
-  string light = "n";
-  string heavy = "26Al";
+  string light = "4He";
+  string heavy = "23Na";
   // Energy of the beam after the window.
   //  double Kb = 55;
-  double Kb = 46;
+  double Kb = 47;
   
   double ThCMMin = 2;
   double ThCMMax = 178;
   int ThSteps = 10;
   double PhiCMMin = 2;
   double PhiCMMax = 358;
-  int PhiSteps = 6;
+  int PhiSteps = 10;
 
   int Strip = 17;
   int NEvents = 30;
+  int Wait = 1;
+  int Update = 1;
 
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
@@ -55,27 +57,45 @@
   //=======================================================================
 
 
+  string SRIM_dir;
+  if (Computer=="alpha") 
+    SRIM_dir = "/home/mavila/Research/Experiments/MUSIC_23Na/music_simulator/srim/";
+  else if (Computer=="azkatl")
+    SRIM_dir = "/home/dasago/Dropbox/Codes/MUSIC/Simulator/SRIM_files/";
+  else if (Computer=="Rashi's")
+    SRIM_dir = "??";
+  
   /////////////////////////////////////////////////////////////////////////////
   // Load the necessary libraries for the script to run.
   /////////////////////////////////////////////////////////////////////////////
   gStyle->SetOptStat("");
-
-  gSystem->Load("../physicstools/EnergyLoss.so"); 
-  gSystem->Load("../physicstools/FourVector.so"); 
-  gSystem->Load("../physicstools/Particle.so"); 
-  gSystem->Load("../physicstools/NuclideFinder_cpp.so"); 
-  gSystem->Load("MUSIC_Simulator_cpp.so"); 
-  // Special lib
-  gSystem->Load("../physicstools/SRIM_Table_Maker_cpp.so");
-
-
-
-
+  if (Computer=="alpha") {
+    gSystem->Load("../physicstools/EnergyLoss.so"); 
+    gSystem->Load("../physicstools/FourVector.so"); 
+    gSystem->Load("../physicstools/Particle.so"); 
+    gSystem->Load("../physicstools/NuclideFinder_cpp.so"); 
+    // Special lib
+    gSystem->Load("../physicstools/SRIM_Table_Maker_cpp.so");
+  }
+  else {
+    gSystem->Load("../../PhysicsTools/EnergyLoss.so"); 
+    gSystem->Load("../../PhysicsTools/FourVector.so"); 
+    gSystem->Load("../../PhysicsTools/Particle.so"); 
+    gSystem->Load("../../PhysicsTools/NuclideFinder_cpp.so"); 
+    // Special lib
+    gSystem->Load("../../PhysicsTools/SRIM_Table_Maker_cpp.so");
+  }
+  gSystem->Load("MUSIC_Simulator_cpp.so");     
+  
   /////////////////////////////////////////////////////////////////////////////
   // In this part, energy loss tables are created using a SRIM_Table_Maker
   // object. Alternatively, the tables can be generated 'by hand'.
   /////////////////////////////////////////////////////////////////////////////
-  string SRModPath = "/home/mavila/.wine/drive_c/SR\ Module/";
+  string SRModPath;
+  if (Computer=="alpha")
+    SRModPath = "/home/mavila/.wine/drive_c/SR\ Module/";
+  else
+    SRModPath = "/home/dasago/.wine/drive_c/Program\ Files\ \(x86\)/SRIM/SR\ Module/";
 
   SRIM_Table_Maker* SRIM = new SRIM_Table_Maker(SRModPath);
   SRIM->SetGasDensity(GasIndex, GasP, GasT);
@@ -130,16 +150,15 @@
   
   // MUSIC->SetPrintLevel(1);
   
-  // Release the Kraken!!
-  //MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
-  //  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root", Strip, target.c_str(), light.c_str()));
-
+  // Simulate events for one strip
+  // MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, 1);
+  // MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root", Strip, target.c_str(), light.c_str()));
 
   // Generates a collection of traces for all angles (theta, phi) for
   // all strips. The generated data base can be compared to
   // experimental traces.
   string TraceDB = Form("TDB_%s_%s.root",target.c_str(),light.c_str());
   MUSIC->GenerateTraceDatabase(TraceDB, ThCMMin, ThCMMax, ThSteps, PhiCMMin, PhiCMMax, PhiSteps,
-			       MaxTime, UserDT);
+			       MaxTime, UserDT, Update, Wait);
 
 }

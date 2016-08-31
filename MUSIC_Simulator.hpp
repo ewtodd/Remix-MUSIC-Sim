@@ -19,6 +19,8 @@
 #include <fstream>
 #include <string>
 #include <cstdlib>
+#include <sys/types.h>
+#include <sys/sysinfo.h>
 
 //ROOT libraries
 #include <TCanvas.h>
@@ -63,7 +65,7 @@ public:
   void GenerateTraceDatabase(std::string FileName,
 			     double ThCMMin, double ThCMMax, int ThSteps,
 			     double PhiCMMin, double PhiCMMax, int PhiSteps,
-			     double MaxTime, double UserDT, int Wait=0);
+			     double MaxTime, double UserDT, int UpdateEnabled=0, int Wait=0);
   void SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/);
   void SetBeamParticle(std::string Name, int Color, std::string ELossFile, double KineticE/*MeV*/);
   //  void SetBeamSpot(double diameter);
@@ -166,16 +168,19 @@ private:
   TTree* SimTree;
   float strip0;
   static const int ExpAnodeStps = 16;
-  float* andl;
-  float* andr;
+  float* de_l;
+  float* de_r;
   int* seg;
   float strip17;
   float cathode;
+  float Kb;
   float Kl;
   float Kh;
+  float theta_CM;
+  float phi_CM;
   float theta_l;
-  float theta_h;
   float phi_l;
+  float theta_h;
   float phi_h;
 
   // Log file

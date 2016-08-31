@@ -82,12 +82,12 @@ MUSIC_Simulator::MUSIC_Simulator()
   
   // Arrays for the TTree
   SimTree = 0;
-  andr = new float[ExpAnodeStps];
-  andl = new float[ExpAnodeStps];
+  de_r = new float[ExpAnodeStps];
+  de_l = new float[ExpAnodeStps];
   seg = new int[ExpAnodeStps];
   for (int stp=0; stp<ExpAnodeStps; stp++) {
-    andr[stp] = 0;
-    andl[stp] = 0;
+    de_r[stp] = 0;
+    de_l[stp] = 0;
     seg[stp] = -1;
   }
   
@@ -231,6 +231,30 @@ void MUSIC_Simulator::CalculateExcEnergyRange()
   return;
 }
 
+///////////////////////////////////////////////////////////////////////////////////
+// Simple function that returns 0 if the used RAM is more than the MaxMemory
+// (or if the 'System' pointer hasn't been set) and 1 if the used RAM is 
+// still less than MaxMemory.
+///////////////////////////////////////////////////////////////////////////////////
+// int MUSIC_Simulator::CheckMemoryUsage()
+// {
+//   int status = 0;
+//   MemInfo_t* Memory;
+//   if (System!=0) {
+//     Memory = new MemInfo_t();
+//     System->GetMemInfo(Memory);
+//     cout << "> Total memory used: "  << Memory->fMemUsed << " MB = "
+// 	 << 100.0*Memory->fMemUsed/Memory->fMemTotal << " % of total memory." << endl;
+//     if (Memory->fMemUsed < MaxMemory)
+//       status = 1;
+//     delete Memory;
+//   }
+//   else
+//     cout << "> Warning: System pointer not set." << endl;
+//   return status;
+// }
+
+
 
 ///////////////////////////////////////////////////////////////////////////////////
 // Private method, to be used in an event loop.
@@ -249,8 +273,8 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
     strip0 = 0;
     strip17 = 0;
     for (int stp=0; stp<ExpAnodeStps; stp++) {
-      andl[stp] = 0;
-      andr[stp] = 0;
+      de_l[stp] = 0;
+      de_r[stp] = 0;
     }
   }
 
@@ -281,9 +305,9 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
 	  else if (stpid-1<ExpAnodeStps) {
 	    seg[stpid-1] = stpid;
 	    if (col==0) 
-	      andr[stpid-1] += DeltaE;
+	      de_r[stpid-1] += DeltaE;
 	    else if (col==1)
-	      andl[stpid-1] += DeltaE;
+	      de_l[stpid-1] += DeltaE;
 	  }
 	}
       }
@@ -432,7 +456,8 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
 void MUSIC_Simulator::GenerateTraceDatabase(string FileName, 
 					    double ThCMMin, double ThCMMax, int ThSteps,
 					    double PhiCMMin, double PhiCMMax, int PhiSteps,
-					    double MaxTime, double UserDT, int Wait)
+					    double MaxTime, double UserDT, int Update,
+					    int Wait)
 {
   // Verify that the anode geometry has been set
   if (VolAnode==0) {
@@ -440,20 +465,29 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
     return;
   }
   
+  // For progress monitor
+  TStopwatch StpWatch;
+  long EvtsProcessed = 0;
+  long double Frac[6] = {0.01, 0.25, 0.5, 0.75, 0.9, 1.0};
+  int FIndex = 0;
+  
+  // ROOT file where the traces will be saved
   TFile* TDB = new TFile(FileName.c_str(), "recreate");
 
   // Tree similar to the one used for experimental data
   SimTree = new TTree("simt","Simulated MUSIC data");
-  SimTree->Branch("de_l",  andl,     "de_l[16]/F");
-  SimTree->Branch("de_r",  andr,     "de_r[16]/F");
-  SimTree->Branch("seg",   seg,      "seg[16]/I");
+  SimTree->Branch("de_l",  de_l,     Form("de_l[%d]/F",AnodeStps));
+  SimTree->Branch("de_r",  de_r,     Form("de_r[%d]/F",AnodeStps));
+  SimTree->Branch("seg",   seg,      Form("seg[%d]/I",AnodeStps));
   SimTree->Branch("stp0",  &strip0,  "stp0/F");
   SimTree->Branch("stp17", &strip17, "stp17/F");
   SimTree->Branch("cath",  &cathode, "cath/F");
   // The following branches are for physical quantities that at the
   // moment can only be obtained from the simulation
+  SimTree->Branch("Kb", &Kb, "Kb/F");
   SimTree->Branch("Kl", &Kl, "Kl/F");
   SimTree->Branch("Kh", &Kh, "Kh/F");
+  SimTree->Branch("theta_CM", &theta_CM, "theta_CM/F");
   SimTree->Branch("theta_l", &theta_l, "theta_l/F");
   SimTree->Branch("theta_h", &theta_h, "theta_h/F");
   SimTree->Branch("phi_l",   &phi_l,   "phi_l/F");
@@ -472,7 +506,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   // detector response
   CreateTracesAndTrajectories(NEvents);
   
-  cout << "Simulating MUSIC traces ... (events = " << NEvents << ")" << endl;
+  cout << "Generating " << NEvents << " MUSIC traces ..." << endl;
   
   SetInitialKinematics(Kb_after_window);   
 
@@ -601,7 +635,19 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  SimTree->Fill();
 	  
 	  // 8. Display trace and particle trajecories   
-	  UpdateVisuals(evt, Kbr, zr, TOF, Wait);	  
+	  if (Update) 
+	    UpdateVisuals(evt, Kbr, zr, TOF, Wait);
+	  
+	  // Simple progress monitor
+	  EvtsProcessed++;
+	  if (NEvents>99) {
+	    if ((long double)(EvtsProcessed)>=Frac[FIndex]*NEvents) {
+	      cout << "\t" << Frac[FIndex]*100 << "% processed (" 
+		   << StpWatch.RealTime() << " s)" << endl;
+	      StpWatch.Start(kFALSE);
+	      FIndex++;
+	    }
+	  }
 
 	  NTraces++;
 	  evt++;
@@ -609,10 +655,14 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
       }
     }
   }
+  cout << "Saving traces ..." << endl;
+  StpWatch.Print();
 
   TDB->cd();
   SimTree->Write("", TObject::kSingleKey);
   TDB->Close();
+  StpWatch.Stop();
+  StpWatch.Print();
 
   return;
 }
@@ -1179,7 +1229,7 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
 {
   int ReactionAllowed = 1;
   if (PrintLevel>0)
-    cout << "\nReaction kine" << endl;
+    cout << "\n*** Reaction kinematics ********************************************" << endl;
   double mb = Beam->Mass;
   double mt = Target->Mass;
   double mc = Compound->Mass;
@@ -1196,8 +1246,11 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
   double BetaX = pb*sin(theta_b)*cos(phi_b)/(Eb+mt);
   double BetaY = pb*sin(theta_b)*sin(phi_b)/(Eb+mt);
   double BetaZ = pb*cos(theta_b)/(Eb+mt);
-  if (PrintLevel>0)
-    cout << "BetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ << endl; 
+  if (PrintLevel>0) {
+    cout << "Center-of-mass velocity (v/c):" << endl;
+    cout << "\tBetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ << endl; 
+    cout << "--- Beam and target particles --------------------------------------" << endl;
+  }
 
   // Four-momentum of the beam.
   Beam->SetP(Eb, pb*sin(theta_b)*cos(phi_b), pb*sin(theta_b)*sin(phi_b), pb*cos(theta_b));
@@ -1217,8 +1270,10 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
   
   // Exc. energy of compound particle.
   Compound->SetP(Ptot);
-  if (PrintLevel>0)
+  if (PrintLevel>0) {
+    cout << "--- Compound particle ----------------------------------------------" << endl;
     Compound->Print();
+  }
   if (PrintLevel>0)
     cout << "Eexc(" << Compound->Name << ") = " << sqrt(Ptot*Ptot) - mc << " MeV" << endl;
 
@@ -1228,9 +1283,11 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     theta_CM = acos(Rdm->Uniform(-1,1));
     phi_CM = Rdm->Uniform(-pi,pi);
   }
-  if (PrintLevel>0)
+  if (PrintLevel>0) {
+    cout << "--- Outgoing particles (heavy and light) ---------------------------" << endl;
     cout << "theta_cm=" << theta_CM*180/pi << "   phi_cm=" << phi_CM*180/pi << endl;
-  
+  }
+
   // Verify that the reaction can occur.
   if (Ptot*Ptot<pow(ml+mh,2)) {
     Light->SetP(ml, 0, 0, 0);
@@ -1265,6 +1322,17 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     Heavy->SetX(tof, 0, 0, zr);
     if (PrintLevel>0)
       Heavy->Print();
+
+    // Fill the leaves related to the reaction kinematics
+    Kb = Beam->GetKE();
+    Kl = Light->GetKE();
+    Kh = Heavy->GetKE();
+    this->theta_CM = theta_CM*180/pi;
+    this->phi_CM = phi_CM*180/pi;
+    theta_l = (Light->GetTheta())*180/pi;
+    phi_l = (Light->GetPhi())*180/pi;
+    theta_h = (Heavy->GetTheta())*180/pi;
+    phi_h = (Heavy->GetPhi())*180/pi;
   }
 
   return ReactionAllowed;
@@ -1300,7 +1368,7 @@ void MUSIC_Simulator::SetTargetParticle(string Name)
 
 
 ///////////////////////////////////////////////////////////////////////////////////
-// Core methode of this class, where the simulation takes place. Logic:
+// Core method of this class, where the simulation takes place. Logic:
 // Loop over events
 // 1. Set beam inital conditions (beam energy, position)
 // 2. Randomly select a reaction point (based on the beam energy range in MUSIC)

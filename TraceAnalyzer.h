@@ -8,6 +8,8 @@
 #ifndef TraceAnalyzer_h
 #define TraceAnalyzer_h
 
+#include <iostream>
+
 #include <TROOT.h>
 #include <TCanvas.h>
 #include <TChain.h>
