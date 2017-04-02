@@ -19,8 +19,8 @@
 #include <fstream>
 #include <string>
 #include <cstdlib>
-#include <sys/types.h>
-#include <sys/sysinfo.h>
+// #include <sys/types.h>
+// #include <sys/sysinfo.h>
 
 //ROOT libraries
 #include <TCanvas.h>
@@ -66,7 +66,8 @@ public:
 			     double ThCMMin, double ThCMMax, int ThSteps,
 			     double PhiCMMin, double PhiCMMax, int PhiSteps,
 			     double MaxTime, double UserDT, int UpdateEnabled=0, int Wait=0);
-  void SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/);
+  void SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/, int ELossBins=400, 
+		float MaxELoss=5);
   void SetBeamParticle(std::string Name, int Color, std::string ELossFile, double KineticE/*MeV*/);
   //  void SetBeamSpot(double diameter);
   void SetCompoundParticle(std::string Name);

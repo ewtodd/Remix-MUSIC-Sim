@@ -9,19 +9,18 @@
 {
   //=======================================================================
   // CONTROL PANEL
-  string Computer = "azkatl";   // Options: azkatl, alpha or ??
 
   // Geometrical parameters (all distances in cm)
   string AnodeGeom = "AnodeGeometry";
 
-  string beam = "23Na";
-  string target = "4He";
-  string compound = "27Al";
-  string light = "4He";
-  string heavy = "23Na";
+  string beam = "16C";
+  string target = "12C";
+  string compound = "28Mg";
+  string light = "6He";
+  string heavy = "22Ne";
   // Energy of the beam after the window.
   //  double Kb = 55;
-  double Kb = 47;
+  double Kb = 5*16;
   
   double ThCMMin = 2;
   double ThCMMax = 178;
@@ -32,16 +31,16 @@
 
   int Strip = 17;
   int NEvents = 30;
-  int Wait = 1;
+  int Wait = 0;
   int Update = 1;
 
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
 
   // Target gas related stuff
-  float GasP = 400; // Torr
+  float GasP = 300; // Torr
   float GasT = 293; // K
-  int GasIndex = 3;
+  int GasIndex = 17;
   // You have to use the same index numbers as in the SRIM_Table_Maker class.
   //   0 - CD2
   //   1 - CF4 (gas)
@@ -54,48 +53,31 @@
   //   8 - Oxygen-16 (gas)
   //   9 - Oxygen-18 (gas)
   //  10 - Deuterium (gas)
+  //  17 - Methane (CH4 gas)
   //=======================================================================
 
 
   string SRIM_dir;
-  if (Computer=="alpha") 
-    SRIM_dir = "/home/mavila/Research/Experiments/MUSIC_23Na/music_simulator/srim/";
-  else if (Computer=="azkatl")
-    SRIM_dir = "/home/dasago/Dropbox/Codes/MUSIC/Simulator/SRIM_files/";
-  else if (Computer=="Rashi's")
-    SRIM_dir = "??";
+  SRIM_dir = "/home/dasago/Dropbox/Experiments/MUSIC026_16C/Simulation/SRIM_files/";
   
   /////////////////////////////////////////////////////////////////////////////
   // Load the necessary libraries for the script to run.
   /////////////////////////////////////////////////////////////////////////////
-  gStyle->SetOptStat("");
-  if (Computer=="alpha") {
-    gSystem->Load("../physicstools/EnergyLoss.so"); 
-    gSystem->Load("../physicstools/FourVector.so"); 
-    gSystem->Load("../physicstools/Particle.so"); 
-    gSystem->Load("../physicstools/NuclideFinder_cpp.so"); 
-    // Special lib
-    gSystem->Load("../physicstools/SRIM_Table_Maker_cpp.so");
-  }
-  else {
-    gSystem->Load("../../PhysicsTools/EnergyLoss.so"); 
-    gSystem->Load("../../PhysicsTools/FourVector.so"); 
-    gSystem->Load("../../PhysicsTools/Particle.so"); 
-    gSystem->Load("../../PhysicsTools/NuclideFinder_cpp.so"); 
-    // Special lib
-    gSystem->Load("../../PhysicsTools/SRIM_Table_Maker_cpp.so");
-  }
-  gSystem->Load("MUSIC_Simulator_cpp.so");     
+  gStyle->SetOptStat("");  
+  gSystem->Load("/home/dasago/Dropbox/Codes/PhysicsTools/EnergyLoss.so"); 
+  gSystem->Load("/home/dasago/Dropbox/Codes/PhysicsTools/FourVector.so"); 
+  gSystem->Load("/home/dasago/Dropbox/Codes/PhysicsTools/Particle.so"); 
+  gSystem->Load("/home/dasago/Dropbox/Codes/PhysicsTools/NuclideFinder_cpp.so"); 
+  // Special lib
+  gSystem->Load("/home/dasago/Dropbox/Codes/PhysicsTools/SRIM_Table_Maker_cpp.so");
+  gSystem->Load("/home/dasago/Dropbox/Codes/MUSIC/Simulator/MUSIC_Simulator_cpp.so");     
   
   /////////////////////////////////////////////////////////////////////////////
   // In this part, energy loss tables are created using a SRIM_Table_Maker
   // object. Alternatively, the tables can be generated 'by hand'.
   /////////////////////////////////////////////////////////////////////////////
   string SRModPath;
-  if (Computer=="alpha")
-    SRModPath = "/home/mavila/.wine/drive_c/SR\ Module/";
-  else
-    SRModPath = "/home/dasago/.wine/drive_c/Program\ Files\ \(x86\)/SRIM/SR\ Module/";
+  SRModPath = "/home/dasago/.wine/drive_c/Program\ Files\ \(x86\)/SRIM/SR\ Module/";
 
   SRIM_Table_Maker* SRIM = new SRIM_Table_Maker(SRModPath);
   SRIM->SetGasDensity(GasIndex, GasP, GasT);
@@ -107,7 +89,8 @@
   string SRIMFile[4];
   for (int p=0; p<4; p++) {
     cout << "Creating SRIM files for " << particle[p] << " ..." << endl;
-    SRIMFile[p] = SRIM_dir + particle[p] + Form("_in_4He_%.0fTorr_%.0fK.srim", GasP, GasT);
+    SRIMFile[p] = SRIM_dir + particle[p] + Form("_in_CH4_%.0fTorr_%.0fK.srim", GasP, GasT);
+    cout << SRIMFile[p] << endl;
   }
   // Before making the tables we need the masses (in u) and atomic numbers (in e).
   NuclideFinder* NuF = new NuclideFinder();
@@ -136,7 +119,7 @@
   MUSIC_Simulator* MUSIC = new MUSIC_Simulator();
   MUSIC->SetStripEnergyResolution(0.025);
   // Geometry
-  MUSIC->SetAnode(AnodeGeom, 90);
+  MUSIC->SetAnode(AnodeGeom, 90, ELossBins, MaxELoss);
   // Beam
   MUSIC->SetBeamParticle(beam, kBlack, SRIMFile[0], Kb);
   // Target

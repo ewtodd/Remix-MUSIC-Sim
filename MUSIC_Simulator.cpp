@@ -174,6 +174,7 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::CalculateExcEnergyRange()
 {
+#if 1
   double pb, Eb;
   double Eexc_beg, Eexc_end;
   double mb = Beam->Mass;
@@ -228,6 +229,7 @@ void MUSIC_Simulator::CalculateExcEnergyRange()
     if (i+1<AnodeStps) 
       Eexc_beg = Eexc_end;
   }
+#endif
   return;
 }
 
@@ -261,6 +263,7 @@ void MUSIC_Simulator::CalculateExcEnergyRange()
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::ComputeDetectorResponse(int evt)
 {
+#if 1
   double DeltaE = 0;
   if (evt<Particle::MaxEvents) {
     TrajH[evt] = (TEveStraightLineSet*)Heavy->AllTraj[evt]->Clone();
@@ -311,18 +314,18 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
 	  }
 	}
       }
-      // if (EneSigma!=0 && Gaussian!=0 && DECol>0) {
-      //   Gaussian->SetRange(0.0, 2*DECol);
-      //   Gaussian->SetParameters(1.0, DECol, EneSigma);
-      //   DECol = Gaussian->GetRandom();
-      // }
+       if (EneSigma!=0 && Gaussian!=0 && DeltaE>0) {
+         Gaussian->SetRange(0.0, 2*DeltaE);
+         Gaussian->SetParameters(1.0, DeltaE, EneSigma);
+         DeltaE = Gaussian->GetRandom();
+       }
       Trace[evt][col]->SetPoint(stp, stp, DeltaE);
       if (PrintLevel>0)
 	cout << stp << " " << col << ": " << DeltaEB[stp][col] << " " << DeltaEL[stp][col] 
 	     << " " << DeltaEH[stp][col] << endl;
     }
   }
-
+#endif
   return;
 }
 
@@ -332,6 +335,7 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::CreateTracesAndTrajectories(int NEvents)
 {
+#if 1
   // Look for the first strip in which all the column colors are
   // specified and assign those colors to the Chroma elements.
   short* Chroma = new short[AnodeCols];
@@ -409,6 +413,7 @@ void MUSIC_Simulator::CreateTracesAndTrajectories(int NEvents)
   // 3D trajectories
   TrajH = new TEveStraightLineSet*[NEvents];
   TrajL = new TEveStraightLineSet*[NEvents];
+#endif
   return;
 }
 
@@ -419,6 +424,7 @@ void MUSIC_Simulator::CreateTracesAndTrajectories(int NEvents)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 to 100*/)
 {
+#if 1
   if (VolAnode!=0) {
     if (Transparency<0 || Transparency>100) {
       cout << "Warning: Transparency level must be from 0 to 100." << endl;
@@ -446,6 +452,7 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
     gEve->AddElement(Zaxis);
     gEve->Redraw3D(kTRUE);
   }
+#endif
   return;
 }
 
@@ -459,6 +466,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 					    double MaxTime, double UserDT, int Update,
 					    int Wait)
 {
+#if 1
   // Verify that the anode geometry has been set
   if (VolAnode==0) {
     cout << "Anode geometry not specified. Use SetAnode method." << endl;
@@ -663,7 +671,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   TDB->Close();
   StpWatch.Stop();
   StpWatch.Print();
-
+#endif
   return;
 }
 
@@ -672,6 +680,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
 {
+#if 1
   double mb = Beam->Mass;
   double mt = Target->Mass;
   double mc = Compound->Mass;
@@ -713,7 +722,7 @@ void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
     else
       cout << "0" << endl;
   }
-
+#endif
   return;
 }
 
@@ -735,6 +744,7 @@ double** MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxT
     for (int col = 0; col<AnodeCols+1; col++) 
       DE[stp][col] = 0;
   }
+#if 1
   TGeoVolume* Vol = 0;
   bool Skip = 0;
   int step = 0;
@@ -880,7 +890,7 @@ double** MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxT
       PO->SetTracePoint((float)tt, (float)xt, (float)yt, (float)zt, (float)Kt);
     }
   } // end 
-
+#endif
   return DE;
 }
 
@@ -899,8 +909,9 @@ double** MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxT
 // , where '#' is meant to be replaced by an integer and '#f' by a floating point 
 // number.
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
+ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans, int ELossBins, float MaxELoss)
 {
+#if 1
   ifstream GeomFile;
   string line;
   int line_counter = 0;
@@ -1070,19 +1081,19 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
       }
     } // end if (AnodeStps>0 && AnodeCols>0)
     
-    HCTB = new TH2F("HCTB","Beam", AnodeStps,-0.5, AnodeStps-0.5, 400,0,5);
+    HCTB = new TH2F("HCTB","Beam", AnodeStps,-0.5, AnodeStps-0.5, ELossBins,0,MaxELoss);
     HCTB->GetXaxis()->SetTitle("Strip number");
     HCTB->GetXaxis()->CenterTitle();
     HCTB->GetYaxis()->SetTitle("Energy loss [MeV]");
     HCTB->GetYaxis()->CenterTitle(); 
     
-    HCT = new TH2F("HCT","Column traces", AnodeStps,-0.5, AnodeStps-0.5, 400,0,5);
+    HCT = new TH2F("HCT","Column traces", AnodeStps,-0.5, AnodeStps-0.5, ELossBins,0,MaxELoss);
     HCT->GetXaxis()->SetTitle("Strip number");
     HCT->GetXaxis()->CenterTitle();
     HCT->GetYaxis()->SetTitle("Energy loss [MeV]");
     HCT->GetYaxis()->CenterTitle(); 
     
-    HPT = new TH2F("HPT","Particle traces", AnodeStps,-0.5, AnodeStps-0.5, 400,0,5);
+    HPT = new TH2F("HPT","Particle traces", AnodeStps,-0.5, AnodeStps-0.5, ELossBins,0,MaxELoss);
     HPT->GetXaxis()->SetTitle("Strip number");
     HPT->GetXaxis()->CenterTitle();
     HPT->GetYaxis()->SetTitle("Energy loss [MeV]");
@@ -1094,6 +1105,7 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
 
   cout << "Anode dimensions: " << AnodeLength << "x" << AnodeHeight << "x" 
        << AnodeDepth << "cm^3" << endl;
+#endif
   return;
 }
 
@@ -1102,6 +1114,7 @@ void MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, double K)
 {
+#if 1
   // Use the nuclide finder object to determine the mass and atomic
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
@@ -1111,6 +1124,7 @@ void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, 
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   Beam->SetMedium(ELossFile);
   Kb_after_window = K;
+#endif
   return;
 }
 
@@ -1120,6 +1134,7 @@ void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, 
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::SetCompoundParticle(string Name)
 {
+#if 1
   // Use the nuclide finder object to determine the mass and atomic
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
@@ -1130,6 +1145,7 @@ void MUSIC_Simulator::SetCompoundParticle(string Name)
 
   //  Compound->SetExcEnergies(NEexc, Eexc);
   // I would be good to print the excitation energy of the compound 
+#endif
   return;
 }
 
@@ -1140,6 +1156,7 @@ void MUSIC_Simulator::SetCompoundParticle(string Name)
 void MUSIC_Simulator::SetHeavyParticle(string Name, int Color, string ELossFile, int NEexc,
 				       double* Eexc)
 {
+#if 1
   // Use the nuclide finder object to determine the mass and atomic
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
@@ -1149,6 +1166,7 @@ void MUSIC_Simulator::SetHeavyParticle(string Name, int Color, string ELossFile,
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   Heavy->SetMedium(ELossFile);
   Heavy->SetExcEnergies(NEexc, Eexc);
+#endif
   return;
 }
 
@@ -1159,6 +1177,7 @@ void MUSIC_Simulator::SetHeavyParticle(string Name, int Color, string ELossFile,
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::SetInitialKinematics(double Kbi/*MeV*/)
 {
+#if 1
   // Mass of the beam particle.
   double mb = Beam->Mass;
 
@@ -1173,6 +1192,7 @@ void MUSIC_Simulator::SetInitialKinematics(double Kbi/*MeV*/)
   Beam->SetX(0, 0, 0, 0);
   if (PrintLevel>0)
     Beam->Print();
+#endif
   return;
 }
 
@@ -1183,6 +1203,7 @@ void MUSIC_Simulator::SetInitialKinematics(double Kbi/*MeV*/)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::SetLightParticle(string Name, int Color, string ELossFile)
 {
+#if 1
   // Use the nuclide finder object to determine the mass and atomic
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
@@ -1191,6 +1212,7 @@ void MUSIC_Simulator::SetLightParticle(string Name, int Color, string ELossFile)
   Light->SetTrajectoryAtt((short)Color);
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   Light->SetMedium(ELossFile);
+#endif
   return;
 }
 
@@ -1200,6 +1222,7 @@ void MUSIC_Simulator::SetLightParticle(string Name, int Color, string ELossFile)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::SetPrintLevel(int Level/*0-2*/)
 {
+#if 1
   if (Level<0 || Level>2) {
     cout << "Warning: Invalid information printing level.\n"
 	 << "Valid options are:\n"
@@ -1215,6 +1238,7 @@ void MUSIC_Simulator::SetPrintLevel(int Level/*0-2*/)
     Log << "================================================================================" << endl;
     Log << "|--- MUSIC simulator log file -------------------------------------------------|" << endl;
   }
+#endif
   return;
 }
 
@@ -1228,6 +1252,7 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
 					   double theta_CM, double phi_CM)
 {
   int ReactionAllowed = 1;
+#if 1
   if (PrintLevel>0)
     cout << "\n*** Reaction kinematics ********************************************" << endl;
   double mb = Beam->Mass;
@@ -1334,7 +1359,7 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     theta_h = (Heavy->GetTheta())*180/pi;
     phi_h = (Heavy->GetPhi())*180/pi;
   }
-
+#endif
   return ReactionAllowed;
 }
 
@@ -1356,11 +1381,13 @@ void MUSIC_Simulator::SetStripEnergyResolution(float Sigma)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::SetTargetParticle(string Name)
 { 
+#if 1
   // Use the nuclide finder object to determine the mass and atomic
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
   Target = new Particle(Name, m, Z);
+#endif
   return;
 }
 
@@ -1381,6 +1408,7 @@ void MUSIC_Simulator::SetTargetParticle(string Name)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double UserDT, int Wait)
 {
+#if 1
   // Verify that the anode geometry has been set
   if (VolAnode==0) {
     cout << "Anode geometry not specified. Use SetAnode method." << endl;
@@ -1513,7 +1541,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
  
     NTraces++;
   }
-  
+#endif
   return;
 }
 
@@ -1523,6 +1551,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, int Wait)
 {
+#if 1
   // 3D stuff
   short C,S,W;
   if (Light!=0 && Light->SaveTrajectory) {
@@ -1595,6 +1624,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
     if (Heavy!=0 && Heavy->SaveTrajectory)
       Eve->RemoveElement(TrajH[evt], (TEveElement*)Eve->GetCurrentEvent());
   }
+#endif
   return;
 }
 
@@ -1604,6 +1634,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::WriteTraces(char* FileName)
 {
+#if 1
   TFile* Output = new TFile(FileName, "RECREATE");
   if (Trace!=0)
     for (int n=0; n<NTraces; n++)
@@ -1616,6 +1647,7 @@ void MUSIC_Simulator::WriteTraces(char* FileName)
 	}
       }
   Output->Close();
+#endif
   return;
 }
 

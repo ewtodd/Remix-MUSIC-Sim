@@ -4,6 +4,7 @@
   // Get rid of the -Wshadow flag for the compiler.
   TString CompilerString = gSystem->GetMakeSharedLib();
   CompilerString.ReplaceAll("-Wshadow", "");
+  CompilerString.ReplaceAll("-Wunused-parameter", "");
   gSystem->SetMakeSharedLib(CompilerString);
-  cout << CompilerString << endl;
+  //  cout << CompilerString << endl;
 }
