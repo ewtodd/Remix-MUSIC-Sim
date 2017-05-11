@@ -90,7 +90,6 @@ MUSIC_Simulator::MUSIC_Simulator()
     de_l[stp] = 0;
     seg[stp] = -1;
   }
-  
 }
 
 
@@ -264,7 +263,9 @@ void MUSIC_Simulator::CalculateExcEnergyRange()
 void MUSIC_Simulator::ComputeDetectorResponse(int evt)
 {
 #if 1
+  double Ethresh = 0.02;  // Right now the threshold for the multiplicity is hard-coded here.
   double DeltaE = 0;
+  TraceMult->Reset();
   if (evt<Particle::MaxEvents) {
     TrajH[evt] = (TEveStraightLineSet*)Heavy->AllTraj[evt]->Clone();
     TrajL[evt] = (TEveStraightLineSet*)Light->AllTraj[evt]->Clone();
@@ -284,6 +285,7 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
   // Loop over the anode's strips and columns
   for (int stp=0; stp<AnodeStps; stp++) {
     DeltaE = 0;
+    int mult = 0;
     for (int col=0; col<AnodeCols+1; col++) {
       // Previously we were normalizing to the energy loss of the
       // beam minus the energy loss in the the dead layer, which in
@@ -295,6 +297,9 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
       TraceL[evt][col]->SetPoint(stp, stp, DeltaEL[stp][col]);
 
       DeltaE = DeltaEB[stp][col] + DeltaEL[stp][col] + DeltaEH[stp][col];// - (DeltaEB_ave[stp][2]-DeltaEB_ave[1][2]);
+
+      if (DeltaE>Ethresh && col<AnodeCols)
+	mult++;
 
       // Fill tree leaves
       if (SimTree!=0) {
@@ -324,6 +329,7 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
 	cout << stp << " " << col << ": " << DeltaEB[stp][col] << " " << DeltaEL[stp][col] 
 	     << " " << DeltaEH[stp][col] << endl;
     }
+    TraceMult->Fill(stp, mult);
   }
 #endif
   return;
@@ -410,6 +416,10 @@ void MUSIC_Simulator::CreateTracesAndTrajectories(int NEvents)
     }
   }
 
+  TraceMult = new TH1I("TraceMult","Mult.",AnodeStps,-0.5,AnodeStps-0.5);
+  TraceMult->GetXaxis()->SetTitle("Strip number");
+  TraceMult->GetXaxis()->CenterTitle();
+ 
   // 3D trajectories
   TrajH = new TEveStraightLineSet*[NEvents];
   TrajL = new TEveStraightLineSet*[NEvents];
@@ -534,7 +544,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   // for (int col=0; col<AnodeCols; col++)
   //   TraceB[col]->Draw("l same");
   // TraceB[AnodeCols]->Draw("*l same");
-  PrintCompoundEexc(Kb_after_window, DeltaEB_ave);
+  PrintEnergetics(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
   // Some kinematic variables
@@ -678,7 +688,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 ///////////////////////////////////////////////////////////////////////////////////
 // 
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
+void MUSIC_Simulator::PrintEnergetics(double Kb, double** DeltaEB)
 {
 #if 1
   double mb = Beam->Mass;
@@ -690,9 +700,17 @@ void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
   cout.width(5);
   cout << "Stp";
   cout.width(15);
-  cout << "EexcMax[MeV]";
+  cout << "Ebmax[MeV]";
   cout.width(15);
-  cout << "EexcMin[MeV]" << endl;
+  cout << "EbMin[MeV]" << endl;
+  cout.width(15);
+  cout << "Exmax[MeV]";
+  cout.width(15);
+  cout << "Exmin[MeV]" << endl;
+  cout.width(15);
+  cout << "ECMmax[MeV]";
+  cout.width(15);
+  cout << "ECMmin[MeV]" << endl;
 
   for (int stp=0; stp<AnodeStps+1; stp++) {
     // Exc. energy of compound particle.
@@ -707,6 +725,8 @@ void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
     cout.width(15);
     cout.precision(4);
     cout << sqrt(Ptot*Ptot) - mc;
+    // Initial momentum in the CM reference frame (Ptot*Ptot is an invariant quantity).
+    double pCM_max = sqrt((Ptot*Ptot-pow(mt+mb,2))*(Ptot*Ptot-pow(mb-mt,2))/(4*(Ptot*Ptot)));    
     // Lower limit
     Kb -= DeltaEB[stp][AnodeCols];
     cout.width(15);
@@ -717,10 +737,27 @@ void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
       // Total four momentum in the lab.
       Ptot.SetCoords(Eb+mt, 0, 0, pb);
       cout.precision(4);
-      cout << sqrt(Ptot*Ptot) - mc << endl;
+      cout << sqrt(Ptot*Ptot) - mc;
+      // Initial momentum in the CM reference frame (Ptot*Ptot is an invariant quantity).
+      double pCM_min = sqrt((Ptot*Ptot-pow(mt+mb,2))*(Ptot*Ptot-pow(mb-mt,2))/(4*(Ptot*Ptot)));
+      cout.width(15);
+      cout.precision(4);
+      cout << sqrt(mt*mt+pCM_max*pCM_max) - mt;
+      cout.width(15);
+      cout.precision(4);
+      cout << sqrt(mt*mt+pCM_min*pCM_min) - mt;
+      cout.width(15);
+      cout.precision(4);
+      //    cout << sqrt(mb*mb+pCM_max*pCM_max) - mb;
+      cout << Kb*mt/(mb+mt) << endl;
+      // cout.width(15);
+      // cout.precision(4);
+      // cout << sqrt(mb*mb+pCM_min*pCM_min) - mb << endl;
     }
     else
       cout << "0" << endl;
+
+
   }
 #endif
   return;
@@ -1441,7 +1478,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   // for (int col=0; col<AnodeCols; col++)
   //   TraceB[col]->Draw("l same");
   // TraceB[AnodeCols]->Draw("*l same");
-  PrintCompoundEexc(Kb_after_window, DeltaEB_ave);
+  PrintEnergetics(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
   // Some kinematic variables
@@ -1571,24 +1608,8 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
   Eve->Redraw3D();
 
   // 2D stuff
-  // Traces of energy loss in columns as a function of the strip
-  // number.
-  TraceCan->cd(1);
-  for (int col=0; col<AnodeCols; col++)
-    Trace[evt][col]->Draw("l same");
-  Trace[evt][AnodeCols]->Draw("*l same");
-  // Legend
-  if (LegCol->GetNRows()==0) {
-    LegCol->AddEntry(Trace[evt][AnodeCols],"All columns","l");
-    for (int col=0; col<AnodeCols; col++)
-      LegCol->AddEntry(Trace[evt][col], Form("Column %d", col),"l");
-    // TraceCan->cd(3);
-    // LegCol->Draw();
-    TraceCan->cd(1);      
-  }
-  LegCol->Draw();
   // Traces of particles' energy loss and total.
-  TraceCan->cd(2);
+  TraceCan->cd(1);
   // Legend
   if (LegPart->GetNRows()==0) {
     LegPart->AddEntry(Trace[evt][AnodeCols], "All particles", "l");
@@ -1607,11 +1628,35 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
   LabelKine->AddText(Form("%s: K=%.2f MeV  #theta_{lab}=%.1f deg  #phi_{lab}=%.1f deg",
 			  Light->Name.c_str(), Light->GetKE(), Light->GetTheta()*180/pi,
 			  Light->GetPhi()*180/pi));
+  LabelKine->AddText(Form("#theta_{c.m.}=%.1f deg", theta_CM));
+
   LabelKine->Draw();
   // Draw traces
   TraceH[evt][AnodeCols]->Draw("l same");
   TraceL[evt][AnodeCols]->Draw("l same");
   Trace[evt][AnodeCols]->Draw("*l same");
+
+  // Traces of energy loss in columns as a function of the strip
+  // number.
+  TraceCan->cd(2);
+  TraceMult->GetYaxis()->SetRangeUser(0,AnodeCols+1);
+  TraceMult->Draw();
+#if 0
+  for (int col=0; col<AnodeCols; col++)
+    Trace[evt][col]->Draw("l same");
+  Trace[evt][AnodeCols]->Draw("*l same");
+  // Legend
+  if (LegCol->GetNRows()==0) {
+    LegCol->AddEntry(Trace[evt][AnodeCols],"All columns","l");
+    for (int col=0; col<AnodeCols; col++)
+      LegCol->AddEntry(Trace[evt][col], Form("Column %d", col),"l");
+    // TraceCan->cd(3);
+    // LegCol->Draw();
+    TraceCan->cd(2);      
+  }
+  LegCol->Draw();
+#endif
+
   TraceCan->Update();
   if (Wait==1)
     TraceCan->WaitPrimitive();

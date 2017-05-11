@@ -85,6 +85,7 @@ private:
   void CreateTracesAndTrajectories(int NEvents);
   void DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 to 100*/);
   void PrintCompoundEexc(double Kb, double** DeltaEB);
+  void PrintEnergetics(double Kb, double** DeltaEB);
   double** PropagateParticle(Particle* PO, int Event, double MaxTime, double UserDT);
   void SetInitialKinematics(double Kbi);
   int SetReactionKinematics(double Kbr, double zr, double tof, double theta_CM=-1, double phi_CM=-1);
@@ -127,6 +128,7 @@ private:
   TGraph*** TraceH;
   TGraph*** TraceL;
   TGraph** TraceB;
+  TH1I* TraceMult;
   int NTraces;
 
   TF1* Gaussian;   // For randomizing the detector response
