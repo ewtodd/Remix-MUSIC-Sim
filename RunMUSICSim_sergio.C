@@ -13,39 +13,35 @@
   // Geometrical parameters (all distances in cm)
   string AnodeGeom = "AnodeGeometry";
   int ELossBins = 400;
-  float MaxELoss = 4;
+  float MaxELoss = 20.0;
 
-  string beam = "17F";
-  string target = "4He";
-  string compound = "21Na";
-  string light = "p";
-  string heavy = "20Ne";
-  double Ex[1] = {5.7};
-  string dau1 = "16O";
-  string dau2 = "4He";
+  string beam = "31P";
+  string target = "p";
+  string compound = "32S";
+  string light = "4He";
+  string heavy = "28Si";
   // Energy of the beam after the window.
-  //  double Kb = 55;
-  double Kb = 42.59;
+  double Kb = 8*35;
   
   double ThCMMin = 2;
   double ThCMMax = 178;
-  int ThSteps = 20;
+  int ThSteps = 10;
   double PhiCMMin = 2;
   double PhiCMMax = 358;
-  int PhiSteps = 20;
+  int PhiSteps = 10;
 
   int Strip = 5;
-  int NEvents = 30;
-  int Wait = 0;
-  int Update = 0;
+  int NEvents = 100;
+  int Wait = 1;
+  int Update = 1;
 
   double MaxTime = 1000; // ns
   double UserDT = 0.1;     // ns
 
   // Target gas related stuff
-  float GasP = 406; // Torr
+  float GasP = 300; // Torr
   float GasT = 293; // K
-  int GasIndex = 3;
+  int GasIndex = 17;
   // You have to use the same index numbers as in the SRIM_Table_Maker class.
   //   0 - CD2
   //   1 - CF4 (gas)
@@ -86,15 +82,13 @@
 
   SRIM_Table_Maker* SRIM = new SRIM_Table_Maker(SRModPath);
   SRIM->SetGasDensity(GasIndex, GasP, GasT);
-  string particle[6];
+  string particle[4];
   particle[0] = beam;
   particle[1] = compound;
   particle[2] = light;
   particle[3] = heavy;
-  particle[4] = dau1;
-  particle[5] = dau2;
-  string SRIMFile[6];
-  for (int p=0; p<6; p++) {
+  string SRIMFile[4];
+  for (int p=0; p<4; p++) {
     cout << "Creating SRIM files for " << particle[p] << " ..." << endl;
     SRIMFile[p] = SRIM_dir + particle[p] + Form("_in_CH4_%.0fTorr_%.0fK.srim", GasP, GasT);
     cout << SRIMFile[p] << endl;
@@ -111,17 +105,11 @@
   int Zl = NuF->GetZ(light);
   double mh = NuF->GetMass(heavy, "u");
   int Zh = NuF->GetZ(heavy);
-  double md1 = NuF->GetMass(dau1, "u");
-  int Zd1 = NuF->GetZ(dau1);
-  double md2 = NuF->GetMass(dau2, "u");
-  int Zd2 = NuF->GetZ(dau2);
   // Now we have all the information to make the energy loss tables.
   SRIM->MakeTable(SRIMFile[0], GasIndex, Zb, mb);
   SRIM->MakeTable(SRIMFile[1], GasIndex, Zc, mc);
   SRIM->MakeTable(SRIMFile[2], GasIndex, Zl, ml);
   SRIM->MakeTable(SRIMFile[3], GasIndex, Zh, mh);
-  SRIM->MakeTable(SRIMFile[4], GasIndex, Zd1, md1);
-  SRIM->MakeTable(SRIMFile[5], GasIndex, Zd2, md2);
 
 
 
@@ -130,7 +118,7 @@
   /////////////////////////////////////////////////////////////////////////////
   // gRandom->SetSeed();
   MUSIC_Simulator* MUSIC = new MUSIC_Simulator();
-  MUSIC->SetStripEnergyResolution(0.025);
+  MUSIC->SetStripEnergyResolution(0.010);
   // Geometry
   MUSIC->SetAnode(AnodeGeom, 90, ELossBins, MaxELoss);
   // Beam
@@ -142,23 +130,19 @@
   // Light evaporation residue (e.g. proton)
   MUSIC->SetLightParticle(light, kRed, SRIMFile[2]);
   // Heavy evaporation residue (e.g. 23Na)
-  MUSIC->SetHeavyParticle(heavy, kBlue, SRIMFile[3], 1, Ex);
-  // daughter 1
-  MUSIC->SetDecayDaughter1(dau1, kGreen, SRIMFile[4]);
-  // daughter 2
-  MUSIC->SetDecayDaughter2(dau2, kMagenta, SRIMFile[5]);
+  MUSIC->SetHeavyParticle(heavy, kBlue, SRIMFile[3]);
   
   // MUSIC->SetPrintLevel(1);
   
   // Simulate events for one strip
-  // MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, Wait);
-  // MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root", Strip, target.c_str(), light.c_str()));
+  MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, Wait);
+  MUSIC->WriteTraces(Form("Traces_Stp%d_%s_%s.root", Strip, target.c_str(), light.c_str()));
 
   // Generates a collection of traces for all angles (theta, phi) for
   // all strips. The generated data base can be compared to
   // experimental traces.
-  string TraceDB = Form("TDB_%s_%s_breakup.root",target.c_str(),light.c_str());
-  MUSIC->GenerateTraceDatabase(TraceDB, ThCMMin, ThCMMax, ThSteps, PhiCMMin, PhiCMMax, PhiSteps,
-  			       MaxTime, UserDT, Update, Wait);
+  // string TraceDB = Form("TDB_%s_%s.root",target.c_str(),light.c_str());
+  // MUSIC->GenerateTraceDatabase(TraceDB, ThCMMin, ThCMMax, ThSteps, PhiCMMin, PhiCMMax, PhiSteps,
+  // 			       MaxTime, UserDT, Update, Wait);
 
 }

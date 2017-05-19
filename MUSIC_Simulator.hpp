@@ -73,7 +73,11 @@ public:
   void SetCompoundParticle(std::string Name);
   void SetHeavyParticle(std::string Name, int Color, std::string ELossFile, int NEexc=0,
 			double* Eexc=0/*MeV*/);
+
+  void SetDecayDaughter1(std::string Name, int Color, std::string ELossFile);
+  void SetDecayDaughter2(std::string Name, int Color, std::string ELossFile);
   void SetLightParticle(std::string Name, int Color, std::string ELossFile);
+
   void SetPrintLevel(int PrintLevel);
   void SetStripEnergyResolution(float Sigma/*MeV*/);
   void SetTargetParticle(std::string Name);
@@ -99,6 +103,8 @@ private:
   Particle* Target;
   Particle* Compound;
   Particle* Heavy;
+  Particle* DeDau1;
+  Particle* DeDau2;
   Particle* Light;
   double Kb_after_window;
   double EneSigma;
@@ -108,6 +114,8 @@ private:
   double** DeltaEB;    // beam
   double** DeltaEL;    // light
   double** DeltaEH;    // heavy
+  double** DeltaED1;   // decay daughter1
+  double** DeltaED2;   // decay daughter2
 
   std::string Name;
 
@@ -126,6 +134,8 @@ private:
   TH2F* HPT;
   TGraph*** Trace;
   TGraph*** TraceH;
+  TGraph*** TraceD1;
+  TGraph*** TraceD2;
   TGraph*** TraceL;
   TGraph** TraceB;
   TH1I* TraceMult;
@@ -137,6 +147,8 @@ private:
 
   // Visual stuff
   TEveStraightLineSet** TrajH;
+  TEveStraightLineSet** TrajD1;
+  TEveStraightLineSet** TrajD2;
   TEveStraightLineSet** TrajL;
   TEveManager* Eve;
   TCanvas* TraceCan;

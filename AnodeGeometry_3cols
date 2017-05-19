@@ -1,0 +1,41 @@
+MUSIC Anode geometry file 2014/3/21
+Number of strips: 20
+Number of columns: 2
+Stp	Col	Name	Dx	Dy	Dz	Color	Comment
+0	0	DeadUS	20	20	3.522	920	dead layer upstream
+1	0	S0  	20	20	1.578	416	strip 0
+2	0	S1C0	6.667	20	1.578	425	strip 1 beam right (kCyan-7)
+2	1	S1C1	13.333	20	1.578	609	strip 1 beam left (kMagenta-7)
+3	0	S2C0	13.333	20	1.578	425	strip 2 beam right
+3	1	S2C1	6.667	20	1.578	609	strip 2 beam left
+4	0	S3C0	6.667	20	1.578	425	strip 3 beam right
+4	1	S3C1	13.333	20	1.578	609	strip 3 beam left
+5	0	S2C0	13.333	20	1.578	425	strip 4 beam right
+5	1	S2C1	6.667	20	1.578	609	strip 4 beam left
+6	0	S5C0	6.667	20	1.578	425	strip 5 beam right
+6	1	S5C1	13.333	20	1.578	609	strip 5 beam left
+7	0	S2C0	13.333	20	1.578	425	strip 6 beam right
+7	1	S2C1	6.667	20	1.578	609	strip 6 beam left
+8	0	S7C0	6.667	20	1.578	425	strip 7 beam right
+8	1	S7C1	13.333	20	1.578	609	strip 7 beam left
+9	0	S2C0	13.333	20	1.578	425	strip 8 beam right
+9	1	S2C1	6.667	20	1.578	609	strip 8 beam left
+10	0	S9C0	6.667	20	1.578	425	strip 9 beam right
+10	1	S9C1	13.333	20	1.578	609	strip 9 beam left
+11	0	S2C0	13.333	20	1.578	425	strip 10 beam right
+11	1	S2C1	6.667	20	1.578	609	strip 10 beam left
+12	0	S11C0	6.667	20	1.578	425	strip 11 beam right
+12	1	S11C1	13.333	20	1.578	609	strip 11 beam left
+13	0	S2C0	13.333	20	1.578	425	strip 12 beam right
+13	1	S2C1	6.667	20	1.578	609	strip 12 beam left
+14	0	S13C0	6.667	20	1.578	425	strip 13 beam right
+14	1	S13C1	13.333	20	1.578	609	strip 13 beam left
+15	0	S2C0	13.333	20	1.578	425	strip 14 beam right
+15	1	S2C1	6.667	20	1.578	609	strip 14 beam left
+16	0	S15C0	6.667	20	1.578	425	strip 15 beam right
+16	1	S15C1	13.333	20	1.578	609	strip 15 beam left
+17	0	S2C0	13.333	20	1.578	425	strip 16 beam right
+17	1	S2C1	6.667	20	1.578	609	strip 16 beam left
+18	0	S17  	20	20	1.578	416	strip 17
+19	0	DeadDS	20	20	3.522	920	dead layer downstream
+
