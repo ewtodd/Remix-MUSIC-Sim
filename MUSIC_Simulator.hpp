@@ -75,6 +75,8 @@ public:
   void SetStripEnergyResolution(float Sigma/*MeV*/);
   void SetTargetParticle(std::string Name);
   void Simulate(int StpID, int NEvents, double MaxTime, double UserDT, int Wait=0);
+  void Simulate(int StpID, double ThCMMin, double ThCMMax, int ThSteps, double PhiCMMin, 
+		double PhiCMMax, int PhiSteps, double MaxTime, double UserDT, int Wait=0);
   void WriteTraces(char* FileName);
 
 private:

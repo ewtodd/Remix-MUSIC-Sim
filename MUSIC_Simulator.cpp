@@ -272,7 +272,7 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
       // Fill tree leaves
       if (SimTree!=0) {
 	int stpid = AnodeStpID[stp][col];
-	if (stpid>=0) {
+	if (stpid>=0 && stpid<17) {
 	  cathode += DeltaE;
 	  if (stpid==0)
 	    strip0 += DeltaE;
@@ -506,6 +506,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 
   // Loop over all strips with a non-negative ID (defined in the
   // argument of the SetAnode method).
+  //for (int stp_base=11; stp_base<AnodeStps; stp_base++) {
   for (int stp_base=0; stp_base<AnodeStps; stp_base++) {
     if (AnodeStpID[stp_base][0]>=0) {
       
@@ -633,7 +634,11 @@ void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
   cout.width(15);
   cout << "EexcMax[MeV]";
   cout.width(15);
-  cout << "EexcMin[MeV]" << endl;
+  cout << "EexcMin[MeV]";
+  cout.width(15);
+  cout << Form("E(%s)[MeV]", (Target->Name).c_str());
+  cout.width(15);
+  cout << "Ecm[MeV]" << endl;
 
   for (int stp=0; stp<AnodeStps+1; stp++) {
     // Exc. energy of compound particle.
@@ -650,18 +655,34 @@ void MUSIC_Simulator::PrintCompoundEexc(double Kb, double** DeltaEB)
     cout << sqrt(Ptot*Ptot) - mc;
     // Lower limit
     Kb -= DeltaEB[stp][AnodeCols];
-    cout.width(15);
     if (Kb>0) {
       // Linear momentum and total energy of the beam particle in the lab.
       pb = sqrt(2*mb*Kb*(1 + Kb/2/mb));
       Eb = sqrt(mb*mb + pb*pb);
       // Total four momentum in the lab.
       Ptot.SetCoords(Eb+mt, 0, 0, pb);
+      cout.width(15);
       cout.precision(4);
-      cout << sqrt(Ptot*Ptot) - mc << endl;
+      cout << sqrt(Ptot*Ptot) - mc;
+      // Non-rel center-of-mass energy
+      double Ecm = mt*Kb/(mb+mt);
+      // Energy of target particle (in normal kinematics)
+      double Kt = Ecm*(mt+mb)/mb;
+      cout.width(15);
+      cout.precision(4);
+      cout << Kt;
+      cout.width(15);
+      cout.precision(4);
+      cout << Ecm << endl;
     }
-    else
+    else {
+      cout.width(15);
+      cout << "0";
+      cout.width(15);
+      cout << "0";
+      cout.width(15);
       cout << "0" << endl;
+    }
   }
 
   return;
@@ -696,6 +717,7 @@ double** MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxT
   PO->GetP(Ene, px, py, pz);
   double p_mag = sqrt(px*px + py*py + pz*pz);
   double Ki = PO->GetKE();
+  
   PO->ResetTrace();
   double tt, xt, yt, zt, Kt; // initial coordinates for the particle trajectory
   tt = ti;
@@ -779,12 +801,15 @@ double** MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxT
       Kf = PO->GetInitialEnergy(0, Ki, dist, dist/10);
 
     // Exit the while loop if the particle has stopped.
-    if (Kf<=0) {
-      if (PrintLevel>0)
-	cout << "Less than ZERO! " << Kf << endl;
+    if (Kf<0.001) {
+      if (PrintLevel>0) {
+	cout << "STOPPED!" << endl;
+	if (Kf<0)	
+	  cout << "Less than ZERO! " << Kf << endl;
+      }    
       break;
     }
-
+    
     DE[stp][col] += fabs(Ki - Kf);
     DE[stp][AnodeCols] += fabs(Ki - Kf);
     
@@ -1254,6 +1279,10 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     // Do a Lorentz transformation (boost) into the lab reference frame.
     // I've double checked the sign of the boost and is correct (-Beta).
     Light->Boost(-BetaX, -BetaY, -BetaZ);
+
+    // Save the angles in degrees
+    theta_l = (Light->GetTheta())*180/pi;
+    phi_l = (Light->GetPhi())*180/pi;
     
     // Initial position of the light particle (at the target).
     Light->SetX(tof, 0, 0, zr);
@@ -1263,6 +1292,9 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     // Four-momentum of the heavy recoil (lab).
     Heavy->SetP(Beam->GetP() + Target->GetP() - Light->GetP());
     Heavy->SetX(tof, 0, 0, zr);
+    // Save the angles in degrees
+    theta_h = (Heavy->GetTheta())*180/pi;
+    phi_h = (Heavy->GetPhi())*180/pi;
     if (PrintLevel>0)
       Heavy->Print();
   }
@@ -1331,6 +1363,8 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
 
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
+  Particle* BeamInit = new Particle("beam init");
+  BeamInit->Copy(Beam);
   Particle* BeamCopy = new Particle("beam copy");
   BeamCopy->Copy(Beam);
   if (PrintLevel>0)
@@ -1418,32 +1452,188 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     
     // 3. Set the kinematics of all particles at the reaction point
     int ReacAllowed = SetReactionKinematics(Kbr, zr, TOF);
-    if (ReacAllowed==0) {
+
+    if (ReacAllowed) {
+      // 4. Propagate the beam particle (backwards in time) from the
+      // reaction point to the entrance of MUSIC
+      DeltaEB = PropagateParticle(Beam, evt, MaxTime, -UserDT);
+      
+      // 5. Propagate heavy particle and calculate energy loss in the
+      // anode elements
+      DeltaEH = PropagateParticle(Heavy, evt, MaxTime, UserDT);
+      
+      // 6. Propagate light particle and calculate energy loss in the
+      // anode elements
+      DeltaEL = PropagateParticle(Light, evt, MaxTime, UserDT);
+    }
+    else {
+      Beam->Copy(BeamInit);
+      PropagateParticle(Beam, Kb_after_window, MaxTime, UserDT); 
       cout << "Warninig: reaction energetically not allowed for event " << evt 
 	   << " (Kbr= " << Kbr << " MeV)." << endl;
-      continue;
     }
-
-    // 4. Propagate the beam particle (backwards in time) from the
-    // reaction point to the entrance of MUSIC
-    DeltaEB = PropagateParticle(Beam, evt, MaxTime, -UserDT);
-
-    // 5. Propagate heavy particle and calculate energy loss in the
-    // anode elements
-    DeltaEH = PropagateParticle(Heavy, evt, MaxTime, UserDT);
-
-    // 6. Propagate light particle and calculate energy loss in the
-    // anode elements
-    DeltaEL = PropagateParticle(Light, evt, MaxTime, UserDT);
-
+    
     // 7. Compute detector response (i.e. DE for beam + light + heavy)
     // Clone the particle trajectories
     ComputeDetectorResponse(evt);
     
     // 8. Display trace and particle trajecories   
     UpdateVisuals(evt, Kbr, zr, TOF, Wait);
- 
+    
     NTraces++;
+  }
+  
+  return;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// With this version of Simulate() one can specify the angular range to be covered.
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int ThSteps,
+			       double PhiCMMin, double PhiCMMax, int PhiSteps, double MaxTime,
+			       double UserDT, int Wait)
+{
+  // Verify that the anode geometry has been set
+  if (VolAnode==0) {
+    cout << "Anode geometry not specified. Use SetAnode method." << endl;
+    return;
+  }
+  
+  // Angles in radians
+  double theta = 0;
+  double phi = 0;
+
+  NEvents = PhiSteps*ThSteps*AnodeStps;
+   
+  // Create new traces and trajectories (objectrs) for visualizing the
+  // detector response
+  CreateTracesAndTrajectories(NEvents);
+  
+  cout << "Simulating MUSIC traces ... " << endl;
+  
+  SetInitialKinematics(Kb_after_window);   
+
+  // Get the average beam energy loss and print the exc energy of the
+  // compound nucleus sampled by each strip.
+  Particle* BeamCopy = new Particle("beam copy");
+  BeamCopy->Copy(Beam);
+  if (PrintLevel>0)
+    BeamCopy->Print();
+  DeltaEB_ave = PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserDT); 
+  for (int stp=0; stp<AnodeStps; stp++)
+    for (int col=0; col<AnodeCols+1; col++) 
+      TraceB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
+  PrintCompoundEexc(Kb_after_window, DeltaEB_ave);
+  
+  //-------------------------------------------------------------------------------
+  // Some kinematic variables
+  double Kb_min, Kb_max, MinZ, MaxZ, MinT, MaxT;
+  int evt = 0; 
+  // Converting degrees in radians
+  double theta_min = ThCMMin*pi/180;
+  double theta_max = ThCMMax*pi/180;
+  double phi_min = PhiCMMin*pi/180;
+  double phi_max = PhiCMMax*pi/180;
+
+  // Get the beam energy limits in the selected strip (assuming the
+  // beam direction is parallel to the z-axis).
+  MinZ = 0;
+  MaxZ = AnodeDZ[0][0];
+  for (int stp=1; stp<AnodeStps; stp++) {
+    MinZ += AnodeDZ[stp-1][0];
+    MaxZ += AnodeDZ[stp][0];
+    if (AnodeStpID[stp][0]==StpID)
+      break;
+  }
+  Kb_max = Beam->GetFinalEnergy(0, Kb_after_window, MinZ, 1E-3/*step size in cm*/);
+  MinT = Beam->GetTimeOfFlight(0);
+  Kb_min = Beam->GetFinalEnergy(0, Kb_after_window, MaxZ, 1E-3/*step size in cm*/);
+  MaxT = Beam->GetTimeOfFlight(0);
+  if (PrintLevel>0) {
+    cout << "|---- Kinematic constraints for strip ";
+    cout.width(3); cout << StpID;
+    cout << " ---------\n"
+	 << "|     |   In    |   Out   |  Units  |\n"
+	 << "| zr  |";
+    cout.width(9);    cout << MinZ;   cout << "|";
+    cout.width(9);    cout << MaxZ;   cout << "|";
+    cout.width(9);    cout << "cm";   cout << "|\n";
+    cout << "| tof |";
+    cout.width(9);    cout << MinT;   cout << "|";
+    cout.width(9);    cout << MaxT;   cout << "|";
+    cout.width(9);    cout << "ns";   cout << "|\n";
+    cout << "| Kb  |";
+    cout.width(9);    cout << Kb_max; cout << "|";
+    cout.width(9);    cout << Kb_min; cout << "|";
+    cout.width(9);    cout << "MeV";   cout << "|\n";
+    cout << "|--------------------------------------------------" << endl; 
+  }
+  //-------------------------------------------------------------------------------
+
+  // Event for-loop
+  for (int ths=0; ths<ThSteps; ths++) {
+    theta = ths*(theta_max - theta_min)/(ThSteps - 1) + theta_min;
+    for (int phs=0; phs<PhiSteps; phs++) {
+      phi = phs*(phi_max - phi_min)/(PhiSteps - 1) + phi_min;
+      
+      if (PrintLevel>0)
+	cout << "\n***************** Event " << evt << "\n" << endl;
+    
+      TraceCan->cd(1);
+      HCT->Draw();
+      TraceCan->cd(2);
+      HPT->Draw();
+      
+      // Reset the detector response
+      for (int stp=0; stp<AnodeStps; stp++) 
+	for (int col=0; col<AnodeCols+1; col++) {
+	  DeltaEB[stp][col] = 0;
+	  DeltaEL[stp][col] = 0;
+	  DeltaEH[stp][col] = 0;
+	}
+      
+      // 1. Set beam inital conditions (beam energy, position)
+      SetInitialKinematics(Kb_after_window);   
+      
+      // 2. Within the selected strip randomly select the position at
+      // which the beam particle interacts with the target and calculate
+      // the kinetic energy at the reaction point
+      double zr = Rdm->Uniform(MinZ, MaxZ);
+      double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, zr, 1E-3);
+      double TOF = Beam->GetTimeOfFlight(0);
+      if (PrintLevel>0)
+	cout << "Kbr = " << Kbr << "  zr = " << zr << "  tof = " << TOF << endl;
+      
+      // 3. Set the kinematics of all particles at the reaction point
+      int ReacAllowed = SetReactionKinematics(Kbr, zr, TOF, theta, phi);
+      if (ReacAllowed==0) {
+	cout << "Warninig: reaction energetically not allowed for event " << evt 
+	     << " (Kbr= " << Kbr << " MeV)." << endl;
+	continue;
+      }
+      
+      // 4. Propagate the beam particle (backwards in time) from the
+      // reaction point to the entrance of MUSIC
+      DeltaEB = PropagateParticle(Beam, evt, MaxTime, -UserDT);
+      
+      // 5. Propagate heavy particle and calculate energy loss in the
+      // anode elements
+      DeltaEH = PropagateParticle(Heavy, evt, MaxTime, UserDT);
+      
+      // 6. Propagate light particle and calculate energy loss in the
+      // anode elements
+      DeltaEL = PropagateParticle(Light, evt, MaxTime, UserDT);
+      
+      // 7. Compute detector response (i.e. DE for beam + light + heavy)
+      // Clone the particle trajectories
+      ComputeDetectorResponse(evt);
+      
+      // 8. Display trace and particle trajecories   
+      UpdateVisuals(evt, Kbr, zr, TOF, Wait);
+      
+      NTraces++;
+      evt++;
+    }
   }
   
   return;

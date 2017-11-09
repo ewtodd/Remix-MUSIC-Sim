@@ -2,7 +2,7 @@ MUSIC Anode geometry file 2014/3/21
 Number of strips: 20
 Number of columns: 2
 Stp	Col	StpID	Name	Dx	Dy	Dz	Color	Comment
-0	0  	-1	DeadUS	9	10	3.522	920	dead layer upstream (kGray)
+0	0  	-1	DeadUS	9	10	4.94	920	dead layer upstream (kGray)
 1	0  	0	S0  	9	10	1.578	416	strip 0 (kGreen)
 2	0  	1	S1C0	4	10	1.578	425	strip 1 beam right (kCyan-7)
 2	1  	1	S1C1	5	10	1.578	609	strip 1 beam left (kMagenta-7)
