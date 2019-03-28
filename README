@@ -1,0 +1,42 @@
+//===============================================================================
+//--- MUSIC simulator ----------------------------------------------------------|
+// Written by Daniel Santiago-Gonzalez                                          |
+// ver 2.0 (2016/4)                                                             |
+// To get the latest version type:                                              |
+// git clone https://dasago@bitbucket.org/music_anl/music_simulator.git         |
+//===============================================================================
+
+
+*** Minimum requirements
+
+1. linux based operating system (tested in Ubuntu 14 and Debian 9)
+2. ROOT 6 (tested with 6.14/06). May need libroot-math-physics-dev (install using synaptic package manager or similar)
+3. g++ compiler (tested with g++ 4.8.4)
+
+
+*** Installation instructions
+
+1. Get the codes
+cd to your preferred working directory
+git clone https://dasago@bitbucket.org/music_anl/music_simulator.git
+git clone https://dasago@bitbucket.org/helios_codes/physicstools.git
+
+2. Compile it (ignore all warnings but if there are errors send them to dasago@anl.gov)
+cd physicstools
+g++ -shared -fPIC EnergyLoss.cpp `root-config --cflags --glibs` -o EnergyLoss.so
+g++ -shared -fPIC FourVector.cpp -o FourVector.so  
+g++ -shared -fPIC Particle.cpp `root-config --cflags --glibs` -o Particle.so
+root -l NuclideFinder.cpp++
+.L SRIM_Table_Maker.cpp++
+.q
+cd ../music_simulator
+git checkout fusion_evap
+root -l MakeAll.C
+.q
+
+3. Test it
+cd Examples/Fusion16C
+root -l RunMusicSim_16C.C
+
+If every went well you should see two windows, one with a 2D plot of the MUSIC traces and
+another one with a 3D view of the event.
