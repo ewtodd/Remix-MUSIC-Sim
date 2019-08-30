@@ -3,7 +3,7 @@
 // Written by Daniel Santiago-Gonzalez                                          |
 // ver 2.0 (2016/4)                                                             |
 // To get the latest version type:                                              |
-// git clone https://dasago@bitbucket.org/music_anl/music_simulator.git         |
+// git clone https://gitlab.phy.anl.gov/dasago/music-simulator.git              |
 //===============================================================================
 
 
@@ -19,8 +19,8 @@
 
 1. Get the codes
 cd to your preferred working directory
-git clone https://dasago@bitbucket.org/music_anl/music_simulator.git
-git clone https://dasago@bitbucket.org/helios_codes/physicstools.git
+git clone https://gitlab.phy.anl.gov/dasago/music-simulator.git
+git clone https://gitlab.phy.anl.gov/andes/physics-tools.git
 
 2. Compile it (ignore all warnings but if there are errors send them to dasago@anl.gov)
 cd physicstools
