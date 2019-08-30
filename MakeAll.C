@@ -1,5 +1,5 @@
 {
-  string IncludePath = "../physicstools/";
+  string IncludePath = "../physics-tools/";
   const int numlibs = 4;
   string mylib[numlibs];
   mylib[0] = IncludePath + "EnergyLoss.so";
