@@ -2,8 +2,6 @@
 //--- MUSIC simulator ----------------------------------------------------------|
 // Written by Daniel Santiago-Gonzalez                                          |
 // ver 2.0 (2016/4)                                                             |
-// To get the latest version type:                                              |
-// git clone https://gitlab.phy.anl.gov/dasago/music-simulator.git              |
 //===============================================================================
 
 
@@ -15,7 +13,7 @@
 4. git (tested with version 1.9.1
 
 
-*** Installation instructions
+*** Installation instructions (LINUX, for MAC see below)
 
 1. Get the codes
 cd to your preferred working directory
@@ -41,3 +39,42 @@ root -l RunMusicSim_16C.C
 
 If everything went well you should see two windows, one with a 2D plot of the MUSIC traces and
 another one with a 3D view of the event.
+* End of LINUX installation instructions *
+
+
+*** Installation instructions (MACOS)
+
+1. Get the codes
+cd to your preferred working directory
+git clone https://gitlab.phy.anl.gov/dasago/music-simulator.git
+git clone https://gitlab.phy.anl.gov/andes/physics-tools.git
+
+2. Compile it (ignore all warnings but if there are errors send them to dasago@anl.gov)
+cd physics-tools
+root -l
+.L EnergyLoss.cpp++ 
+.L FourVector.cpp++
+.L NuclideFinder.cpp++
+.L Particle.cpp++
+.L SRIM_Table_Maker.cpp++
+.q
+
+cd ../music-simulator
+git checkout fusion_evap (optional)
+Edit the names of all the .so library files in the MakeAll.C file. (Ex: EnergyLoss.so -> EnergyLoss_cpp.so)
+
+Open MUSIC_Simulator.cpp 
+Change line 834 from "...stp<AnodeStps+1;..." to "...stp<AnodeStps;..." (Delete the +1)
+
+root -l MakeAll.C
+.q
+
+
+3. Test it
+cd Examples/Fusion16C
+Change the paths to the .so files, and edit the library file names from .so to _cpp.so
+root -l RunMusicSim_16C.C
+
+If everything went well you should see two windows, one with a 2D plot of the MUSIC traces and
+another one with a 3D view of the event.
+* End of MACOS installation instructions *
