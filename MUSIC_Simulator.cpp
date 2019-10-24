@@ -15,8 +15,8 @@ MUSIC_Simulator::MUSIC_Simulator()
   cout << "|--- MUSIC simulator ----------------------------------------------------------|" << endl;
   cout << "| Written by Daniel Santiago-Gonzalez                                          |" << endl;
   cout << "| ver 2.0 (2016/4)                                                             |" << endl;
-  cout << "| To get the latest version type:                                              |" << endl;
-  cout << "| git clone https://dasago@bitbucket.org/music_anl/music_simulator.git         |" << endl;
+  cout << "| To get the latest version visit:                                             |" << endl;
+  cout << "| https://gitlab.phy.anl.gov/dasago/music-simulator                            |" << endl;
   cout << "================================================================================" << endl;
 
   Name = "MUSIC_Simulator";
@@ -292,22 +292,31 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt)
   // 3D trajectories (why clone and not just point to them?)
   if (evt<Particle::MaxEvents) {
     if (Heavy) {
-      TrajH[evt] = (TEveStraightLineSet*)Heavy->AllTraj[evt]->Clone();
+      //      TrajH[evt] = (TEveStraightLineSet*)Heavy->AllTraj[evt]->Clone();
+      TrajH[evt] = (TEveStraightLineSet*)Heavy->Trajectory->Clone();
       if (DeDau1 && DeDau2) {
-	TrajD1[evt] = (TEveStraightLineSet*)DeDau1->AllTraj[evt]->Clone();
-	TrajD2[evt] = (TEveStraightLineSet*)DeDau2->AllTraj[evt]->Clone();
+	//	TrajD1[evt] = (TEveStraightLineSet*)DeDau1->AllTraj[evt]->Clone();
+	TrajD1[evt] = (TEveStraightLineSet*)DeDau1->Trajectory->Clone();
+	//	TrajD2[evt] = (TEveStraightLineSet*)DeDau2->AllTraj[evt]->Clone();
+	TrajD2[evt] = (TEveStraightLineSet*)DeDau2->Trajectory->Clone();
       }
     }
-    if (Light)
-      TrajL[evt] = (TEveStraightLineSet*)Light->AllTraj[evt]->Clone();
+    if (Light) {
+      //      TrajL[evt] = (TEveStraightLineSet*)Light->AllTraj[evt]->Clone();
+      TrajL[evt] = (TEveStraightLineSet*)Light->Trajectory->Clone();
+    }
     // Evaproation residues and particles
     for (int er=0; er<CurEva; er++) {
       TrajEvaR[evt][er] = 0;
-      if (!EvaR[er]->DoNotPropagate)
-	TrajEvaR[evt][er] = (TEveStraightLineSet*)EvaR[er]->AllTraj[evt]->Clone();
+      if (!EvaR[er]->DoNotPropagate) {
+	//	TrajEvaR[evt][er] = (TEveStraightLineSet*)EvaR[er]->AllTraj[evt]->Clone();
+	TrajEvaR[evt][er] = (TEveStraightLineSet*)EvaR[er]->Trajectory->Clone();
+      }
       TrajEvaP[evt][er] = 0;
-      if (!EvaP[er]->DoNotPropagate)
-	TrajEvaP[evt][er] = (TEveStraightLineSet*)EvaP[er]->AllTraj[evt]->Clone();
+      if (!EvaP[er]->DoNotPropagate) {
+	//	TrajEvaP[evt][er] = (TEveStraightLineSet*)EvaP[er]->AllTraj[evt]->Clone();
+	TrajEvaP[evt][er] = (TEveStraightLineSet*)EvaP[er]->Trajectory->Clone();
+      }
     }
   }
   
@@ -587,6 +596,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 					    double MaxTime, double UserDT, int Update,
 					    int Wait)
 {
+  double ti,xi,yi,zi, tf,xf,yf,zf;
 #if 1
   // Verify that the anode geometry has been set
   if (VolAnode==0) {
@@ -641,6 +651,8 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
+  Particle* BeamInit = new Particle("beam init");
+  BeamInit->Copy(Beam);
   Particle* BeamCopy = new Particle("beam copy");
   BeamCopy->Copy(Beam);
   if (PrintLevel>0)
@@ -725,10 +737,11 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	      DeltaEB[stp][col] = 0;
 	      DeltaEL[stp][col] = 0;
 	      DeltaEH[stp][col] = 0;
-	      DeltaED1[stp][col] = 0;
-	      DeltaED2[stp][col] = 0;
+	      for (int er=0; er<CurEva; er++) {
+		DeltaE_EvaP[er][stp][col] = 0;
+		DeltaE_EvaR[er][stp][col] = 0;
+	      }
 	    }
-	  
 	  // 1. Set beam inital conditions (beam energy, position)
 	  SetInitialKinematics(Kb_after_window);   
 	  
@@ -743,6 +756,23 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  
 	  // 3. Set the kinematics of all particles at the reaction point
 	  int ReacAllowed = SetReactionKinematics(Kbr, zr, TOF, theta, phi);
+	  // Check conservation of 4-momentum
+	  if (PrintLevel>0) {
+	    cout << "Conservation of 4-momentum at reaction point (zr)" 
+		 << endl;
+	    FourVector Pi("initial 4-momemtum (lab)",0,0,0,0);
+	    Pi += Beam->GetP() + Target->GetP();
+	    FourVector Pf("final 4-momentum (lab)",0,0,0,0);
+	    for (int er=0; er<CurEva; er++) {
+	      if (!EvaR[er]->DoNotPropagate)
+		Pf += EvaR[er]->GetP();
+	      if (!EvaP[er]->DoNotPropagate)
+		Pf += EvaP[er]->GetP();
+	    }
+	    Pi.Print();
+	    Pf.Print();
+	  }
+#if 0
 	  if (ReacAllowed==0) {
 	    cout << "Warninig: reaction energetically not allowed for event " << evt 
 		 << " (Kbr= " << Kbr << " MeV)." << endl;
@@ -765,6 +795,52 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  // 6. Propagate light particle and calculate energy loss in the
 	  // anode elements
 	  DeltaEL = PropagateParticle(Light, evt, MaxTime, UserDT);
+#endif	  
+
+	  if (ReacAllowed) {
+	  // 4. Propagate the beam particle (backwards in time) from the
+	  // reaction point to the entrance of MUSIC
+	  Beam->GetX(tf,xf,yf,zf);
+	  DeltaEB = PropagateParticle(Beam, evt, MaxTime, -UserDT);
+	  Beam->GetX(ti,xi,yi,zi);                      // <- This is not a mistake
+	  TrackBeam->SetOrigin(xi,yi,zi);
+	  TrackBeam->SetVector(xf-xi,yf-yi,zf-zi);
+	  
+	  // 5. Propagate heavy particle (or decay daughters) and calculate energy 
+	  // loss in the anode elements
+	  // if (DeDau1 && DeDau2) {
+	  // 	DeltaED1 = PropagateParticle(DeDau1, evt, MaxTime, UserDT);
+	  // 	DeltaED2 = PropagateParticle(DeDau2, evt, MaxTime, UserDT);
+	  // }
+	  // else
+	  // 	DeltaEH = PropagateParticle(Heavy, evt, MaxTime, UserDT);
+      
+	  // 6. Propagate light particle and calculate energy loss in the
+	  // anode elements
+	  //   DeltaEL = PropagateParticle(Light, evt, MaxTime, UserDT);
+
+	  // 5-6. Propagate outgoing particles (evaporation residues)
+	  for (int er=0; er<CurEva; er++) {
+	  // evaporated (light) particle (p,n,4He)
+	  EvaP[er]->GetX(ti,xi,yi,zi);
+	  DeltaE_EvaP[er] = PropagateParticle(EvaP[er], evt, MaxTime, UserDT);
+	  EvaP[er]->GetX(tf,xf,yf,zf);
+	  TrackEvaP[er]->SetOrigin(xi,yi,zi);
+	  TrackEvaP[er]->SetVector(xf-xi,yf-yi,zf-zi);
+	  // evaporation residue (heavy particle)
+	  EvaR[er]->GetX(ti,xi,yi,zi);
+	  DeltaE_EvaR[er] = PropagateParticle(EvaR[er], evt, MaxTime, UserDT);
+	  EvaR[er]->GetX(tf,xf,yf,zf);
+	  TrackEvaR[er]->SetOrigin(xi,yi,zi);
+	  TrackEvaR[er]->SetVector(xf-xi,yf-yi,zf-zi);
+	}
+	}
+	  else {
+	  Beam->Copy(BeamInit);
+	  PropagateParticle(Beam, Kb_after_window, MaxTime, UserDT); 
+	  cout << "Warninig: reaction energetically not allowed for event " << evt 
+	       << " (Kbr= " << Kbr << " MeV)." << endl;
+	}
 	  
 	  // 7. Compute detector response (i.e. DE for beam + light + heavy)
 	  // Clone the particle trajectories
@@ -943,7 +1019,9 @@ double** MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxT
   zt = zi;
   Kt = Ki;
   PO->SetTracePoint((float)tt, (float)xt, (float)yt, (float)zt, (float)Kt);
-  PO->AllTraj[Event]->SetName(Form("%s evt %d", PO->Name.c_str(), Event));
+  //  PO->AllTraj[Event]->SetName(Form("%s evt %d", PO->Name.c_str(), Event));
+  PO->Trajectory->RemoveElements();
+  PO->Trajectory->SetName(Form("%s evt %d", PO->Name.c_str(), Event));
   
   if (PrintLevel>0)
     cout << "Propagator! " << PO->Name << " " << MaxTime << "  ti=" << ti << endl;
@@ -1061,7 +1139,8 @@ double** MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxT
     if (tf-tt>UserDT) {   
       if (PO->SaveTrajectory) {
 	if (!Skip) {
-	  PO->AllTraj[Event]->AddLine(xt,yt,zt, xf,yf,zf);
+	  //	  PO->AllTraj[Event]->AddLine(xt,yt,zt, xf,yf,zf);
+	  PO->Trajectory->AddLine(xt,yt,zt, xf,yf,zf);
 	  Skip = 1;
 	}
 	else 
@@ -1418,7 +1497,9 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, string ResELossFile, int
     cout << "Warning: No more than " << MaxEva << " evaporation particles allowed." << endl;  
     return;
   }
-  //  cout << "Evaporation residue: " << CurEva << endl;
+
+  if (PrintLevel>0)
+    cout << "Evaporation residue: " << CurEva << endl;
   
   // Evaporated particle (p,n,4He)
   double mp = NuF->GetMass(ParName, "MeV/c^2");
@@ -1621,6 +1702,9 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
       EvaR[er-1]->DoNotPropagate = false;
       break;
     }
+    if (er==CurEva-1)
+      EvaR[er]->DoNotPropagate = false;
+
     double Ex = Rdm->Uniform(Qvalue/2, Qvalue); // assuming it prefers to stay highly excited
 
     // If the user did not specify the value of theta and phi (initial
@@ -1956,7 +2040,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     // which the beam particle interacts with the target and calculate
     // the kinetic energy at the reaction point
     double zr = Rdm->Uniform(MinZ, MaxZ);
-    double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, zr, 1E-3);
+    double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, zr, 1E-3/*cm*/);
     double TOF = Beam->GetTimeOfFlight(0);
     if (PrintLevel>0)
       cout << "Kbr = " << Kbr << "  zr = " << zr << "  tof = " << TOF << endl;
@@ -2340,7 +2424,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
   // Draw multiplicity 
   TraceCan->cd(2);
   TraceMult->GetYaxis()->SetRangeUser(0,AnodeCols+1);
-  TraceMult->Draw();
+  TraceMult->Draw("HIST");
 
 
   TraceCan->Update();
