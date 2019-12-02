@@ -366,7 +366,7 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp)
       // Fill tree leaves
       if (SimTree!=0) {
 	int stpid = AnodeStpID[stp][col];
-	if (stpid>=0 && stpid<17) {
+	if (stpid>=0 && stpid<=17) {
 	  cathode += DeltaE;
 	  if (stpid==0)
 	    strip0 += DeltaE;
@@ -669,7 +669,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   // for (int col=0; col<AnodeCols; col++)
   //   TraceB[col]->Draw("l same");
   // TraceB[AnodeCols]->Draw("*l same");
-  PrintEnergetics(Kb_after_window, DeltaEB_ave);
+  //  PrintEnergetics(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
   // Some kinematic variables
@@ -1684,10 +1684,10 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
   if (PrintLevel>0)
     cout << "Eexc(" << Compound->Name << ") = " << sqrt(Ptot*Ptot) - mc << " MeV" << endl;
 
-  // Assume none of the particles will be propagated
+  // Assume all the particles will be propagated
   for (int er=0; er<CurEva; er++) {
-    EvaP[er]->DoNotPropagate = true;
-    EvaR[er]->DoNotPropagate = true;
+    EvaP[er]->DoNotPropagate = false;
+    EvaR[er]->DoNotPropagate = false;
   }
 
   // If user specifies angles used them for the first reaction
@@ -1698,16 +1698,20 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     double ml = EvaP[er]->Mass;
     double mh = EvaR[er]->Mass;
     double Qvalue = sqrt(Ptot*Ptot) - ml - mh;
-    if (Qvalue<0 && er>0) {
+    if (Qvalue<0 /*&& er>0*/) {
       // The present reaction is not energetically allowed
       // Propagate the previuos evap res and exit the loop
-      EvaR[er-1]->DoNotPropagate = false;
+      //EvaR[er-1]->DoNotPropagate = false;
+      for (int i=er; i<CurEva; i++) {
+	EvaP[i]->DoNotPropagate = true;
+	EvaR[i]->DoNotPropagate = true;	
+      }
       break;
     }
-    if (er==CurEva-1)
-      EvaR[er]->DoNotPropagate = false;
+    // if (er==CurEva-1)
+    //   EvaR[er]->DoNotPropagate = false;
 
-    double Ex = Rdm->Uniform(Qvalue/2, Qvalue); // assuming it prefers to stay highly excited
+    double Ex = Rdm->Uniform(0.0, Qvalue); 
 
     // If the user did not specify the value of theta and phi (initial
     // theta=phi=-1) or for er>0, randomly select the scattering angle
@@ -1767,15 +1771,18 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     // Initial position of the light particle (at the target). This
     // particle will be propagated.
     EvaP[er]->SetX(tof, 0, 0, zr);
-    EvaP[er]->DoNotPropagate = false;
+    //    EvaP[er]->DoNotPropagate = false;
     if (PrintLevel>0)
       EvaP[er]->Print();
 
     
     // Initial position of the evaporation residue (at the
-    // target). We don't yet know if this partivle will be
+    // target). We don't yet know if this particle will be
     // propagated (this will be known in the next cycle)
     EvaR[er]->SetX(tof, 0, 0, zr);
+    if (er>0)
+      EvaR[er-1]->DoNotPropagate = true;
+    
     // Save the angles in degrees
     theta_h = (EvaR[er]->GetTheta())*180/pi;
     phi_h = (EvaR[er]->GetPhi())*180/pi;
@@ -1985,7 +1992,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   // for (int col=0; col<AnodeCols; col++)
   //   TraceB[col]->Draw("l same");
   // TraceB[AnodeCols]->Draw("*l same");
-  PrintEnergetics(Kb_after_window, DeltaEB_ave);
+  // PrintEnergetics(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
   // Some kinematic variables
