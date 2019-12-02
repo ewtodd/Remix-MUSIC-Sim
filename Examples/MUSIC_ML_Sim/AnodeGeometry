@@ -1,0 +1,41 @@
+MUSIC Anode geometry file 2019/11/04 (approved by Melina)
+Number of strips: 20
+Number of columns: 2
+Stp	Col	StpID	Name	Dx	Dy	Dz	Color	Comment
+0	0  	-1	DeadUS	9	10	3.590	920	dead layer upstream (kGray)
+1	0  	0	S0  	9	10	1.578	416	strip 0 (kGreen)
+2	0  	1	S1C0	4	10	1.578	425	strip 1 beam right (kCyan-7)
+2	1  	1	S1C1	5	10	1.578	609	strip 1 beam left (kMagenta-7)
+3	0  	2	S2C0	5	10	1.578	425	strip 2 beam right
+3	1  	2	S2C1	4	10	1.578	609	strip 2 beam left
+4	0  	3	S3C0	4	10	1.578	425	strip 3 beam right
+4	1  	3	S3C1	5	10	1.578	609	strip 3 beam left
+5	0  	4	S2C0	5	10	1.578	425	strip 4 beam right
+5	1  	4	S2C1	4	10	1.578	609	strip 4 beam left
+6	0  	5	S5C0	4	10	1.578	425	strip 5 beam right
+6	1  	5	S5C1	5	10	1.578	609	strip 5 beam left
+7	0  	6	S2C0	5	10	1.578	425	strip 6 beam right
+7	1  	6	S2C1	4	10	1.578	609	strip 6 beam left
+8	0  	7	S7C0	4	10	1.578	425	strip 7 beam right
+8	1  	7	S7C1	5	10	1.578	609	strip 7 beam left
+9	0  	8	S2C0	5	10	1.578	425	strip 8 beam right
+9	1  	8	S2C1	4	10	1.578	609	strip 8 beam left
+10	0  	9	S9C0	4	10	1.578	425	strip 9 beam right
+10	1  	9	S9C1	5	10	1.578	609	strip 9 beam left
+11	0  	10	S2C0	5	10	1.578	425	strip 10 beam right
+11	1  	10	S2C1	4	10	1.578	609	strip 10 beam left
+12	0  	11	S11C0	4	10	1.578	425	strip 11 beam right
+12	1  	11	S11C1	5	10	1.578	609	strip 11 beam left
+13	0  	12	S12C0	5	10	1.578	425	strip 12 beam right
+13	1  	12	S12C1	4	10	1.578	609	strip 12 beam left
+14	0  	13	S13C0	4	10	1.578	425	strip 13 beam right
+14	1  	13	S13C1	5	10	1.578	609	strip 13 beam left
+15	0  	14	S14C0	5	10	1.578	425	strip 14 beam right
+15	1  	14	S14C1	4	10	1.578	609	strip 14 beam left
+16	0  	15	S15C0	4	10	1.578	425	strip 15 beam right
+16	1  	15	S15C1	5	10	1.578	609	strip 15 beam left
+17	0  	16	S16C0	5	10	1.578	425	strip 16 beam right
+17	1  	16	S16C1	4	10	1.578	609	strip 16 beam left
+18	0  	17	S17  	9	10	1.578	416	strip 17
+19	0  	-1	DeadDS	9	10	3.522	920	dead layer downstream
+
