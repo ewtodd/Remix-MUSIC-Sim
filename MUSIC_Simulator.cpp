@@ -297,37 +297,6 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
   double Ethresh = 0.02;  // Right now the threshold for the multiplicity is hard-coded here.
   double DeltaE = 0;
   TraceMult->Reset();
-
-  // 3D trajectories (why clone and not just point to them?)
-  if (evt<Particle::MaxEvents && UpdateVis) {
-    if (Heavy) {
-      //      TrajH[evt] = (TEveStraightLineSet*)Heavy->AllTraj[evt]->Clone();
-      TrajH[evt] = (TEveStraightLineSet*)Heavy->Trajectory->Clone();
-      if (DeDau1 && DeDau2) {
-	//	TrajD1[evt] = (TEveStraightLineSet*)DeDau1->AllTraj[evt]->Clone();
-	TrajD1[evt] = (TEveStraightLineSet*)DeDau1->Trajectory->Clone();
-	//	TrajD2[evt] = (TEveStraightLineSet*)DeDau2->AllTraj[evt]->Clone();
-	TrajD2[evt] = (TEveStraightLineSet*)DeDau2->Trajectory->Clone();
-      }
-    }
-    if (Light) {
-      //      TrajL[evt] = (TEveStraightLineSet*)Light->AllTraj[evt]->Clone();
-      TrajL[evt] = (TEveStraightLineSet*)Light->Trajectory->Clone();
-    }
-    // Evaproation residues and particles
-    for (int er=0; er<CurEva; er++) {
-      TrajEvaR[evt][er] = 0;
-      if (!EvaR[er]->DoNotPropagate) {
-	//	TrajEvaR[evt][er] = (TEveStraightLineSet*)EvaR[er]->AllTraj[evt]->Clone();
-	TrajEvaR[evt][er] = (TEveStraightLineSet*)EvaR[er]->Trajectory->Clone();
-      }
-      TrajEvaP[evt][er] = 0;
-      if (!EvaP[er]->DoNotPropagate) {
-	//	TrajEvaP[evt][er] = (TEveStraightLineSet*)EvaP[er]->AllTraj[evt]->Clone();
-	TrajEvaP[evt][er] = (TEveStraightLineSet*)EvaP[er]->Trajectory->Clone();
-      }
-    }
-  }
   
   // Reset the SimTree leaves
   if (SimTree!=0) {
@@ -346,23 +315,6 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
     DeltaE = 0;
     int mult = 0;
     for (int col=0; col<AnodeCols+1; col++) {
-      // Previously we were normalizing to the energy loss of the
-      // beam minus the energy loss in the the dead layer, which in
-      // this version of the code is typically strip 1.  
-      // DeltaE = DeltaEB[n] + DeltaEL[n] + DeltaEH[n] - (DeltaEB_ave[n]-DeltaEB_ave[1]);
-      // In this version, we do not normalize to the average energy
-      // loss of the beam in each strip.
-      if (DeDau1 && DeDau2) {
-	TraceD1[evt][col]->SetPoint(stp, stp, DeltaED1[stp][col]);
-	TraceD2[evt][col]->SetPoint(stp, stp, DeltaED2[stp][col]);
-      }
-      else if (Heavy)
-	TraceH[evt][col]->SetPoint(stp, stp, DeltaEH[stp][col]);
-      if (Light)
-	TraceL[evt][col]->SetPoint(stp, stp, DeltaEL[stp][col]);
-      
-      // DeltaE = DeltaEB[stp][col] + DeltaEL[stp][col] + DeltaEH[stp][col] + 
-      // 	DeltaED1[stp][col] + DeltaED2[stp][col];
       DeltaE = DeltaEB[stp][col];
       for (int er=0; er<CurEva; er++) {
 	DeltaE += DeltaE_EvaP[er][stp][col];
@@ -390,19 +342,30 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
 	  }
 	}
       }
-       if (EneSigma!=0 && Gaussian!=0 && DeltaE>0) {
-         Gaussian->SetRange(0.0, 2*DeltaE);
-         Gaussian->SetParameters(1.0, DeltaE, EneSigma);
-         DeltaE = Gaussian->GetRandom();
-       }
-      Trace[evt][col]->SetPoint(stp, stp, DeltaE);
-      if (PrintLevel>0)
-	cout << stp << " " << col << ": " << DeltaE << " = " << DeltaEB[stp][col] << "+" 
-	     << DeltaEL[stp][col] << "+" << DeltaEH[stp][col] << "+" << DeltaED1[stp][col] 
-	     << "+" << DeltaED2[stp][col] << "+E.R."<< endl;
+      if (EneSigma!=0 && Gaussian!=0 && DeltaE>0) {
+	Gaussian->SetRange(0.0, 2*DeltaE);
+	Gaussian->SetParameters(1.0, DeltaE, EneSigma);
+	DeltaE = Gaussian->GetRandom();
+      }
+      Trace[col]->SetPoint(stp, stp, DeltaE);
+      // if (PrintLevel>0)
+      // 	cout << stp << " " << col << ": " << DeltaE << " = " << DeltaEB[stp][col] << "+" 
+      // 	     << DeltaEL[stp][col] << "+" << DeltaEH[stp][col] << "+" << DeltaED1[stp][col] 
+      // 	     << "+" << DeltaED2[stp][col] << "+E.R."<< endl;
     }
     TraceMult->Fill(stp, mult);
   }
+  
+
+  if (Trace!=0) {
+    for (int col=0; col<AnodeCols+1; col++) {
+      if (col==AnodeCols) 
+	Trace[col]->Write(Form("Trace%d",evt), TObject::kOverwrite);
+      else
+	Trace[col]->Write(Form("Trace%dc%d",evt,col), TObject::kOverwrite);
+    }
+  }
+  
 #endif
   return;
 }
@@ -449,82 +412,19 @@ void MUSIC_Simulator::CreateTracesAndTrajectories(int NEvents)
     }
   }
   // Initialize the rest of the traces for each column
-  Trace = new TGraph**[NEvents];
-  TraceH = new TGraph**[NEvents];
-  TraceD1 = new TGraph**[NEvents];
-  TraceD2 = new TGraph**[NEvents];
-  TraceL = new TGraph**[NEvents];
-  for (int evt=0; evt<NEvents; evt++) {
-    Trace[evt] = new TGraph*[AnodeCols+1];
-    TraceH[evt] = new TGraph*[AnodeCols+1];
-    TraceD1[evt] = new TGraph*[AnodeCols+1];
-    TraceD2[evt] = new TGraph*[AnodeCols+1];
-    TraceL[evt] = new TGraph*[AnodeCols+1];
-    for (int col=0; col<AnodeCols+1; col++) {
-      Trace[evt][col] = new TGraph();
-      TraceH[evt][col] = new TGraph();
-      TraceD1[evt][col] = new TGraph();
-      TraceD2[evt][col] = new TGraph();
-      TraceL[evt][col] = new TGraph();
-      if (col==AnodeCols) {
-	Trace[evt][col]->SetName(Form("evt %d total", evt));
-	Trace[evt][col]->SetLineColor(kBlack);
-	Trace[evt][col]->SetLineWidth(2);
-	// heavy
-	if (Heavy) {
-	  TraceH[evt][col]->SetName(Form("evt %d total %s", evt, Heavy->Name.c_str()));
-	  TraceH[evt][col]->SetLineColor(Heavy->GetColor());
-	  TraceH[evt][col]->SetLineWidth(2);
-	  if (DeDau1 && DeDau2) {
-	    // decay daughter1
-	    TraceD1[evt][col]->SetName(Form("evt %d total %s", evt, DeDau1->Name.c_str()));
-	    TraceD1[evt][col]->SetLineColor(DeDau1->GetColor());
-	    TraceD1[evt][col]->SetLineWidth(2);
-	    // decay daughter2
-	    TraceD2[evt][col]->SetName(Form("evt %d total %s", evt, DeDau2->Name.c_str()));
-	    TraceD2[evt][col]->SetLineColor(DeDau2->GetColor());
-	    TraceD2[evt][col]->SetLineWidth(2);
-	  }
-	}
-	// light
-	if (Light) {
-	  TraceL[evt][col]->SetName(Form("evt %d total %s", evt, Light->Name.c_str()));
-	  TraceL[evt][col]->SetLineColor(Light->GetColor());
-	  TraceL[evt][col]->SetLineWidth(2);
-	}
-      }
-      else {
-	Trace[evt][col]->SetName(Form("evt %d col %d", evt, col));
-	Trace[evt][col]->SetLineColor(Chroma[col]);
-	Trace[evt][col]->SetLineStyle(2);
-	Trace[evt][col]->SetLineWidth(2);
-	// heavy
-	if (Heavy) {
-	  TraceH[evt][col]->SetName(Form("evt %d col %d %s", evt, col, Heavy->Name.c_str()));
-	  TraceH[evt][col]->SetLineColor(Chroma[col]);
-	  TraceH[evt][col]->SetLineStyle(2);
-	  TraceH[evt][col]->SetLineWidth(2);
-	  if (DeDau1 && DeDau2) {
-	    // decay daughter1
-	    TraceD1[evt][col]->SetName(Form("evt %d col %d %s", evt, col, DeDau1->Name.c_str()));
-	    TraceD1[evt][col]->SetLineColor(Chroma[col]);
-	    TraceD1[evt][col]->SetLineStyle(2);
-	    TraceD1[evt][col]->SetLineWidth(2);
-	    // decay daughter1
-	    TraceD2[evt][col]->SetName(Form("evt %d col %d %s", evt, col, DeDau2->Name.c_str()));
-	    TraceD2[evt][col]->SetLineColor(Chroma[col]);
-	    TraceD2[evt][col]->SetLineStyle(2);
-	    TraceD2[evt][col]->SetLineWidth(2);
-	  }
-	}
-	// light
-	if (Light) {
-	  TraceL[evt][col]->SetName(Form("evt %d col %d %s", evt, col, Light->Name.c_str()));
-	  TraceL[evt][col]->SetLineColor(Chroma[col]);
-	  TraceL[evt][col]->SetLineStyle(2);
-	  TraceL[evt][col]->SetLineWidth(2);
-	}
-      }
+  Trace = new TGraph*[AnodeCols+1];
+  for (int col=0; col<AnodeCols+1; col++) {
+    Trace[col] = new TGraph();
+    if (col==AnodeCols) {
+      Trace[col]->SetName("full trace");
+      Trace[col]->SetLineColor(kBlack);
+      Trace[col]->SetLineWidth(2);
+    }
+    else {
+      Trace[col]->SetName(Form("trace col %d", col));
+      Trace[col]->SetLineColor(Chroma[col]);
+      Trace[col]->SetLineStyle(2);
+      Trace[col]->SetLineWidth(2);
     }
   }
 
@@ -533,15 +433,15 @@ void MUSIC_Simulator::CreateTracesAndTrajectories(int NEvents)
   TraceMult->GetXaxis()->CenterTitle();
  
   // 3D trajectories
-  TrajH = new TEveStraightLineSet*[NEvents];
-  TrajD1 = new TEveStraightLineSet*[NEvents];
-  TrajD2 = new TEveStraightLineSet*[NEvents];
-  TrajL = new TEveStraightLineSet*[NEvents];
-  TrajEvaP = new TEveStraightLineSet**[NEvents];
-  TrajEvaR = new TEveStraightLineSet**[NEvents];
+  // TrajH = new TEveStraightLineSet*[NEvents];
+  // TrajD1 = new TEveStraightLineSet*[NEvents];
+  // TrajD2 = new TEveStraightLineSet*[NEvents];
+  // TrajL = new TEveStraightLineSet*[NEvents];
+  //  TrajEvaP = new TEveStraightLineSet**[NEvents];
+  //  TrajEvaR = new TEveStraightLineSet**[NEvents];
   for (int e=0; e<NEvents; e++) {
-    TrajEvaP[e] = new TEveStraightLineSet*[MaxEva];
-    TrajEvaR[e] = new TEveStraightLineSet*[MaxEva];
+    //    TrajEvaP[e] = new TEveStraightLineSet*[MaxEva];
+    //    TrajEvaR[e] = new TEveStraightLineSet*[MaxEva];
   }    
 #endif
   return;
@@ -673,12 +573,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   for (int stp=0; stp<AnodeStps; stp++)
     for (int col=0; col<AnodeCols+1; col++) 
       TraceB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
-  // Draw the beam trace in the 3rd pad (over a background histogram)
-  // TraceCan->cd(3);
-  // HCTB->Draw();
-  // for (int col=0; col<AnodeCols; col++)
-  //   TraceB[col]->Draw("l same");
-  // TraceB[AnodeCols]->Draw("*l same");
+
   //  PrintEnergetics(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
@@ -992,20 +887,9 @@ void MUSIC_Simulator::PrintEnergetics(double Kb, double** DeltaEB)
 ///////////////////////////////////////////////////////////////////////////////////
 int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, double UserStep, double** DE)
 {
-  // const int strips = AnodeStps;
-  // const int columns = AnodeCols+1;
-  // double DE[strips][columns];
   for (int stp = 0; stp<AnodeStps; stp++) 
     for (int col = 0; col<AnodeCols+1; col++) 
       DE[stp][col] = 0;
-
-
-  // double** DE = new double*[AnodeStps];
-  // for (int stp = 0; stp<AnodeStps; stp++) {
-  //   DE[stp] = new double[AnodeCols+1];
-  //   for (int col = 0; col<AnodeCols+1; col++) 
-  //     DE[stp][col] = 0;
-  // }
 
   if (PO->DoNotPropagate) {
     if (PrintLevel>0)
@@ -1152,15 +1036,15 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     // Add a new point to the trace and trajectory if enough time has
     // passed.
     if (tf-tt>UserStep) {   
-      if (PO->SaveTrajectory) {
-	if (!Skip) {
-	  //	  PO->AllTraj[Event]->AddLine(xt,yt,zt, xf,yf,zf);
-	  PO->Trajectory->AddLine(xt,yt,zt, xf,yf,zf);
-	  Skip = 1;
-	}
-	else 
-	  Skip = 0;
-      }
+      // if (PO->SaveTrajectory) {
+      // 	if (!Skip) {
+      // 	  //	  PO->AllTraj[Event]->AddLine(xt,yt,zt, xf,yf,zf);
+      // 	  PO->Trajectory->AddLine(xt,yt,zt, xf,yf,zf);
+      // 	  Skip = 1;
+      // 	}
+      // 	else 
+      // 	  Skip = 0;
+      // }
       tt = tf;
       xt = xf;
       yt = yf;
@@ -1422,7 +1306,7 @@ void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, 
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
-  Beam = new Particle(Name, m, Z, true /*SaveTrajectories on*/);
+  Beam = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   Beam->SetTrajectoryAtt((short)Color);
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   Beam->SetMedium(ELossFile);
@@ -1475,7 +1359,7 @@ void MUSIC_Simulator::SetDecayDaughter1(string Name, int Color, string ELossFile
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
-  DeDau1 = new Particle(Name, m, Z, true /*SaveTrajectories on*/);
+  DeDau1 = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   DeDau1->SetTrajectoryAtt((short)Color);
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   DeDau1->SetMedium(ELossFile);
@@ -1492,7 +1376,7 @@ void MUSIC_Simulator::SetDecayDaughter2(string Name, int Color, string ELossFile
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
-  DeDau2 = new Particle(Name, m, Z, true /*SaveTrajectories on*/);
+  DeDau2 = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   DeDau2->SetTrajectoryAtt((short)Color);
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   DeDau2->SetMedium(ELossFile);
@@ -1520,7 +1404,7 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, string ResELossFile, int
   double mp = NuF->GetMass(ParName, "MeV/c^2");
   int Zp = NuF->GetZ(ParName);
   ParName += std::to_string(CurEva);
-  EvaP[CurEva] = new Particle(ParName, mp, Zp, true /*SaveTrajectories on*/);
+  EvaP[CurEva] = new Particle(ParName, mp, Zp, false /*SaveTrajectories off*/);
   EvaP[CurEva]->SetTrajectoryAtt((short)ParColor);
   EvaP[CurEva]->SetMedium(ParELossFile);
   EvaP[CurEva]->Print();
@@ -1532,7 +1416,7 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, string ResELossFile, int
   // Evaporation residue (heavy particle)
   double mr = NuF->GetMass(ResName, "MeV/c^2");
   int Zr = NuF->GetZ(ResName);
-  EvaR[CurEva] = new Particle(ResName, mr, Zr, true /*SaveTrajectories on*/);
+  EvaR[CurEva] = new Particle(ResName, mr, Zr, false /*SaveTrajectories off*/);
   EvaR[CurEva]->SetTrajectoryAtt((short)ResColor);
   EvaR[CurEva]->SetMedium(ResELossFile);
   EvaR[CurEva]->Print();  
@@ -1557,7 +1441,7 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, string ResELossFile, int
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
-  Heavy = new Particle(Name, m, Z, true /*SaveTrajectories on*/);
+  Heavy = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   Heavy->SetTrajectoryAtt((short)Color);
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   Heavy->SetMedium(ELossFile);
@@ -1604,7 +1488,7 @@ void MUSIC_Simulator::SetLightParticle(string Name, int Color, string ELossFile)
   // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
-  Light = new Particle(Name, m, Z, true /*SaveTrajectories on*/);
+  Light = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   Light->SetTrajectoryAtt((short)Color);
   // Currently, this simulation is restricted to one medium (gas) in MUSIC.
   Light->SetMedium(ELossFile);
@@ -1939,7 +1823,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   // For progress monitor
   TStopwatch StpWatch;
   long EvtsProcessed = 0;
-  long double Frac[6] = {0.01, 0.25, 0.5, 0.75, 0.9, 1.0};
+  long double Frac[11] = {0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};
   int FIndex = 0;
 
   // ROOT file where the traces will be saved
@@ -1970,6 +1854,13 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   if (PrintLevel>0)
     SimTree->Print();
 
+
+  TDirectory* trace_dir = 0;
+  if (ROOTfile) {
+    trace_dir = ROOTfile->mkdir("traces");
+    trace_dir->cd();
+  }
+
   // Create new traces and trajectories (objectrs) for visualizing the
   // detector response
   CreateTracesAndTrajectories(NEvents);
@@ -1991,12 +1882,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   for (int stp=0; stp<AnodeStps; stp++)
     for (int col=0; col<AnodeCols+1; col++) 
       TraceB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
-  // Draw the beam trace in the 3rd pad (over a background histogram)
-  // TraceCan->cd(3);
-  // HCTB->Draw();
-  // for (int col=0; col<AnodeCols; col++)
-  //   TraceB[col]->Draw("l same");
-  // TraceB[AnodeCols]->Draw("*l same");
+
   // PrintEnergetics(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
@@ -2141,7 +2027,9 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     // 7. Compute detector response (i.e. DE for beam + light + heavy)
     // Clone the particle trajectories
     ComputeDetectorResponse(evt, StpID, UpdateVis);
+    //    ROOTfile->cd();
     SimTree->Fill();
+    
 
     // 8. Display trace and particle trajecories
     if (UpdateVis)
@@ -2175,6 +2063,8 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
 #endif
   return;
 }
+
+
 
 ///////////////////////////////////////////////////////////////////////////////////
 // With this version of Simulate() one can specify the angular range to be covered.
@@ -2375,56 +2265,20 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
     TrackBeam->ElementChanged();
 
     short C,S,W;
-    if (Light!=0 && Light->SaveTrajectory) {
-      Light->GetTrajectoryAtt(C,S,W);
-      TrajL[evt]->SetLineColor(C);
-      TrajL[evt]->SetLineStyle(S);
-      TrajL[evt]->SetLineWidth(W);
-      Eve->AddElement(TrajL[evt]);
-    }
-    if (Heavy!=0 && Heavy->SaveTrajectory) {
-      Heavy->GetTrajectoryAtt(C,S,W);
-      TrajH[evt]->SetLineColor(C);
-      TrajH[evt]->SetLineStyle(S);
-      TrajH[evt]->SetLineWidth(W);
-      Eve->AddElement(TrajH[evt]);
-    } 
-    if (DeDau1 && DeDau1->SaveTrajectory) {
-      DeDau1->GetTrajectoryAtt(C,S,W);
-      TrajD1[evt]->SetLineColor(C);
-      TrajD1[evt]->SetLineStyle(S);
-      TrajD1[evt]->SetLineWidth(W);
-      Eve->AddElement(TrajD1[evt]);
-    } 
-    if (DeDau2 && DeDau2->SaveTrajectory) {
-      DeDau2->GetTrajectoryAtt(C,S,W);
-      TrajD2[evt]->SetLineColor(C);
-      TrajD2[evt]->SetLineStyle(S);
-      TrajD2[evt]->SetLineWidth(W);
-      Eve->AddElement(TrajD2[evt]);
-    } 
     for (int er=0; er<CurEva; er++) {
-      if (EvaP[er] && EvaP[er]->SaveTrajectory && !EvaP[er]->DoNotPropagate && TrajEvaP[evt][er]) {
+      if (EvaP[er] && !EvaP[er]->DoNotPropagate) {
 	EvaP[er]->GetTrajectoryAtt(C,S,W);
 	tracklength = TrackEvaP[er]->GetVector().Mag();
 	if (tracklength>0) {
-	  TrajEvaP[evt][er]->SetLineColor(C);
-	  TrajEvaP[evt][er]->SetLineStyle(S);
-	  TrajEvaP[evt][er]->SetLineWidth(W);
 	  TrackEvaP[er]->SetTubeR(0.1/tracklength);
-	  //      Eve->AddElement(TrackEvaP[er]);
 	  TrackEvaP[er]->ElementChanged();
 	}
       }
-      if (EvaR[er] && EvaR[er]->SaveTrajectory && !EvaR[er]->DoNotPropagate) {
+      if (EvaR[er] && !EvaR[er]->DoNotPropagate) {
 	tracklength = TrackEvaR[er]->GetVector().Mag();
 	if (tracklength>0) {
 	  EvaR[er]->GetTrajectoryAtt(C,S,W);
-	  TrajEvaR[evt][er]->SetLineColor(C);
-	  TrajEvaR[evt][er]->SetLineStyle(S);
-	  TrajEvaR[evt][er]->SetLineWidth(W);
 	  TrackEvaR[er]->SetTubeR(0.1/tracklength);
-	  //Eve->AddElement(TrackEvaR[er]);
 	  TrackEvaR[er]->ElementChanged();
 	}
       }
@@ -2439,15 +2293,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
   TraceCan->cd(1);
   // Legend
   if (LegPart->GetNRows()==0) {
-    LegPart->AddEntry(Trace[evt][AnodeCols], "All particles", "l");
-    if (DeDau1 && DeDau2) {
-      LegPart->AddEntry(TraceD1[evt][AnodeCols], Form("%s",DeDau1->Name.c_str()), "l");
-      LegPart->AddEntry(TraceD2[evt][AnodeCols], Form("%s",DeDau2->Name.c_str()), "l");
-    }
-    else if (Heavy)
-      LegPart->AddEntry(TraceH[evt][AnodeCols], Form("%s",Heavy->Name.c_str()), "l");
-    if (Light)
-      LegPart->AddEntry(TraceL[evt][AnodeCols], Form("%s",Light->Name.c_str()), "l");
+    LegPart->AddEntry(Trace[AnodeCols], "All particles", "l");
   }
   LegPart->Draw();
 
@@ -2457,16 +2303,6 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
   // Draw traces
   if (PrintLevel>0)
     cout << "Drawing traces ..." << endl;
-  // if (DeDau1 && DeDau2) {
-  //   TraceD1[evt][AnodeCols]->Draw("l same");
-  //   TraceD2[evt][AnodeCols]->Draw("l same");
-  // }
-  // else if (Heavy)
-  //   TraceH[evt][AnodeCols]->Draw("l same");
-  // if (Light)
-  //   TraceL[evt][AnodeCols]->Draw("l same");
-  // TraceB[AnodeCols]->Draw("l same");
-  // Trace[evt][AnodeCols]->Draw("*l same");
 
   // Traces of energy loss in columns as a function of the strip
   // number.
@@ -2474,13 +2310,13 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
 #if 1
   TraceB[AnodeCols]->Draw("l same");
   for (int col=0; col<AnodeCols; col++)
-    Trace[evt][col]->Draw("l same");
-  Trace[evt][AnodeCols]->Draw("*l same");
+    Trace[col]->Draw("l same");
+  Trace[AnodeCols]->Draw("*l same");
   // Legend
   if (LegCol->GetNRows()==0) {
-    LegCol->AddEntry(Trace[evt][AnodeCols],"All columns","l");
+    LegCol->AddEntry(Trace[AnodeCols],"All columns","l");
     for (int col=0; col<AnodeCols; col++)
-      LegCol->AddEntry(Trace[evt][col], Form("Column %d", col),"l");
+      LegCol->AddEntry(Trace[col], Form("Column %d", col),"l");
     // TraceCan->cd(3);
     // LegCol->Draw();
     TraceCan->cd(2);      
@@ -2498,19 +2334,6 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
   if (Wait==1)
     TraceCan->WaitPrimitive();
 
-  // OBSOLETE
-  // Remove the 3D trajecories. Make space for the trajectories of
-  // the next event, but don't remove the ones of the last event.
-  if (Wait) {
-    if (Light!=0 && Light->SaveTrajectory)
-      Eve->RemoveElement(TrajL[evt], (TEveElement*)Eve->GetCurrentEvent());
-    if (Heavy!=0 && Heavy->SaveTrajectory)
-      Eve->RemoveElement(TrajH[evt], (TEveElement*)Eve->GetCurrentEvent());
-    if (DeDau1!=0 && DeDau1->SaveTrajectory)
-      Eve->RemoveElement(TrajD1[evt], (TEveElement*)Eve->GetCurrentEvent());
-    if (DeDau2!=0 && DeDau2->SaveTrajectory)
-      Eve->RemoveElement(TrajD2[evt], (TEveElement*)Eve->GetCurrentEvent());
-  }
 #endif
   return;
 }
@@ -2521,7 +2344,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::WriteTraces(char* FileName)
 {
-#if 1
+#if 0
   TFile* Output = new TFile(FileName, "update");
   Output->cd();
   TDirectory* trace_dir = Output->mkdir("traces");

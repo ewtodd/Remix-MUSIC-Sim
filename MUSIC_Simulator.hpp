@@ -149,7 +149,7 @@ private:
   TH2F* HCT;
   TH2F* HCTB;
   TH2F* HPT;
-  TGraph*** Trace;
+  TGraph** Trace;
   TGraph*** TraceH;
   TGraph*** TraceD1;
   TGraph*** TraceD2;
