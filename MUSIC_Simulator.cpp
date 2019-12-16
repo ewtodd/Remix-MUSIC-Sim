@@ -265,7 +265,7 @@ int MUSIC_Simulator::CheckMemoryUsage(int Print)
   if (gSystem!=0) {
     Memory = new MemInfo_t();
     gSystem->GetMemInfo(Memory);
-    float MemoryLimit = 0.8*Memory->fMemTotal;
+    float MemoryLimit = 0.95*Memory->fMemTotal;
     if (Print) {
       cout << "> Total memory used: "  << Memory->fMemUsed << " MB = "
 	   << 100.0*Memory->fMemUsed/Memory->fMemTotal 
