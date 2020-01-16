@@ -23,21 +23,19 @@ void MakeSRIMTables()
   string SRModPath = "/home/dasago/.wine/drive_c/Program\ Files\ \(x86\)/SRIM/SR\ Module/";
   //
   // Particles for which the Stopping Power tables will be generated
-  const int NumParticles = 8;
+  const int NumParticles = 5;
   string particle[NumParticles];
-  particle[0] = "56Ni";
+  particle[0] = "10B";
   particle[1] = "1H"; 
   particle[2] = "4He";
-  particle[3] = "59Zn";
-  particle[4] = "59Cu";
-  particle[5] = "56Cu";
-  particle[6] = "56Co";
-  particle[7] = "56Fe";
+  particle[3] = "13C";
+  particle[4] = "13N";
+
   //
   // Target gas related stuff
-  float GasP = 150; // Torr
+  float GasP = 130; // Torr
   float GasT = 293; // K
-  int GasIndex = 17;
+  int GasIndex = 3;
   // You have to use the same index numbers as in the SRIM_Table_Maker class.
   //   0 - CD2
   //   1 - CF4 (gas)
