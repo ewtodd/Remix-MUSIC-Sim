@@ -1808,7 +1808,7 @@ void MUSIC_Simulator::SetTargetParticle(string Name)
 // 8. Display trace and particle trajecories
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double UserStep, int UpdateVis, 
-			       int Wait, string FileName)
+			       int Wait, string FileName, string FileOpt)
 {
   double ti,xi,yi,zi, tf,xf,yf,zf;
 #if 1
@@ -1830,35 +1830,63 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   TFile* ROOTfile = 0;
   
   if (FileName!="")
-    ROOTfile = new TFile(FileName.c_str(), "recreate");
+    ROOTfile = new TFile(FileName.c_str(), FileOpt.c_str());
   
   // Tree similar to the one used for experimental data
-  SimTree = new TTree("simt","Simulated MUSIC data");
-  SimTree->Branch("de_l",  de_l,     Form("de_l[%d]/F",ExpAnodeStps));
-  SimTree->Branch("de_r",  de_r,     Form("de_r[%d]/F",ExpAnodeStps));
-  SimTree->Branch("seg",   seg,      Form("seg[%d]/I",ExpAnodeStps));
-  SimTree->Branch("stp0",  &strip0,  "stp0/F");
-  SimTree->Branch("stp17", &strip17, "stp17/F");
-  SimTree->Branch("cath",  &cathode, "cath/F");
-  // The following branches are for physical quantities that at the
-  // moment can only be obtained from the simulation
-  SimTree->Branch("reacStp",   &reacStp,   "reacStp/I");
-  SimTree->Branch("Kb", &Kb, "Kb/F");
-  SimTree->Branch("Kl", &Kl, "Kl/F");
-  SimTree->Branch("Kh", &Kh, "Kh/F");
-  SimTree->Branch("theta_CM", &theta_CM, "theta_CM/F");
-  SimTree->Branch("theta_l", &theta_l, "theta_l/F");
-  SimTree->Branch("theta_h", &theta_h, "theta_h/F");
-  SimTree->Branch("phi_l",   &phi_l,   "phi_l/F");
-  SimTree->Branch("phi_h",   &phi_l,   "phi_h/F");
+  if (ROOTfile && (FileOpt=="update" || FileOpt=="UPDATE")) {
+    SimTree = (TTree*)ROOTfile->Get("simt");
+    SimTree->SetBranchAddress("de_l",  de_l);
+    SimTree->SetBranchAddress("de_r",  de_r);
+    SimTree->SetBranchAddress("seg",   seg);
+    SimTree->SetBranchAddress("stp0",  &strip0);
+    SimTree->SetBranchAddress("stp17", &strip17);
+    SimTree->SetBranchAddress("cath",  &cathode);
+    // The following branches are for physical quantities that at the
+    // moment can only be obtained from the simulation
+    SimTree->SetBranchAddress("reacStp",   &reacStp);
+    SimTree->SetBranchAddress("Kb", &Kb);
+    SimTree->SetBranchAddress("Kl", &Kl);
+    SimTree->SetBranchAddress("Kh", &Kh);
+    SimTree->SetBranchAddress("theta_CM", &theta_CM);
+    SimTree->SetBranchAddress("theta_l", &theta_l);
+    SimTree->SetBranchAddress("theta_h", &theta_h);
+    SimTree->SetBranchAddress("phi_l",   &phi_l);
+    SimTree->SetBranchAddress("phi_h",   &phi_l);
+  }
+  else {
+    SimTree = new TTree("simt","Simulated MUSIC data");
+    SimTree->Branch("de_l",  de_l,     Form("de_l[%d]/F",ExpAnodeStps));
+    SimTree->Branch("de_r",  de_r,     Form("de_r[%d]/F",ExpAnodeStps));
+    SimTree->Branch("seg",   seg,      Form("seg[%d]/I",ExpAnodeStps));
+    SimTree->Branch("stp0",  &strip0,  "stp0/F");
+    SimTree->Branch("stp17", &strip17, "stp17/F");
+    SimTree->Branch("cath",  &cathode, "cath/F");
+    // The following branches are for physical quantities that at the
+    // moment can only be obtained from the simulation
+    SimTree->Branch("reacStp",   &reacStp,   "reacStp/I");
+    SimTree->Branch("Kb", &Kb, "Kb/F");
+    SimTree->Branch("Kl", &Kl, "Kl/F");
+    SimTree->Branch("Kh", &Kh, "Kh/F");
+    SimTree->Branch("theta_CM", &theta_CM, "theta_CM/F");
+    SimTree->Branch("theta_l", &theta_l, "theta_l/F");
+    SimTree->Branch("theta_h", &theta_h, "theta_h/F");
+    SimTree->Branch("phi_l",   &phi_l,   "phi_l/F");
+    SimTree->Branch("phi_h",   &phi_l,   "phi_h/F");
+  }
   if (PrintLevel>0)
     SimTree->Print();
-
+  
 
   TDirectory* trace_dir = 0;
   if (ROOTfile) {
-    trace_dir = ROOTfile->mkdir("traces");
-    trace_dir->cd();
+    if (FileOpt=="update" || FileOpt=="UPDATE") {
+      trace_dir = (TDirectory*)ROOTfile->Get("traces");
+      trace_dir->cd();
+    }
+    else {
+      trace_dir = ROOTfile->mkdir("traces");
+      trace_dir->cd();
+    }
   }
 
   // Create new traces and trajectories (objectrs) for visualizing the

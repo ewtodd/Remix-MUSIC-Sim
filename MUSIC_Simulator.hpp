@@ -88,7 +88,7 @@ public:
   void SetROOTSystemPointer(TSystem* gSystem);
   void SetStripEnergyResolution(float Sigma/*MeV*/);
   void SetTargetParticle(std::string Name);
-  void Simulate(int StpID, int NEvents, double MaxTime, double UserStep, int UpdateVis=0, int Wait=0, string FileName="");
+  void Simulate(int StpID, int NEvents, double MaxTime, double UserStep, int UpdateVis=0, int Wait=0, string FileName="", string FileOpt="recreate");
   void Simulate(int StpID, double ThCMMin, double ThCMMax, int ThSteps, double PhiCMMin, 
 		double PhiCMMax, int PhiSteps, double MaxTime, double UserStep, int Wait=0);
   void WriteTraces(char* FileName);

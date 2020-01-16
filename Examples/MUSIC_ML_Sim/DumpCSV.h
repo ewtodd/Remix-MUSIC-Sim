@@ -29,17 +29,17 @@ public :
    TTree          *fChain = 0;   //!pointer to the analyzed TTree or TChain
 
    // Readers to access the data (delete the ones you do not need).
-   TTreeReaderValue<Float_t> side = {fReader, "side"};
-   TTreeReaderValue<Float_t> sier = {fReader, "sier"};
+   //   TTreeReaderValue<Float_t> side = {fReader, "side"};
+   //   TTreeReaderValue<Float_t> sier = {fReader, "sier"};
    TTreeReaderArray<Float_t> de_l = {fReader, "de_l"};
    TTreeReaderArray<Float_t> de_r = {fReader, "de_r"};
-   TTreeReaderArray<Int_t> seg = {fReader, "seg"};
+   //   TTreeReaderArray<Int_t> seg = {fReader, "seg"};
    TTreeReaderValue<Float_t> stp0 = {fReader, "stp0"};
    TTreeReaderValue<Float_t> cath = {fReader, "cath"};
-   TTreeReaderValue<Float_t> grid = {fReader, "grid"};
+   //  TTreeReaderValue<Float_t> grid = {fReader, "grid"};
    TTreeReaderValue<Float_t> stp17 = {fReader, "stp17"};
-   TTreeReaderValue<Float_t> tac = {fReader, "tac"};
-
+   //   TTreeReaderValue<Float_t> tac = {fReader, "tac"};
+   TTreeReaderValue<Int_t> reacStp = {fReader, "reacStp"};
 
    DumpCSV(TTree * /*tree*/ =0) { }
    virtual ~DumpCSV() { }
@@ -89,7 +89,7 @@ Bool_t DumpCSV::Notify()
    // is started when using PROOF. It is normally not necessary to make changes
    // to the generated code, but the routine can be extended by the
    // user if needed. The return value is currently not used.
-
+  std::cout << "NOTIFY" << endl;
    return kTRUE;
 }
 
