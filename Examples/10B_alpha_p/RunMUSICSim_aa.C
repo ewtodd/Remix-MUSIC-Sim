@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////
 // Description: ROOT macro to run the MUSIC_Simulator.
 //
-// Usage: root -l RunMUSICSim_ap.C
+// Usage: root -l RunMUSICSim_aa.C
 //
 // Created by: Daniel Santiago-Gonzalez
 // Date: Oct 2019
@@ -19,7 +19,7 @@ void RunMUSICSim_aa()
   // CONTROL PANEL (units: dist=cm, energy=MeV, angle=deg)
   string AnodeGeom = "AnodeGeometry";
   int ELossBins = 300;
-  float MaxELoss = 2;
+  float MaxELoss = 1;
   SRIMdir += "/SRIM_files/";
   // beam
   string beam = "10B";
@@ -46,14 +46,19 @@ void RunMUSICSim_aa()
       color[er] = kRed;
   }
 
-  double Kb = 6.7;   // MeV - Energy of the beam after the Ti window and Al degrader
-  int Strip = 2;     // Strip where reaction takes place
+  double Kb = 6.7;    // MeV - Energy of the beam after the Ti window and Al degrader
+  int strip = 11;      // Strip where reaction takes place
   float Eres = 0.01;  // MeV - Strip energy resolution (larger values increase signal randomness)
-  int NEvents = 30;   // Number of simulated events (recommendation: keep it <1000)
+  int NEvents = 1000;   // Number of simulated events
   int Wait = 0;       // 1 - canvas waits for user's double click, 0 - no wait
   int Update = 0;     // 1 - update visuals for every event, 0 - don't
-  double MaxTime = 1000;   // ns - max time for an event
-  double UserDT = 0.1;     // ns - simulation time steps
+  double MaxTime = 2000;     // ns - max time for an event
+  double SimStep = 0.001;    // cm - simulation steps size
+  int Method = 0;     // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
+  string FileName = Form("Traces_aa_Stp%d_1k.root", strip);
+  string FileOpt = "recreate"; // recreate or update
+  
+  // The following control variables only apply for GenerateTraceDatabase (Method=1)
   double ThCMMin = 0.5;
   double ThCMMax = 179.5;
   int ThSteps = 36;
@@ -68,10 +73,11 @@ void RunMUSICSim_aa()
   /////////////////////////////////////////////////////////////////////////////
 
   MUSIC_Simulator* MUSIC = new MUSIC_Simulator();
+  MUSIC->SetROOTSystemPointer(gSystem);
   MUSIC->SetPrintLevel(0);
   MUSIC->SetStripEnergyResolution(Eres);
   // Geometry
-  MUSIC->SetAnode(AnodeGeom, 90, ELossBins, MaxELoss);
+  MUSIC->SetAnode(AnodeGeom, 90/*transparency 0-100*/, ELossBins, MaxELoss);
   // Beam
   MUSIC->SetBeamParticle(beam, kBlack, SRIMbeam, Kb);
   // Target
@@ -82,14 +88,14 @@ void RunMUSICSim_aa()
   for (int i=0; i<NumEvapPart; i++)
     MUSIC->SetEvapResAndPart(res[i], SRIMres[i], kGreen, evap[i], SRIMevap[i], color[i]);
 
-  // Simulate events for one strip or generate trace data base (see below)
-  //  MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, Update, Wait);
-  //  MUSIC->WriteTraces(Form("Traces_Stp%d_ap.root", Strip));
-
-  // Uncomment lines below to generate trace database (scanning thorugh angles in CM)
-  MUSIC->GenerateTraceDatabase("TraceDB_aa.root", 
-  			       ThCMMin, ThCMMax, ThSteps, 
-  			       PhiCMMin, PhiCMMax, PhiSteps,
-  			       MaxTime, UserDT, Update, Wait);
- 
+  if (Method==0) {
+    // Simulate events for one strip or generate trace data base (see below)
+    MUSIC->Simulate(strip, NEvents, MaxTime, SimStep, Update, Wait, FileName, FileOpt);
+  }
+  else if (Method==1) {
+    MUSIC->GenerateTraceDatabase("TraceDB_ap.root", 
+				 ThCMMin, ThCMMax, ThSteps, 
+				 PhiCMMin, PhiCMMax, PhiSteps,
+				 MaxTime, SimStep, Update, Wait);
+  }
 }

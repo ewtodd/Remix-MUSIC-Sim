@@ -429,7 +429,7 @@ void MUSIC_Simulator::CreateTracesAndTrajectories(int NEvents)
   }
 
   TraceMult = new TH1F("TraceMult","Mult.",AnodeStps,-0.5,AnodeStps-0.5);
-  TraceMult->GetXaxis()->SetTitle("Strip number");
+  TraceMult->GetXaxis()->SetTitle("Strip index (in AnodeGeometry file)");
   TraceMult->GetXaxis()->CenterTitle();
  
   // 3D trajectories
@@ -573,6 +573,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   for (int stp=0; stp<AnodeStps; stp++)
     for (int col=0; col<AnodeCols+1; col++) 
       TraceB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
+
 
   //  PrintEnergetics(Kb_after_window, DeltaEB_ave);
 
@@ -1269,19 +1270,19 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     } // end if (AnodeStps>0 && AnodeCols>0)
     
     HCTB = new TH2F("HCTB","Beam", AnodeStps,-0.5, AnodeStps-0.5, ELossBins,0,MaxELoss);
-    HCTB->GetXaxis()->SetTitle("Strip number");
+    HCTB->GetXaxis()->SetTitle("Strip index (in AnodeGeometry file)");
     HCTB->GetXaxis()->CenterTitle();
     HCTB->GetYaxis()->SetTitle("Energy loss [MeV]");
     HCTB->GetYaxis()->CenterTitle(); 
     
     HCT = new TH2F("HCT","Column traces", AnodeStps,-0.5, AnodeStps-0.5, ELossBins,0,MaxELoss);
-    HCT->GetXaxis()->SetTitle("Strip number");
+    HCT->GetXaxis()->SetTitle("Strip index (in AnodeGeometry file)");
     HCT->GetXaxis()->CenterTitle();
     HCT->GetYaxis()->SetTitle("Energy loss [MeV]");
     HCT->GetYaxis()->CenterTitle(); 
     
     HPT = new TH2F("HPT","Particle traces", AnodeStps,-0.5, AnodeStps-0.5, ELossBins,0,MaxELoss);
-    HPT->GetXaxis()->SetTitle("Strip number");
+    HPT->GetXaxis()->SetTitle("Strip index (in AnodeGeometry file)");
     HPT->GetXaxis()->CenterTitle();
     HPT->GetYaxis()->SetTitle("Energy loss [MeV]");
     HPT->GetYaxis()->CenterTitle(); 
@@ -1608,7 +1609,8 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     // if (er==CurEva-1)
     //   EvaR[er]->DoNotPropagate = false;
 
-    double Ex = Rdm->Uniform(0.0, Qvalue); 
+    double Ex = Rdm->Uniform(0.0/*Qvalue/2*/, Qvalue); 
+    // Ex = 0; // Forcing g.s. of evaporation residue
 
     // If the user did not specify the value of theta and phi (initial
     // theta=phi=-1) or for er>0, randomly select the scattering angle
@@ -1910,7 +1912,9 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   for (int stp=0; stp<AnodeStps; stp++)
     for (int col=0; col<AnodeCols+1; col++) 
       TraceB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
-
+  
+  cout << "********** DeltaEB_ave = "<< DeltaEB_ave[0][0] << endl;
+  
   // PrintEnergetics(Kb_after_window, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
@@ -2022,6 +2026,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
       Beam->GetX(tf,xf,yf,zf);
       //DeltaEB = PropagateParticle(Beam, evt, MaxTime, -UserStep);
       PropagateParticle(Beam, evt, MaxTime, -UserStep, DeltaEB);
+      cout << "********** DeltaEB = "<< DeltaEB[0][0] << endl;
       Beam->GetX(ti,xi,yi,zi);                      // <- This is not a mistake
       TrackBeam->SetOrigin(xi,yi,zi);
       TrackBeam->SetVector(xf-xi,yf-yi,zf-zi);
@@ -2032,6 +2037,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
 	EvaP[er]->GetX(ti,xi,yi,zi);
 	//DeltaE_EvaP[er] = PropagateParticle(EvaP[er], evt, MaxTime, UserStep);
 	PropagateParticle(EvaP[er], evt, MaxTime, UserStep, DeltaE_EvaP[er]);
+	cout << "********** DeltaE_p = "<< DeltaE_EvaP[er][0][0] << endl;
 	EvaP[er]->GetX(tf,xf,yf,zf);
 	TrackEvaP[er]->SetOrigin(xi,yi,zi);
 	TrackEvaP[er]->SetVector(xf-xi,yf-yi,zf-zi);
@@ -2039,6 +2045,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
 	EvaR[er]->GetX(ti,xi,yi,zi);
 	//	DeltaE_EvaR[er] = PropagateParticle(EvaR[er], evt, MaxTime, UserStep);
 	PropagateParticle(EvaR[er], evt, MaxTime, UserStep, DeltaE_EvaR[er]);
+	cout << "********** DeltaE_res = "<< DeltaE_EvaR[er][0][0] << endl;
 	EvaR[er]->GetX(tf,xf,yf,zf);
 	TrackEvaR[er]->SetOrigin(xi,yi,zi);
 	TrackEvaR[er]->SetVector(xf-xi,yf-yi,zf-zi);

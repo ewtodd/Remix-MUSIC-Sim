@@ -51,13 +51,13 @@
   double Kb = 42.59;   // MeV - Energy of the beam after the Ti window and Al degrader
   int strip = 18;     // Strip where reaction takes place
   float Eres = 0.01;  // MeV - Strip energy resolution (larger values increase signal randomness)
-  int NEvents = 1000000;   // Number of simulated events
-  int Wait = 0;       // 1 - canvas waits for user's double click, 0 - no wait
-  int Update = 0;     // 1 - update visuals for every event, 0 - don't
+  int NEvents = 1000;   // Number of simulated events
+  int Wait = 1;       // 1 - canvas waits for user's double click, 0 - no wait
+  int Update = 1;     // 1 - update visuals for every event, 0 - don't
   double MaxTime = 2000;   // ns - max time for an event
   double SimStep = 0.01;     // cm - simulation steps size
   int Method = 0;    // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
-  string FileName = Form("Traces_Stp%d_1M.root", strip);
+  string FileName = Form("Traces_Stp%d_test.root", strip);
   string FileOpt = "recreate"; // recreate or update
 
   // The following control variables only apply for GenerateTraceDatabase (Method=1)
@@ -76,7 +76,7 @@
 
   MUSIC_Simulator* MUSIC = new MUSIC_Simulator();
   MUSIC->SetROOTSystemPointer(gSystem);
-  MUSIC->SetPrintLevel(0);
+  MUSIC->SetPrintLevel(1);
   MUSIC->SetStripEnergyResolution(Eres);
   // Geometry
   MUSIC->SetAnode(AnodeGeom, 90/*transparency 0-100*/, ELossBins, MaxELoss);
