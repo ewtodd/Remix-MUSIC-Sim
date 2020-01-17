@@ -23,7 +23,7 @@ void RunMUSICSim_ap()
   SRIMdir += "/SRIM_files/";
   // beam
   string beam = "10B";
-  string SRIMbeam = SRIMdir + "10B_in_GasIndex3_130Torr_293K.srim";
+  string SRIMbeam = SRIMdir + "10B_in_GasIndex3_200Torr_293K.srim";
   // target (no SRIM file, assuming it does not propagate)
   string target = "4He";
   // compound nucleus (no SRIM file, assuming it does not propagate)
@@ -36,8 +36,8 @@ void RunMUSICSim_ap()
   string SRIMres[NumEvapPart];
   string evap[NumEvapPart];
   string SRIMevap[NumEvapPart];
-  evap[0] = "p";    SRIMevap[0] = SRIMdir + "1H_in_GasIndex3_130Torr_293K.srim";
-  res[0] = "13C";   SRIMres[0] = SRIMdir + "13C_in_GasIndex3_130Torr_293K.srim";
+  evap[0] = "p";    SRIMevap[0] = SRIMdir + "1H_in_GasIndex3_200Torr_293K.srim";
+  res[0] = "13C";   SRIMres[0] = SRIMdir + "13C_in_GasIndex3_200Torr_293K.srim";
   int color[NumEvapPart];
   for (int er=0; er<NumEvapPart; er++) {
     if (evap[er]=="n")
@@ -49,13 +49,13 @@ void RunMUSICSim_ap()
   double Kb = 6.7;    // MeV - Energy of the beam after the Ti window and Al degrader
   int strip = 2;      // Strip where reaction takes place
   float Eres = 0.01;  // MeV - Strip energy resolution (larger values increase signal randomness)
-  int NEvents = 1000;   // Number of simulated events
-  int Wait = 1;       // 1 - canvas waits for user's double click, 0 - no wait
-  int Update = 1;     // 1 - update visuals for every event, 0 - don't
+  int NEvents = 500;   // Number of simulated events
+  int Wait = 0;       // 1 - canvas waits for user's double click, 0 - no wait
+  int Update = 0;     // 1 - update visuals for every event, 0 - don't
   double MaxTime = 2000;     // ns - max time for an event
   double SimStep = 0.001;    // cm - simulation steps size
   int Method = 0;     // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
-  string FileName = Form("Traces_Stp%d_1k_13Cgs.root", strip);
+  string FileName = Form("Traces_ap_Stp%d_200.root", strip);
   string FileOpt = "recreate"; // recreate or update
   
   // The following control variables only apply for GenerateTraceDatabase (Method=1)

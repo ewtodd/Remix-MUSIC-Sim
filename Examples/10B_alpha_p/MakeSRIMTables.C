@@ -33,7 +33,7 @@ void MakeSRIMTables()
 
   //
   // Target gas related stuff
-  float GasP = 130; // Torr
+  float GasP = 100; // Torr
   float GasT = 293; // K
   int GasIndex = 3;
   // You have to use the same index numbers as in the SRIM_Table_Maker class.
