@@ -50,6 +50,30 @@ MUSIC_Simulator::MUSIC_Simulator()
   CurEva = 0;                        // This index will increase when a new evap particle is created
   EvaP = new Particle*[MaxEva];
   EvaR = new Particle*[MaxEva];
+  Kl = new float[MaxEva];
+  Kh = new float[MaxEva];
+  theta_CM = new float[MaxEva];
+  phi_CM = new float[MaxEva];
+  theta_l = new float[MaxEva];
+  phi_l = new float[MaxEva];
+  theta_h = new float[MaxEva];
+  phi_h = new float[MaxEva];
+  xfl = new float[MaxEva];
+  yfl = new float[MaxEva];
+  zfl = new float[MaxEva];
+  for (int er=0; er<MaxEva; er++) {
+    Kl[er] = 0;
+    Kh[er] = 0;
+    phi_CM[er] = -1;
+    theta_CM[er] = -1;
+    phi_l[er] = -1;
+    theta_l[er] = -1;
+    phi_h[er] = -1;
+    theta_h[er] = -1;
+    xfl[er] = 0;
+    yfl[er] = 0;
+    zfl[er] = -1000;
+  }
 
   // Nuclide finder object
   NuF = new NuclideFinder();
@@ -543,6 +567,19 @@ void MUSIC_Simulator::DrawMUSIC(TEveManager* gEve, short Transparency /*From 0 t
 
 
 ///////////////////////////////////////////////////////////////////////////////////
+//   _____                           _         _______                 
+//  / ____|                         | |       |__   __|                
+// | |  __  ___ _ __   ___ _ __ __ _| |_ ___     | |_ __ __ _  ___ ___ 
+// | | |_ |/ _ \ '_ \ / _ \ '__/ _` | __/ _ \    | | '__/ _` |/ __/ _ \
+// | |__| |  __/ | | |  __/ | | (_| | ||  __/    | | | | (_| | (_|  __/
+//  \_____|\___|_| |_|\___|_|  \__,_|\__\___|    |_|_|  \__,_|\___\___|
+//  _____        _        _                    
+// |  __ \      | |      | |                   
+// | |  | | __ _| |_ __ _| |__   __ _ ___  ___ 
+// | |  | |/ _` | __/ _` | '_ \ / _` / __|/ _ \
+// | |__| | (_| | || (_| | |_) | (_| \__ \  __/
+// |_____/ \__,_|\__\__,_|_.__/ \__,_|___/\___|
+//
 // Angles in degrees
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::GenerateTraceDatabase(string FileName, 
@@ -579,14 +616,14 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   // The following branches are for physical quantities that at the
   // moment can only be obtained from the simulation
   SimTree->Branch("reacStp",   &reacStp,   "reacStp/I");
-  SimTree->Branch("Kb", &Kb, "Kb/F");
-  SimTree->Branch("Kl", &Kl, "Kl/F");
-  SimTree->Branch("Kh", &Kh, "Kh/F");
-  SimTree->Branch("theta_CM", &theta_CM, "theta_CM/F");
-  SimTree->Branch("theta_l", &theta_l, "theta_l/F");
-  SimTree->Branch("theta_h", &theta_h, "theta_h/F");
-  SimTree->Branch("phi_l",   &phi_l,   "phi_l/F");
-  SimTree->Branch("phi_h",   &phi_l,   "phi_h/F");
+  // SimTree->Branch("Kb", &Kb, "Kb/F");
+  // SimTree->Branch("Kl", &Kl, "Kl/F");
+  // SimTree->Branch("Kh", &Kh, "Kh/F");
+  // SimTree->Branch("theta_CM", &theta_CM, "theta_CM/F");
+  // SimTree->Branch("theta_l", &theta_l, "theta_l/F");
+  // SimTree->Branch("theta_h", &theta_h, "theta_h/F");
+  // SimTree->Branch("phi_l",   &phi_l,   "phi_l/F");
+  // SimTree->Branch("phi_h",   &phi_l,   "phi_h/F");
   if (PrintLevel>0)
     SimTree->Print();
 
@@ -1098,18 +1135,20 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     }
   } // end 
 
-  // Adding randomness to the energy loss to mimic eperimental jitter
-  if (EneSigma!=0 && Gaussian!=0) {
-    for (int stp = 0; stp<AnodeStps; stp++) 
-      for (int col = 0; col<AnodeCols; col++)  {
-	if (DE[stp][col]>0) {
+
+  for (int stp = 0; stp<AnodeStps; stp++) 
+    for (int col = 0; col<AnodeCols; col++)  {
+      if (DE[stp][col]>0) {
+	if (Gaussian!=0) {
+	  // Adding randomness to the energy loss to mimic eperimental jitter
 	  Gaussian->SetRange(0.0, 2*DE[stp][col]);
 	  Gaussian->SetParameters(1.0, DE[stp][col], EneSigma);
 	  DE[stp][col] = Gaussian->GetRandom();
 	}	
 	DE[stp][AnodeCols] += DE[stp][col];
       }
-  }
+    }
+  
 
   PO->SetX(tf,xf,yf,zf);
   PO->SetP(Ene, p_mag*cos(phi)*sin(theta), p_mag*sin(phi)*sin(theta), p_mag*cos(theta));
@@ -1582,6 +1621,19 @@ void MUSIC_Simulator::SetPrintLevel(int Level/*0-2*/)
 
 
 ///////////////////////////////////////////////////////////////////////////////////
+//   _____      _     _____                 _   _              
+//  / ____|    | |   |  __ \               | | (_)             
+// | (___   ___| |_  | |__) |___  __ _  ___| |_ _  ___  _ __   
+//  \___ \ / _ \ __| |  _  // _ \/ _` |/ __| __| |/ _ \| '_ \  
+//  ____) |  __/ |_  | | \ \  __/ (_| | (__| |_| | (_) | | | | 
+// |_____/ \___|\__| |_|  \_\___|\__,_|\___|\__|_|\___/|_| |_| 
+//  _  ___                            _   _          
+// | |/ (_)                          | | (_)         
+// | ' / _ _ __   ___ _ __ ___   __ _| |_ _  ___ ___ 
+// |  < | | '_ \ / _ \ '_ ` _ \ / _` | __| |/ __/ __|
+// | . \| | | | |  __/ | | | | | (_| | |_| | (__\__ \
+// |_|\_\_|_| |_|\___|_| |_| |_|\__,_|\__|_|\___|___/
+//
 // Private method, to be used in an event loop. Establish the kinematics of the 
 // particles at the reaction point. If theta_CM and phi_CM are both -1 (default 
 // values) then their values are assigned randomly.
@@ -1721,8 +1773,8 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     Ptot = EvaR[er]->GetP();
       
     // Save the angles in degrees
-    theta_l = (EvaP[er]->GetTheta())*180/pi;
-    phi_l = (EvaP[er]->GetPhi())*180/pi;
+    theta_l[er] = (EvaP[er]->GetTheta())*180/pi;
+    phi_l[er] = (EvaP[er]->GetPhi())*180/pi;
     
     // Initial position of the light particle (at the target). This
     // particle will be propagated.
@@ -1740,8 +1792,8 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
       EvaR[er-1]->DoNotPropagate = true;
     
     // Save the angles in degrees
-    theta_h = (EvaR[er]->GetTheta())*180/pi;
-    phi_h = (EvaR[er]->GetPhi())*180/pi;
+    theta_h[er] = (EvaR[er]->GetTheta())*180/pi;
+    phi_h[er] = (EvaR[er]->GetPhi())*180/pi;
     if (PrintLevel>0)
       EvaR[er]->Print();
 
@@ -1755,17 +1807,16 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     
   // Fill the leaves related to the reaction kinematics
   Kb = Beam->GetKE();
-  this->theta_CM = theta_CM*180/pi;
-  this->phi_CM = phi_CM*180/pi;
-
-  // Warning: hack to save kinetic energy of ER and EP for (a,p) case. Need to generalize to CurEva
-  cout << "Warning: using hack to save kinetic energy and angles of ER and EP for (a,p) case. Need to generalize to CurEva" << endl;
-  Kh = EvaR[0]->GetKE();    
-  Kl = EvaP[0]->GetKE();     
-  theta_l = (EvaP[0]->GetTheta())*180/pi;
-  phi_l = (EvaP[0]->GetPhi())*180/pi;
-  theta_h = (EvaR[0]->GetTheta())*180/pi;
-  phi_h = (EvaR[0]->GetPhi())*180/pi;
+  for (int er=0; er<CurEva; er++) {
+    this->theta_CM[er] = theta_CM*180/pi;
+    this->phi_CM[er] = phi_CM*180/pi;
+    Kh[er] = EvaR[er]->GetKE();    
+    Kl[er] = EvaP[er]->GetKE();     
+    theta_l[er] = (EvaP[er]->GetTheta())*180/pi;
+    phi_l[er] = (EvaP[er]->GetPhi())*180/pi;
+    theta_h[er] = (EvaR[er]->GetTheta())*180/pi;
+    phi_h[er] = (EvaR[er]->GetPhi())*180/pi;
+  }
 
   // Update the kinematics label and then draw it
   LabelKine->Clear();
@@ -1799,7 +1850,7 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     LabelKine->AddText(Form("%s: K=%.2f MeV  #theta_{lab}=%.1f deg  #phi_{lab}=%.1f deg",
 			    Light->Name.c_str(), Light->GetKE(), Light->GetTheta()*180/pi,
 			    Light->GetPhi()*180/pi));
-  LabelKine->AddText(Form("#theta_{c.m.}=%.1f deg", theta_CM*180/pi));
+  LabelKine->AddText(Form("#theta_{c.m.}=%.1f deg", this->theta_CM[0]*180/pi));
 
 
 
@@ -1905,13 +1956,16 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     // moment can only be obtained from the simulation
     SimTree->SetBranchAddress("reacStp",   &reacStp);
     SimTree->SetBranchAddress("Kb", &Kb);
-    SimTree->SetBranchAddress("Kl", &Kl);
-    SimTree->SetBranchAddress("Kh", &Kh);
-    SimTree->SetBranchAddress("theta_CM", &theta_CM);
-    SimTree->SetBranchAddress("theta_l", &theta_l);
-    SimTree->SetBranchAddress("theta_h", &theta_h);
-    SimTree->SetBranchAddress("phi_l",   &phi_l);
-    SimTree->SetBranchAddress("phi_h",   &phi_l);
+    SimTree->SetBranchAddress("Kl", Kl);
+    SimTree->SetBranchAddress("Kh", Kh);
+    SimTree->SetBranchAddress("theta_CM", theta_CM);
+    SimTree->SetBranchAddress("theta_l",  theta_l);
+    SimTree->SetBranchAddress("theta_h",  theta_h);
+    SimTree->SetBranchAddress("phi_l",    phi_l);
+    SimTree->SetBranchAddress("phi_h",    phi_h);
+    SimTree->SetBranchAddress("xfl",      xfl);
+    SimTree->SetBranchAddress("yfl",      yfl);
+    SimTree->SetBranchAddress("zfl",      zfl);
   }
   else {
     SimTree = new TTree("simt","Simulated MUSIC data");
@@ -1925,13 +1979,16 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     // moment can only be obtained from the simulation
     SimTree->Branch("reacStp",   &reacStp,   "reacStp/I");
     SimTree->Branch("Kb", &Kb, "Kb/F");
-    SimTree->Branch("Kl", &Kl, "Kl/F");
-    SimTree->Branch("Kh", &Kh, "Kh/F");
-    SimTree->Branch("theta_CM", &theta_CM, "theta_CM/F");
-    SimTree->Branch("theta_l", &theta_l, "theta_l/F");
-    SimTree->Branch("theta_h", &theta_h, "theta_h/F");
-    SimTree->Branch("phi_l",   &phi_l,   "phi_l/F");
-    SimTree->Branch("phi_h",   &phi_l,   "phi_h/F");
+    SimTree->Branch("Kl", Kl,  Form("Kl[%d]/F",MaxEva));
+    SimTree->Branch("Kh", Kh,  Form("Kh[%d]/F",MaxEva));
+    SimTree->Branch("theta_CM", theta_CM, Form("theta_CM[%d]/F",MaxEva));
+    SimTree->Branch("theta_l",  theta_l,  Form("theta_l[%d]/F",MaxEva));
+    SimTree->Branch("theta_h",  theta_h,  Form("theta_h[%d]/F",MaxEva));
+    SimTree->Branch("phi_l",    phi_l,    Form("phi_l[%d]/F",MaxEva));
+    SimTree->Branch("phi_h",    phi_h,    Form("phi_h[%d]/F",MaxEva));
+    SimTree->Branch("xfl",      xfl,      Form("xfl[%d]/F",MaxEva));
+    SimTree->Branch("yfl",      yfl,      Form("yfl[%d]/F",MaxEva));
+    SimTree->Branch("zfl",      zfl,      Form("zfl[%d]/F",MaxEva));
   }
   if (PrintLevel>0)
     SimTree->Print();
@@ -2100,6 +2157,9 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
 	EvaP[er]->GetX(tf,xf,yf,zf);
 	TrackEvaP[er]->SetOrigin(xi,yi,zi);
 	TrackEvaP[er]->SetVector(xf-xi,yf-yi,zf-zi);
+	xfl[er] = xf;
+	yfl[er] = yf;
+	zfl[er] = zf;
 
 	// evaporation residue (heavy particle)
 	EvaR[er]->GetX(ti,xi,yi,zi);
@@ -2188,14 +2248,14 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
   // The following branches are for physical quantities that at the
   // moment can only be obtained from the simulation
   SimTree->Branch("reacStp",   &reacStp,   "reacStp/I");
-  SimTree->Branch("Kb", &Kb, "Kb/F");
-  SimTree->Branch("Kl", &Kl, "Kl/F");
-  SimTree->Branch("Kh", &Kh, "Kh/F");
-  SimTree->Branch("theta_CM", &theta_CM, "theta_CM/F");
-  SimTree->Branch("theta_l", &theta_l, "theta_l/F");
-  SimTree->Branch("theta_h", &theta_h, "theta_h/F");
-  SimTree->Branch("phi_l",   &phi_l,   "phi_l/F");
-  SimTree->Branch("phi_h",   &phi_l,   "phi_h/F");
+  // SimTree->Branch("Kb", &Kb, "Kb/F");
+  // SimTree->Branch("Kl", &Kl, "Kl/F");
+  // SimTree->Branch("Kh", &Kh, "Kh/F");
+  // SimTree->Branch("theta_CM", &theta_CM, "theta_CM/F");
+  // SimTree->Branch("theta_l", &theta_l, "theta_l/F");
+  // SimTree->Branch("theta_h", &theta_h, "theta_h/F");
+  // SimTree->Branch("phi_l",   &phi_l,   "phi_l/F");
+  // SimTree->Branch("phi_h",   &phi_l,   "phi_h/F");
   if (PrintLevel>0)
     SimTree->Print();
   

@@ -49,13 +49,24 @@ void RunMUSICSim_a2p()
   }
 
   double Kb = 35;   // MeV - Energy of the beam after the Ti window and Al degrader
-  int Strip = 5;     // Strip where reaction takes place
+  int strip = 5;     // Strip where reaction takes place
   float Eres = 0.01;  // MeV - Strip energy resolution (larger values increase signal randomness)
-  int NEvents = 30;   // Number of simulated events (recommendation: keep it <1000)
-  int Wait = 1;       // 1 - canvas waits for user's double click, 0 - no wait
-  int Update = 1;     // 1 - update visuals for every event, 0 - don't
+  int NEvents = 3000;   // Number of simulated events (recommendation: keep it <1000)
+  int Wait = 0;       // 1 - canvas waits for user's double click, 0 - no wait
+  int Update = 0;     // 1 - update visuals for every event, 0 - don't
   double MaxTime = 1000;   // ns - max time for an event
-  double UserDT = 0.1;     // ns - simulation time steps
+  double SimStep = 0.001;     // cm - simulation steps size
+  int Method = 0;    // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
+  string FileName = Form("Traces_Stp%d_a2p.root", strip);
+  string FileOpt = "recreate"; // recreate or update
+
+  // The following control variables only apply for GenerateTraceDatabase (Method=1)
+  double ThCMMin = 0.1;
+  double ThCMMax = 179.9;
+  int ThSteps = 6;
+  double PhiCMMin = 0.1;
+  double PhiCMMax = 359.9;
+  int PhiSteps = 6;
   //=======================================================================
 
 
@@ -64,7 +75,8 @@ void RunMUSICSim_a2p()
   /////////////////////////////////////////////////////////////////////////////
 
   MUSIC_Simulator* MUSIC = new MUSIC_Simulator();
-  MUSIC->SetPrintLevel(1);
+  MUSIC->SetROOTSystemPointer(gSystem);
+  MUSIC->SetPrintLevel(0);
   MUSIC->SetStripEnergyResolution(Eres);
   // Geometry
   MUSIC->SetAnode(AnodeGeom, 90, ELossBins, MaxELoss);
@@ -78,13 +90,14 @@ void RunMUSICSim_a2p()
   for (int i=0; i<NumEvapPart; i++)
     MUSIC->SetEvapResAndPart(res[i], SRIMres[i], kGreen, evap[i], SRIMevap[i], color[i]);
  
-  // Simulate events for one strip or generate trace data base (see below)
-  MUSIC->Simulate(Strip, NEvents, MaxTime, UserDT, Update, Wait);
-  //  MUSIC->WriteTraces(Form("Traces_Stp%d_a2p.root", Strip));
-
-  // Uncomment lines below to generate trace database (scanning thorugh angles in CM)
-  // MUSIC->GenerateTraceDatabase("TraceDB_a2p.root", 
-  // 			       ThCMMin, ThCMMax, ThSteps, 
-  // 			       PhiCMMin, PhiCMMax, PhiSteps,
-  // 			       MaxTime, UserDT, Update, Wait);
+  if (Method==0) {
+    // Simulate events for one strip or generate trace data base (see below)
+    MUSIC->Simulate(strip, NEvents, MaxTime, SimStep, Update, Wait, FileName, FileOpt);
+  }
+  else if (Method==1) {
+    MUSIC->GenerateTraceDatabase("TraceDB_ap.root", 
+				 ThCMMin, ThCMMax, ThSteps, 
+				 PhiCMMin, PhiCMMax, PhiSteps,
+				 MaxTime, SimStep, Update, Wait);
+  }
 }

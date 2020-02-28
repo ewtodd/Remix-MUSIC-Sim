@@ -1,60 +1,45 @@
 /////////////////////////////////////////////////////////////////////////////
 // Description: ROOT macro that creates SRIM tables for the MUSIC Simulator.
 //
-// Usage: root -l MakeSRIMTables.C+
+// Usage: root -l MakeSRIMTables.C
 //
 // Created by: Daniel Santiago-Gonzalez
 // Date: Dec 2018
 /////////////////////////////////////////////////////////////////////////////
-#include <iostream>
 #include <unistd.h>  // needed for getcwd()
-#include <TString.h>
-#include "../physics-tools/SRIM_Table_Maker.hpp"
-#include "../physics-tools/NuclideFinder.hpp"
 
 
 void MakeSRIMTables()
 {
+  // Make sure the libs below are included in the rootlogon.C file
+  //  gSystem->Load("../physics-tools/NuclideFinder_cpp.so"); 
+  //  gSystem->Load("../physics-tools/SRIM_Table_Maker_cpp.so");
+
+  // These 3 lines get the current working directory (to load the SRIM files)
   char cwd[1024];
   getcwd(cwd, sizeof(cwd));
-  string OutputDir = cwd;
+  string SRIMdir = cwd;
+  SRIMdir += "/SRIM_files/";
 
   //=======================================================================
   // CONTROL PANEL
   //
-  OutputDir += "/SRIM_files/";
-  std::cout << OutputDir << endl;
+  string OutputDir = SRIMdir;
   string SRModPath = "/home/dasago/.wine/drive_c/Program\ Files\ \(x86\)/SRIM/SR\ Module/";
   //
   // Particles for which the Stopping Power tables will be generated
-  const int NumParticles = 19;
+  const int NumParticles = 4;
   string particle[NumParticles];
-  particle[0] = "16C";
+  particle[0] = "22Mg";
   particle[1] = "1H"; 
-  particle[2] = "27Mg";
-  particle[3] = "26Mg";
-  particle[4] = "25Mg";
-  particle[5] = "24Mg";
-  particle[6] = "23Na";
-  particle[7] = "22Ne";
-  particle[8] = "4He";
-  particle[9] = "24Ne";
-  particle[10] = "23Ne";
-  particle[11] = "21Ne";
-  particle[12] = "21F";
-  particle[13] = "26Na";
-  particle[14] = "25Na";
-  particle[15] = "23F";
-  particle[16] = "22F";
-  particle[17] = "20F";
-  particle[18] = "19F";
-
-
+  particle[2] = "4He";
+  particle[3] = "25Al";
+  //
   //
   // Target gas related stuff
-  float GasP = 400; // Torr
+  float GasP = 350; // Torr
   float GasT = 293; // K
-  int GasIndex = 17;
+  int GasIndex = 3;
   // You have to use the same index numbers as in the SRIM_Table_Maker class.
   //   0 - CD2
   //   1 - CF4 (gas)

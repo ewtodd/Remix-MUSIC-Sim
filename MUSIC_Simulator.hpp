@@ -212,14 +212,17 @@ private:
   float cathode;
   int reacStp;
   float Kb;
-  float Kl;
-  float Kh;
-  float theta_CM;
-  float phi_CM;
-  float theta_l;
-  float phi_l;
-  float theta_h;
-  float phi_h;
+  float* Kl;
+  float* Kh;
+  float* theta_CM;
+  float* phi_CM;
+  float* theta_l;
+  float* phi_l;
+  float* theta_h;
+  float* phi_h;
+  float* xfl;
+  float* yfl;
+  float* zfl;
 
   // Log file
   ofstream Log;
