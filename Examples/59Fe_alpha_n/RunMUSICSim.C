@@ -24,12 +24,12 @@ void RunMUSICSim()
   float MaxELoss = 25;
   SRIMdir += "/SRIM_files/";
   // beam
-  string beam = "86Kr";
-  string SRIMbeam = SRIMdir + "86Kr_in_GasIndex3_600Torr_293K.srim";
+  string beam = "59Cu";
+  string SRIMbeam = SRIMdir + "59Cu_in_GasIndex3_600Torr_293K.srim";
   // target (no SRIM file, assuming it does not propagate)
   string target = "4He";
   // compound nucleus (no SRIM file, assuming it does not propagate)
-  string compound = "90Sr";
+  string compound = "63Ni";
   
   // Reac1: 12C(16C,4n2p)22Ne
   // Chan1: 28Mg*->n+27Mg*->n+26Mg*->n+25Mg*->n+24Mg*->p+23Na*->p+22Ne
@@ -45,21 +45,21 @@ void RunMUSICSim()
   string* SRIMevap = new string[NumEvapPart];
   if (reaction=="(a,a)") {
     evap[0] = "4He";    
-    res[0] = "86Kr";
+    res[0] = beam;
   }
   else if (reaction=="(a,p)") {
     evap[0] = "1H";    
-    res[0] = "89Rb";    
+    res[0] = "62Co";    
   }
   else if (reaction=="(a,n)") {
     evap[0] = "n";
-    res[0] = "89Sr";        
+    res[0] = "62Ni";        
   }
   else if (reaction=="(a,2n)") {
     evap[0] = "n";
-    res[0] = "89Sr";    
+    res[0] = "62Ni";    
     evap[1] = "n";
-    res[1] = "88Sr";
+    res[1] = "61Ni";
   }
 
   SRIMres[0] = SRIMdir + Form("%s_in_GasIndex3_%dTorr_293K.srim",res[0].c_str(), pressure);
@@ -82,8 +82,8 @@ void RunMUSICSim()
   }
 
 
-  double Kb = 327;   // MeV - Energy of the beam after the Ti window and Al degrader
-  int strip = 4;     // Strip where reaction takes place
+  double Kb = 203;   // MeV - Energy of the beam after the Ti window and Al degrader
+  int strip = 18;     // Strip where reaction takes place
   float Eres = 0.005;  // MeV - Strip energy resolution (larger values increase signal randomness)
   int NEvents = 300;   // Number of simulated events (recommendation: keep it <1000)
   int Wait = 0;       // 1 - canvas waits for user's double click, 0 - no wait
@@ -91,7 +91,8 @@ void RunMUSICSim()
   double MaxTime = 1000;   // ns - max time for an event
   double SimStep = 0.001;     // cm - simulation steps size
   int Method = 0;    // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
-  string FileName = Form("Traces_Stp%d_%s.root", strip, reaction.c_str());
+  //  string FileName = Form("Traces_Stp%d_%s.root", strip, reaction.c_str());
+  string FileName = Form("Traces_59Cu_beam.root");
   string FileOpt = "recreate"; // recreate or update
 
   // The following control variables only apply for GenerateTraceDatabase (Method=1)
