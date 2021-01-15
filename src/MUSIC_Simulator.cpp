@@ -846,6 +846,109 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 }
 
 
+
+
+////////////////////////////////////////////////////////////////////////////////////
+// Method to load the parameters from the control file
+// Control file example below horizontal line (---), first two lines are skipped
+// and can be used for comments. Third column can be used for comments:
+// ------------------------------------------------------
+// Control file for DecayAnalyzer class, run005         | File description
+// Parameter      Value     Comment                     | Column description
+// colorScheme    1         Int 1,2,3                   | first data line
+// ...                                                  | 
+////////////////////////////////////////////////////////////////////////////////////
+int MUSIC_Simulator::loadCtrlFile(char* fileName)
+{
+  int Status = 0;
+  ifstream Ctrl(fileName);
+  string aux, ParName, ParVal;
+  if (Ctrl.is_open()) {
+    getline(Ctrl,aux);  // skipping first line
+    getline(Ctrl,aux);  // skipping second line
+    while (!Ctrl.eof()) {
+      Ctrl >> ParName >> ParVal;
+      getline(Ctrl,aux);
+      // Detector parameters
+      if (ParName=="AnodeGeom")
+	ctf.AnodeGeom = ParVal;
+      else if (ParName=="SRIMdir")
+	ctf.SRIMdir = ParVal;
+      else if (ParName=="pressure")
+	ctf.pressure = atoi(ParVal.c_str());
+      else if (ParName=="ELossBins")
+	ctf.ELossBins = atoi(ParVal.c_str());
+      else if (ParName=="MaxELoss")
+	ctf.MaxELoss = atof(ParVal.c_str());
+      else if (ParName=="strip")
+	ctf.strip = atoi(ParVal.c_str());
+      else if (ParName=="Eres")
+	ctf.Eres = atof(ParVal.c_str());
+
+      // Beam parameters
+      else if (ParName=="beam")
+	ctf.beam = ParVal;
+      else if (ParName=="Kb")
+	ctf.Kb = atof(ParVal.c_str());
+      else if (ParName=="SRIMbeam")
+	ctf.SRIMbeam = ParVal;
+      // Target parameters
+      else if (ParName=="target")
+	ctf.target = ParVal;
+      // Compound parameters
+      else if (ParName=="compuond")
+	ctf.compound = ParVal;
+      // Evaporated particle (e.g. 1H, n) parameters
+      else if (ParName=="evap0Name")
+	ctf.evap[0] = ParVal;
+      else if (ParName=="evap0Color")
+	ctf.color[0] = atoi(ParVal.c_str());
+      else if (ParName=="evap0SRIM")
+	ctf.SRIMevap[0] = ParVal;
+      // Evaporation residue parameters 
+      else if (ParName=="res0Name")
+	ctf.res[0] = ParVal;
+      // else if (ParName=="res0Color")
+      // 	color = atoi(ParVal.c_str());
+      else if (ParName=="res0SRIM")
+	ctf.SRIMres[0] = ParVal;
+      
+      // Simulation parameters
+      else if (ParName=="NEvents")
+	ctf.NEvents = atoi(ParVal.c_str()); 
+      else if (ParName=="Wait")
+	ctf.Wait = atoi(ParVal.c_str()); 
+      else if (ParName=="Update")
+	ctf.Update = atoi(ParVal.c_str());
+      else if (ParName=="MaxTime")
+	ctf.MaxTime = atof(ParVal.c_str());
+      else if (ParName=="SimStep")
+	ctf.SimStep = atof(ParVal.c_str());
+      else if (ParName=="Method")
+	ctf.Method = atoi(ParVal.c_str());
+      else if (ParName=="FileName")
+      	ctf.FileName = ParVal;
+      else if (ParName=="FileOpt")
+      	ctf.FileOpt = ParVal;
+      
+#if 0
+      else if (ParName=="str")
+      	ctf.var = ParVal;
+      else if (ParName=="int")
+      	ctf.var = atoi(ParVal.c_str());
+      else if (ParName=="float")
+      	ctf.var = atof(ParVal.c_str());
+#endif
+    }
+    Status = 1;
+  }
+  return Status;
+}
+
+
+
+
+
 ///////////////////////////////////////////////////////////////////////////////////
 // Initialize the TTree (SimTree) similar to the one used for experimental data.
 ///////////////////////////////////////////////////////////////////////////////////
@@ -1216,6 +1319,40 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
   return 1;
 }
 
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// This method intents to substitute the use of ROOT scripts.
+/////////////////////////////////////////////////////////////////////////////////////////////////
+int MUSIC_Simulator::run()
+{
+  //SetROOTSystemPointer(gSystem);
+  SetPrintLevel(0);
+  SetStripEnergyResolution(ctf.Eres);
+  // Geometry
+  SetAnode(ctf.AnodeGeom, 90, ctf.ELossBins, ctf.MaxELoss);
+  // Beam
+  SetBeamParticle(ctf.beam, kBlack, ctf.SRIMbeam, ctf.Kb);
+  // Target
+  SetTargetParticle(ctf.target);
+  // Compound particle
+  SetCompoundParticle(ctf.compound);
+  // Evaporation residues and particles
+  for (int i=0; i<ctf.NumEvapPart; i++)
+    SetEvapResAndPart(ctf.res[i], ctf.SRIMres[i], kGreen+i, ctf.evap[i], ctf.SRIMevap[i], ctf.color[i]);
+  
+  if (ctf.Method==0) {
+    // Simulate events for one strip or generate trace data base (see below)
+    Simulate(ctf.strip, ctf.NEvents, ctf.MaxTime, ctf.SimStep, ctf.Update, ctf.Wait, ctf.FileName, ctf.FileOpt);
+  }
+  else if (ctf.Method==1) {
+    // GenerateTraceDatabase("TraceDB.root", 
+    // 			  ThCMMin, ThCMMax, ThSteps, 
+    // 			  PhiCMMin, PhiCMMax, PhiSteps,
+    // 			  MaxTime, SimStep, Update, Wait);
+  }
+  return 0;
+}
 
 ///////////////////////////////////////////////////////////////////////////////////
 // Establish the dimensions of the MUSIC anode segments by reading a text file with

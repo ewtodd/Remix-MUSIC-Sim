@@ -63,8 +63,12 @@
 //       http://www.cplusplus.com/forum/articles/10627/).
 
 class MUSIC_Simulator {
+
 public:
   MUSIC_Simulator();
+  int loadCtrlFile(char* fileName);
+  int run();
+
   void CalculateCMEnergyRange();   // <- Do we need this?
   void CalculateExcEnergyRange();  // <- Do we need this?
   void GenerateTraceDatabase(std::string FileName,
@@ -247,6 +251,41 @@ private:
   // Use these two lines when compiling with root-config ver6
   static constexpr double c = 29.9792458;  // Speed of light in cm/ns.
   static constexpr double pi = 3.14159265359;
+
+
+
+  struct controlFileParams {
+    std::string SRIMdir;
+    int pressure; // Torr
+    std::string AnodeGeom;
+    int ELossBins = 300;
+    float MaxELoss = 25;
+    // beam
+    std::string beam;
+    std::string SRIMbeam;
+    std::string target;
+    std::string compound;
+    static const int NumEvapPart = 10;
+    std::string* res = new std::string[NumEvapPart];
+    std::string* SRIMres = new std::string[NumEvapPart];
+    std::string* evap = new std::string[NumEvapPart];
+    std::string* SRIMevap = new std::string[NumEvapPart];
+    int* color = new int[NumEvapPart];
+    double Kb;  // MeV - Energy of the beam after the Ti window and degrader (if any)
+    int strip;      // Strip where reaction takes place
+    float Eres; // MeV - Strip energy resolution (larger values increase signal randomness)
+    int NEvents;  // Number of simulated events (recommendation: keep it <1000)
+    int Wait;       // 1 - canvas waits for user's double click, 0 - no wait
+    int Update;     // 1 - update visuals for every event, 0 - don't
+    double MaxTime;   // ns - max time for an event
+    double SimStep;  // cm - simulation steps size
+    int Method;     // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
+    std::string FileName;
+    std::string FileOpt;
+  };
+  
+  controlFileParams ctf;
+
 };
 
 #endif

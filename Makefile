@@ -5,13 +5,13 @@
 CXX = g++
 CFLAGS = $(shell root-config --cflags) -Isrc/
 LIBS = $(shell root-config --glibs) -lEve -lRGL
-OBJS = lib/NuclideFinder.o lib/MUSIC_Simulator.o lib/main.o
+OBJS = lib/main.o lib/MUSIC_Simulator.o lib/NuclideFinder.o
 
 musicsim: $(OBJS)
 	$(CXX) -o $@ $(OBJS) $(LIBS)
 
 lib/main.o: src/main.cpp lib/MUSIC_Simulator.o lib/NuclideFinder.o
-	$(CXX) $(CFLAGS) -c src/andes.cpp -o $@
+	$(CXX) $(CFLAGS) -c src/main.cpp -o $@
 
 lib/MUSIC_Simulator.o: src/MUSIC_Simulator.cpp lib/Particle.o lib/NuclideFinder.o
 	$(CXX) $(CFLAGS) -c src/MUSIC_Simulator.cpp -o $@

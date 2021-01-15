@@ -84,7 +84,7 @@ int main(int argc, char* argv[])
     return 0;
   }
 
-  auto MS = new MUSICS_Simulator()
+  auto MS = new MUSIC_Simulator();
   if (argc==1) {
     cout << "musicsim warning: no control file specified. Using default parameters." << endl;
   }
