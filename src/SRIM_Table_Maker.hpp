@@ -26,9 +26,6 @@ Description: A class that creates input files for SRIM and then runs
 Author: Daniel Santiago-Gonzalez
 2014-07
 
-Compile with: 
-  g++ -shared -fPIC SRIM_Table_Maker.cpp -o SRIM_Table_Maker.so
-
 ***********************************************************************/
 #ifndef SRIM_Table_Maker_hpp_INCLUDED   
 #define SRIM_Table_Maker_hpp_INCLUDED   

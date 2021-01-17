@@ -1,6 +1,6 @@
 ---Stopping/Range Input Data (Number-format: Period = Decimal Point)
 ---Output File Name
-"SRIM/files/100Mo_in_GasIndex3_300Torr_293K.srim"
+"/home/dsg/Research/MUSIC/sim/SRIM/files/100Mo_in_GasIndex3_300Torr_293K.srim"
 ---Ion(Z), Ion Mass(u)
 42   99.9075
 ---Target Data: (Solid=0,Gas=1), Density(g/cm3), Compound Corr.

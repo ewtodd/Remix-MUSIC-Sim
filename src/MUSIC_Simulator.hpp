@@ -1,14 +1,9 @@
 //===============================================================================
 //--- MUSIC simulator ----------------------------------------------------------|
 // Written by Daniel Santiago-Gonzalez                                          |
-// ver 2.0 (2016/4)                                                             |
 // To get the latest version type:                                              |
 //  git clone https://gitlab.phy.anl.gov/music/sim.git                          |
-//                                                                              |
-// Compile by typing: root MakeAll.C                                            |
-//                                                                              |
-// May need libroot-math-physics-dev. Install using synaptic package manager.   |
-// http://packages.ubuntu.com/trusty/i386/libroot-math-physics-dev/filelist     |
+// Compile with make                                                            |
 //===============================================================================
 
 #ifndef MUSIC_Simulator_hpp_INCLUDED

@@ -8,7 +8,6 @@ CXX = g++
 CFLAGS = $(shell root-config --cflags) -Isrc/
 LIBS = $(shell root-config --glibs) -lGeom -lEve -lRGL 
 OBJS = lib/main.o lib/MUSIC_Simulator.o lib/NuclideFinder.o lib/Particle.o lib/EnergyLoss.o lib/FourVector.o
-#OBJS = lib/main.o lib/MUSIC_Simulator.o 
 
 all: musicsim make-srim-table
 

@@ -253,6 +253,21 @@ int SRIM_Table_Maker::GetMaxCases()
 ///////////////////////////////////////////////////////////////////////////////////////
 void SRIM_Table_Maker::MakeSRIMInputFile(string SRIM_output, int Case, int Charge, double Mass /*u*/)
 {
+  // These 2 lines get the current working directory.
+  char cwd[1024];
+  getcwd(cwd, sizeof(cwd));
+
+  // If the SRIM_output string does not contain the root directory (/)
+  // then we need to add the cwd. Otherwise SRModule will try to
+  // create the SRIM table in a directory that may not exists and will
+  // give an error message.
+  if (SRIM_output[0]!='/') {
+    string temp = cwd;
+    temp.append("/");
+    temp.append(SRIM_output);    
+    SRIM_output = temp;
+  }
+  
   // Energy range in keV
   float EMin = 0.5, EMax = 100000.0*Mass;
   char EOL1 = 0x0D;

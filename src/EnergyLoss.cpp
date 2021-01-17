@@ -8,14 +8,11 @@ Description: Simple class that calculates the energy loss of an ion
   MeV and MeV/mm for the ion's energy and the stopping powers,
   respectively. 
 
-Typical usage:
+Typical usage (within another code):
   EnergyLoss* Ne20InHe4 = new EnergyLoss();
   Ne20InHe4->LoadSRIMFile("N20_in_He4_500Torr_90K.srim");
   //                                         MeV   cm    cm
   double Efinal = Ne20InHe4->GetFinalEnergy(100.0, 1.5, 0.01);
-
-Compile with: 
-  g++ -shared -fPIC EnergyLoss.cpp `root-config --cflags --glibs` -o EnergyLoss.so
 
 Author: Daniel Santiago-Gonzalez
 2012-Sep
