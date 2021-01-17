@@ -4,19 +4,19 @@ AnodeGeom	 agfiles/AnodeGeometry	   location of anode geometry file
 SRIMdir		 srimfile/		   directory containing SRIM files
 ELossBins	 300			   Number of bins for y axis
 MaxELoss	 5			   Max y value [MeV]
-strip		 17			   Strip where the reaction takes place
+strip		 5			   Strip where the reaction takes place
 Eres		 0.001			   Energy noise level in each strip [MeV]
 beam		 17F			   Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
-SRIMbeam	 /home/dsg/Research/MUSIC/sim/SRIM/files/17F_in_GasIndex3_500Torr_293K.srim
+SRIMbeam	 SRIM/files/17F_in_GasIndex3_500Torr_293K.srim
 Kb		 37.5			   Beam energy as it enters the dead gas layer [MeV]
 target		 4He			   
 compound	 21Na			   
 NumEvapPart	 1			   Number of evaporated particles. E.g. 1 for 17F(4He,1H)
 evap0Name	 1H			   
-SRIMevap0	 /home/dsg/Research/MUSIC/sim/SRIM/files/1H_in_GasIndex3_500Torr_293K.srim
+SRIMevap0	 SRIM/files/1H_in_GasIndex3_500Torr_293K.srim
 evap0Color	 632			   Integer see ROOT colors
 res0Name	 20Ne
-SRIMres0	 /home/dsg/Research/MUSIC/sim/SRIM/files/20Ne_in_GasIndex3_500Torr_293K.srim
+SRIMres0	 SRIM/files/20Ne_in_GasIndex3_500Torr_293K.srim
 NEvents		 100			   Number of events simulated
 Wait		 1			   Wait between simulated events? 1=yes, 0=no
 Update		 1			   Update graphics between simulated events? 1=yes, 0=no

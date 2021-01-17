@@ -1333,7 +1333,7 @@ int MUSIC_Simulator::run()
   LabelKine = new TPaveText(0.152,0.679,0.437,0.875,"NDC");
   
   
-  SetPrintLevel(1);
+  SetPrintLevel(0);
   SetStripEnergyResolution(ctf.Eres);
   // Geometry
   SetAnode(ctf.AnodeGeom, 90, ctf.ELossBins, ctf.MaxELoss);
@@ -1924,8 +1924,19 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     // if (er==CurEva-1)
     //   EvaR[er]->DoNotPropagate = false;
 
-    double Ex = Rdm->Uniform(0.0/*Qvalue/2*/, Qvalue); 
-    //Ex = 0; // Forcing g.s. of evaporation residue
+    double Ex = Rdm->Uniform(0.0/*Qvalue/2*/, Qvalue);
+    Ex = 0; // Forcing g.s. of evaporation residue
+#if 0
+    // Warning: for 17F(alpha,p) only!!
+    double ExIndex = Rdm->Uniform(0.0,3);
+    if (ExIndex<1.0)
+      Ex = 0;
+    else if (ExIndex<2.0)
+      Ex = 1.63;
+    else
+      Ex = 4.25;
+#endif
+
 
     // If the user did not specify the value of theta and phi (initial
     // theta=phi=-1) or for er>0, randomly select the scattering angle

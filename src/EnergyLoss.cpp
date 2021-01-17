@@ -235,7 +235,7 @@ double EnergyLoss::GetEnergyLoss(double energy /*MeV*/, double distance /*cm*/)
     // The stopping power units are in MeV/mm so we multiply by 10 to convert to MeV/cm.
     dEdx = (dEdx_e1e+dEdx_n1e)*10*distance;
   }  
-  return dEdx;  
+  return (1.15*dEdx);  // Warning: For 17F(alpha,p) only!!
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
