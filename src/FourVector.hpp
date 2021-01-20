@@ -25,7 +25,7 @@ public:
   double GetTheta();
   void SetCoords(double x0, double x1, double x2, double x3);
   void SetName(std::string Name);
-  void Print();
+  void Print(std::ostream& log=std::cout);
   
   FourVector & operator=(const FourVector &rhs);
   FourVector & operator+=(const FourVector &rhs) ;

@@ -1,10 +1,10 @@
 ---Stopping/Range Input Data (Number-format: Period = Decimal Point)
 ---Output File Name
-"/home/dsg/Research/MUSIC/sim/SRIM/files/100Mo_in_GasIndex3_300Torr_293K.srim"
+"/home/dsg/Research/MUSIC/sim/SRIM/files/108Ru_in_GasIndex3_600Torr_293K.srim"
 ---Ion(Z), Ion Mass(u)
-42   99.9075
+44   107.91
 ---Target Data: (Solid=0,Gas=1), Density(g/cm3), Compound Corr.
-1    6.57216e-05    1
+1    0.000131443    1
 ---Number of Target Elements
  1
 ---Target Elements: (Z), Target name, Stoich, Target Mass(u)
@@ -12,4 +12,4 @@
 ---Output Stopping Units (1-8)
  3
 ---Ion Energy : E-Min(keV), E-Max(keV)
- 0.5    9.99075e+06
+ 0.5    1.0791e+07

@@ -60,10 +60,11 @@ public:
   double GetTimeOfFlight(int MediumID, float InitialEnergy, float PathLength, float StepSize);
   void GetTrajectoryAtt(short& Color, short& Style, short& Width);
   void GetX(double& X0, double& X1, double& X2, double& X3);
-  void Print();
+  void Print(std::ostream& log=std::cout);
   void ResetTrace();
   void SetCurrentExcState(int ExcState);
   void SetExcEnergies(int N, double* Eexc, double* Prob=0);
+  void SetExcEnergy(double Ex);
   void SetMedia(int NumMedia, std::string* ELossFile);
   void SetMedium(std::string ELossFile);
   void SetP(FourVector P);

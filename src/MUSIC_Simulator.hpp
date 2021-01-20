@@ -104,6 +104,7 @@ private:
   void PrintCompoundEexc(double Kb, double** DeltaEB);
   void PrintEnergetics(double Kb, double** DeltaEB);
   int PropagateParticle(Particle* PO, int Event, double MaxTime, double UserStep, double ** DE);
+  void ResetBranches();
   void SetInitialKinematics(double Kbi);
   int SetReactionKinematics(double Kbr, double zr, double tof, double theta_CM=-1, double phi_CM=-1);
   void UpdateVisuals(int event, double Kbr, double zr, double TOF, int Wait=0);
@@ -279,6 +280,7 @@ private:
     int Method;     // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
     std::string FileName;
     std::string FileOpt;
+    int PrintOpt = 0;
   };
   
   controlFileParams ctf;

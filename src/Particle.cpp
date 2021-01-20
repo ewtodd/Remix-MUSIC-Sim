@@ -21,7 +21,7 @@ Particle::Particle(string Name, double M, int Q, bool SaveTrajectory)
   Mass = M;
   A = 0;  // Not used at this moment.
   Z = Q;
-  NEexc = 0;
+  NEexc = 1;
   this->SaveTrajectory = SaveTrajectory;
   DoNotPropagate = false;
   
@@ -38,7 +38,8 @@ Particle::Particle(string Name, double M, int Q, bool SaveTrajectory)
   X.SetName("X_"+Name);
   X.SetCoords(0,0,0,0);
   // Pointers
-  Eexc = 0;
+  Eexc = new double[NEexc];
+  Eexc[0] = 0.0;
   PDF = 0;
   ProbExc = 0;
   IonInMedium = new EnergyLoss*[MaxMedia];
@@ -141,7 +142,9 @@ int Particle::GetCurrentExcState()
 double Particle::GetEexc()
 {
   double Eexc = 0;
-  if (PDF!=0 && ProbExc!=0 && this->Eexc!=0) {
+  if (NEexc==1)
+    Eexc = this->Eexc[0];
+  else if (PDF!=0 && ProbExc!=0 && this->Eexc!=0) {
     double Rdm = PDF->Uniform();
     for (int ne=0; ne<NEexc; ne++) {
       if (Rdm>=ProbExc[ne] && Rdm<ProbExc[ne+1]) {
@@ -421,34 +424,39 @@ void Particle::GetX(double& X0, double& X1, double& X2, double& X3)
 ///////////////////////////////////////////////////////////////////////////////////
 // Simple function that prints some variables of this class.
 ///////////////////////////////////////////////////////////////////////////////////
-void Particle::Print()
+void Particle::Print(ostream& log)
 {
-  cout << "== Particle " << Name << " =="<< endl;
-  cout << "mass = " << Mass << " MeV/c^2   Z = " << Q << " e   KE = " << GetKE() 
-       << " Mev" << endl;
+  log << "|== Particle " << Name << " =================================|"<< endl;
+  log << "| mass = " << Mass << " MeV/c^2   Z = " << Q << " e\n"
+      << "| Eexc = ";
   if (NEexc>0) {
-    cout << "Eexc = ";
     for (int n=0; n<NEexc; n++) {
-      cout << Eexc[n];
+      log << Eexc[n];
       if (n<NEexc-1)
-	cout << ", ";
+	log << ", ";
       else
-	cout << "\n";
+	log << "\n";
     }
   }
-  X.Print();
-  P.Print();
+  else
+    log << " 0 MeV" << endl;
+  log << "| KE = " << GetKE() << " Mev" << endl;
+  log << "| ";
+  X.Print(log);
+  log << "| ";
+  P.Print(log);
   if (SaveTrajectory) {
-    cout << "Trajectory: " << Trajectory  << " C=" << Trajectory->GetLineColor() 
-	 << " W=" << Trajectory->GetLineWidth() << " S=" << Trajectory->GetLineStyle() << endl;
+    log << "| Trajectory: " << Trajectory  << " C=" << Trajectory->GetLineColor() 
+	<< " W=" << Trajectory->GetLineWidth() << " S=" << Trajectory->GetLineStyle() << endl;
   } 
   else 
-    cout << "Trajectory not saved." << endl;
+    log << "| Trajectory object not saved." << endl;
   if (NumMedia>0) {
-    cout << NumMedia << " SRIM files:" << endl;
+    log << "| " << NumMedia << " SRIM file(s):" << endl;
     for (int med=0; med<NumMedia; med++)
-      cout << ELossFile[med] << endl;
+      log << "|  - " << ELossFile[med] << endl;
   }
+  log << "|==================================================|"<< endl;
   return;
 }
 
@@ -528,6 +536,16 @@ void Particle::SetExcEnergies(int N, double* Eexc, double* Prob)
     PDF = new TRandom3();
     PDF->SetSeed();
   }
+  return;
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////////////
+// This method is used when the user wants to specify a single excitation energy.
+///////////////////////////////////////////////////////////////////////////////////
+void Particle::SetExcEnergy(double Ex) {
+  Eexc[0] = Ex;
   return;
 }
 

@@ -264,7 +264,7 @@ void SRIM_Table_Maker::MakeSRIMInputFile(string SRIM_output, int Case, int Charg
   if (SRIM_output[0]!='/') {
     string temp = cwd;
     temp.append("/");
-    temp.append(SRIM_output);    
+    temp.append(SRIM_output);
     SRIM_output = temp;
   }
   

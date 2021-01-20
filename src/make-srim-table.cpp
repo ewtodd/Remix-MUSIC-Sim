@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <cstdio>
-//#include <unistd.h>  // needed for getcwd()
 #include "NuclideFinder.hpp"
 #include "SRIM_Table_Maker.hpp"
 

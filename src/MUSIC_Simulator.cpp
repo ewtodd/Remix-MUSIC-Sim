@@ -76,8 +76,6 @@ MUSIC_Simulator::MUSIC_Simulator()
   // Geometry manager
   Geo = new TGeoManager("Geo", "MUSIC geometry manager");
 
-  cout << "HERE geo manager" << endl;
-
   // Define some materials and media
   MatVacuum = new TGeoMaterial("Vac", 0, 0, 0);
   // NOTE: Not sure about units of arguments
@@ -105,7 +103,6 @@ MUSIC_Simulator::MUSIC_Simulator()
   }
 
   gSystem = 0;
-  cout << "end of constructor" << endl;
 }
 
 
@@ -288,7 +285,7 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
 {
 #if 1
   if (PrintLevel>0)
-    cout << "Compute detector response evt " << evt << endl;
+    Log << "Compute detector response evt " << evt << endl;
   double Ethresh = 0.02;  // Right now the threshold for the multiplicity is hard-coded here.
   double DeltaE = 0;
   TraceMult->Reset();
@@ -604,8 +601,8 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   BeamInit->Copy(Beam);
   Particle* BeamCopy = new Particle("beam copy");
   BeamCopy->Copy(Beam);
-  if (PrintLevel>0)
-    BeamCopy->Print();
+  // if (PrintLevel>0)
+  //   BeamCopy->Print(Log);
   //  DeltaEB_ave = PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserStep); 
   PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserStep, DeltaEB_ave);
   for (int stp=0; stp<AnodeStps; stp++)
@@ -646,31 +643,34 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
       Kb_min = Beam->GetFinalEnergy(0, Kb_after_window, MaxZ, 1E-3/*step size in cm*/);
       MaxT = Beam->GetTimeOfFlight(0);      
       if (PrintLevel>0) {
-	cout << "|---- Kinematic constraints for strip ";
-	cout.width(3); cout << AnodeStpID[stp_base][0];
-	cout << " ---------\n"
+	Log << "|---- Kinematic constraints for strip ";
+	Log.width(3); Log << AnodeStpID[stp_base][0];
+	Log << " ---------\n"
 	     << "|     |   In    |   Out   |  Units  |\n"
 	     << "| zr  |";
-	cout.width(9);    cout << MinZ;   cout << "|";
-	cout.width(9);    cout << MaxZ;   cout << "|";
-	cout.width(9);    cout << "cm";   cout << "|\n";
-	cout << "| tof |";
-	cout.width(9);    cout << MinT;   cout << "|";
-	cout.width(9);    cout << MaxT;   cout << "|";
-	cout.width(9);    cout << "ns";   cout << "|\n";
-	cout << "| Kb  |";
-	cout.width(9);    cout << Kb_max; cout << "|";
-	cout.width(9);    cout << Kb_min; cout << "|";
-	cout.width(9);    cout << "MeV";   cout << "|\n";
-	cout << "|--------------------------------------------------" << endl; 
+	Log.width(9);    Log << MinZ;   Log << "|";
+	Log.width(9);    Log << MaxZ;   Log << "|";
+	Log.width(9);    Log << "cm";   Log << "|\n";
+	Log << "| tof |";
+	Log.width(9);    Log << MinT;   Log << "|";
+	Log.width(9);    Log << MaxT;   Log << "|";
+	Log.width(9);    Log << "ns";   Log << "|\n";
+	Log << "| Kb  |";
+	Log.width(9);    Log << Kb_max; Log << "|";
+	Log.width(9);    Log << Kb_min; Log << "|";
+	Log.width(9);    Log << "MeV";   Log << "|\n";
+	Log << "|--------------------------------------------------" << endl; 
       }
       for (int ths=0; ths<ThSteps; ths++) {
 	theta = ths*(theta_max - theta_min)/(ThSteps - 1) + theta_min;
 	for (int phs=0; phs<PhiSteps; phs++) {
 	  phi = phs*(phi_max - phi_min)/(PhiSteps - 1) + phi_min;
 	  
-	  if (PrintLevel>0)
-	    cout << "\n***************** Event " << evt << "\n" << endl;
+	  if (PrintLevel>0) {
+	    Log << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+	    Log << "!!!       EVENT " << evt << "\n" << endl;
+	    Log << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n" << endl;
+	  }
 	  
 	  TraceCan->cd(1);
 	  HCT->Draw();
@@ -696,14 +696,14 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, this->zr, 1E-3/*cm*/);
 	  double TOF = Beam->GetTimeOfFlight(0);
 	  if (PrintLevel>0)
-	    cout << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
+	    Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
 	  
 	  // 3. Set the kinematics of all particles at the reaction point
 	  int ReacAllowed = SetReactionKinematics(Kbr, this->zr, TOF, theta, phi);
 	  // Check conservation of 4-momentum
 	  if (PrintLevel>0) {
-	    cout << "Conservation of 4-momentum at reaction point (zr)" 
-		 << endl;
+	    Log << "Conservation of 4-momentum at reaction point (zr)" 
+		<< endl;
 	    FourVector Pi("initial 4-momemtum (lab)",0,0,0,0);
 	    Pi += Beam->GetP() + Target->GetP();
 	    FourVector Pf("final 4-momentum (lab)",0,0,0,0);
@@ -713,8 +713,8 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	      if (!EvaP[er]->DoNotPropagate)
 		Pf += EvaP[er]->GetP();
 	    }
-	    Pi.Print();
-	    Pf.Print();
+	    Pi.Print(Log);
+	    Pf.Print(Log);
 	  }
 #if 0
 	  if (ReacAllowed==0) {
@@ -876,25 +876,38 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="target")
 	ctf.target = ParVal;
       // Compound parameters
-      else if (ParName=="compuond")
+      else if (ParName=="compound")
 	ctf.compound = ParVal;
       // Evaporated particle (e.g. 1H, n) parameters
       else if (ParName=="NumEvapPart")
       	ctf.NumEvapPart = atoi(ParVal.c_str());
+
+      // Particle 0
       else if (ParName=="evap0Name")
 	ctf.evap[0] = ParVal;
       else if (ParName=="evap0Color")
 	ctf.color[0] = atoi(ParVal.c_str());
       else if (ParName=="SRIMevap0")
 	ctf.SRIMevap[0] = ParVal;
-      // Evaporation residue parameters 
+      // Evaporation residue 0
       else if (ParName=="res0Name")
 	ctf.res[0] = ParVal;
-      // else if (ParName=="res0Color")
-      // 	color = atoi(ParVal.c_str());
       else if (ParName=="SRIMres0")
 	ctf.SRIMres[0] = ParVal;
-      
+
+      // Particle 1
+      else if (ParName=="evap1Name")
+	ctf.evap[1] = ParVal;
+      else if (ParName=="evap1Color")
+	ctf.color[1] = atoi(ParVal.c_str());
+      else if (ParName=="SRIMevap1")
+	ctf.SRIMevap[1] = ParVal;
+      // Evaporation residue 1
+      else if (ParName=="res1Name")
+	ctf.res[1] = ParVal;
+      else if (ParName=="SRIMres1")
+	ctf.SRIMres[1] = ParVal;
+
       // Simulation parameters
       else if (ParName=="NEvents")
 	ctf.NEvents = atoi(ParVal.c_str()); 
@@ -912,6 +925,12 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       	ctf.FileName = ParVal;
       else if (ParName=="FileOpt")
       	ctf.FileOpt = ParVal;
+      else if (ParName=="PrintOpt")
+      	ctf.PrintOpt = atoi(ParVal.c_str());      
+      else
+	cout << "musicsim warning: control file parameter \'" << ParName << "\' not recognized."
+	     << endl;
+
       
 #if 0
       else if (ParName=="str")
@@ -1002,6 +1021,7 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     tree->Branch("yfe", &yfe, "yfe/F");
     tree->Branch("zfe", &zfe, "zfe/F");
   }
+  ResetBranches();
   if (PrintLevel>0)
     tree->Print();
   return tree;
@@ -1117,12 +1137,17 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     for (int col = 0; col<AnodeCols+1; col++) 
       DE[stp][col] = 0;
 
+  if (PrintLevel>0) {
+    Log << "\n*******************************************************************"
+	<< "\nmusicsim::PropagateParticle ***************************************\n"
+	<< PO->Name << endl;
+  }
   if (PO->DoNotPropagate) {
-    if (PrintLevel>0)
-      cout << "Propagator! " << PO->Name << " not propagating" << endl;
+    if (PrintLevel>0) 
+      Log << "Not propagating!" << endl;
     return 0;
   }
-
+  
 #if 1
   TGeoVolume* Vol = 0;
   bool Skip = 0;
@@ -1150,7 +1175,7 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
   PO->Trajectory->SetName(Form("%s evt %d", PO->Name.c_str(), Event));
   
   if (PrintLevel>0)
-    cout << "Propagator! " << PO->Name << " " << MaxTime << "  ti=" << ti << endl;
+    Log << "MaxTime=" << MaxTime << " ns\n" << "Initial time ti=" << ti << " ns"<< endl;
   
   // Get azimuthal and polar angles (direction of the particle)
   double phi = PO->GetPhi();
@@ -1183,16 +1208,16 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     
     if (PrintLevel>0)
       if (PrintLevel>1 || step==0) {
-	cout << step << " " << PO->Name << " (";
-	cout.precision(7);
-	cout << tf << ", " << xf << " " << yf << " " << zf << ")  Dt=" << Dt;
+	Log << "step " << step << " (";
+	Log.precision(7);
+	Log << tf << "ns, " << xf << "cm, " << yf << "cm, " << zf << "cm)  Dt=" << Dt << "ns" << endl;
       } 
     
     // Exit the while loop if the particle leaves the anode volume.
     if (zf>AnodeDepth || zf<0 || xf>AnodeLength/2 || xf<-AnodeLength/2 || 
 	yf>AnodeHeight/2 || yf<-AnodeHeight/2) {
       if (PrintLevel>0)
-	cout << PO->Name << ": out!" << endl;
+	Log << "Particle reached end of active volume." << endl;
       break;
     }
     
@@ -1210,7 +1235,7 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     // Exit the while loop if the anode segment was not found.
     if (stp==-1 || col==-1) {
       if (PrintLevel>0)
-	cout << PO->Name<< ": anode segment not found." << endl;
+	Log << "WARNING: anode segment not found." << endl;
       break;
     }
 
@@ -1226,9 +1251,9 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     // Exit the while loop if the particle has stopped.
     if (Kf<0.001) {
       if (PrintLevel>0) {
-	cout << "STOPS INSIDE ACTIVE VOLUME!" << endl;
+	Log << "Particle stops inside active volume (Kf<1 keV)." << endl;
 	if (Kf<0)	
-	  cout << "Less than ZERO K.E.! " << Kf << endl;
+	  Log << "WARNING: Less than ZERO K.E.! " << Kf << endl;
       }    
       break;
     }
@@ -1238,7 +1263,7 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     
     if (PrintLevel>0) 
       if (PrintLevel>1 || step==0) 
-	cout << "\t d=" << dist << " \tKf=" << Kf << " \tDE=" << DE[stp][col] << endl; 
+	Log << "d=" << dist << " cm" << " \tKf=" << Kf << " \tDE=" << DE[stp][col] << endl; 
     
     // Get the momentum magnitude using the new (lower) kinetic energy
     // (I'm using a relativistic formula, although it is unlikely for
@@ -1302,6 +1327,40 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
 }
 
 
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Reset the values of the branches in the TTree
+/////////////////////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::ResetBranches()
+{
+
+  for (int stp=0; stp<ExpAnodeStps; stp++) {
+    de_r[stp] = 0;
+    de_l[stp] = 0;
+    seg[stp] = -1;
+  }
+  strip0 = strip17 = cathode = 0;
+  reacStp = -1;
+  Kb = 0;
+  for (int er=0; er<MaxEva; er++) {
+    Kl[er] = 0;
+    Kh[er] = 0;
+    phi_CM[er] = -1;
+    theta_CM[er] = -1;
+    phi_l[er] = -1;
+    theta_l[er] = -1;
+    phi_h[er] = -1;
+    theta_h[er] = -1;
+    xfl[er] = 0;
+    yfl[er] = 0;
+    zfl[er] = -1000;
+  }
+  xr = yr = 0;
+  zr = -1000;
+  xfe = yfe = 0;
+  zfe = -1000;
+}
+
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // This method intents to substitute the use of ROOT scripts.
@@ -1333,7 +1392,7 @@ int MUSIC_Simulator::run()
   LabelKine = new TPaveText(0.152,0.679,0.437,0.875,"NDC");
   
   
-  SetPrintLevel(0);
+  SetPrintLevel(ctf.PrintOpt);
   SetStripEnergyResolution(ctf.Eres);
   // Geometry
   SetAnode(ctf.AnodeGeom, 90, ctf.ELossBins, ctf.MaxELoss);
@@ -1362,6 +1421,9 @@ int MUSIC_Simulator::run()
 #endif
   return 0;
 }
+
+
+
 
 ///////////////////////////////////////////////////////////////////////////////////
 // Establish the dimensions of the MUSIC anode segments by reading a text file with
@@ -1394,6 +1456,12 @@ int MUSIC_Simulator::run()
   AnodeStps = 0;
   AnodeCols = 0;
 
+  if (PrintLevel>0) {
+    Log << "\n*******************************************************************"
+	<< "\nmusicsim::SetAnode ************************************************" << endl;
+  }
+    
+  
   GeomFile.open(AnodeGeomFile.c_str());
   if (!GeomFile.is_open()) 
     cout << "ERROR: Anode geometry file \"" << AnodeGeomFile << "\" couldn't be opened." << endl;
@@ -1453,7 +1521,7 @@ int MUSIC_Simulator::run()
       } while (!GeomFile.eof());
       GeomFile.close();
       if (PrintLevel>1)
-	cout << "Total lines: " << line_counter << endl;
+	Log << "Total lines: " << line_counter << endl;
       // Now that the number of lines has been established reopen the
       // text file to load the parameters
       GeomFile.open(AnodeGeomFile.c_str());
@@ -1480,9 +1548,9 @@ int MUSIC_Simulator::run()
 	AnodeDZ[stp][col] = dz;
 	AnodeColor[stp][col] = color;
 	if (PrintLevel>1)
-	  cout << nl << "\t" << AnodeStpID[stp][col] << "\t" << AnodeSegName[stp][col] << "\t" 
-	       << AnodeDX[stp][col] << "\t" << AnodeDY[stp][col] << "\t" << AnodeDZ[stp][col] 
-	       << "\t" << AnodeColor[stp][col] << endl;
+	  Log << nl << "\t" << AnodeStpID[stp][col] << "\t" << AnodeSegName[stp][col] << "\t" 
+	      << AnodeDX[stp][col] << "\t" << AnodeDY[stp][col] << "\t" << AnodeDZ[stp][col] 
+	      << "\t" << AnodeColor[stp][col] << endl;
       }
       GeomFile.close();
     
@@ -1699,9 +1767,6 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, string ResELossFile, int
     cout << "Warning: No more than " << MaxEva << " evaporation particles allowed." << endl;  
     return;
   }
-
-  if (PrintLevel>0)
-    cout << "Evaporation residue: " << CurEva << endl;
   
   // Evaporated particle (p,n,4He)
   double mp = NuF->GetMass(ParName, "MeV/c^2");
@@ -1773,8 +1838,11 @@ void MUSIC_Simulator::SetInitialKinematics(double Kbi/*MeV*/)
   // Four-momentum of the beam.
   Beam->SetP(Eb, pb*sin(theta_b)*cos(phi_b), pb*sin(theta_b)*sin(phi_b), pb*cos(theta_b));
   Beam->SetX(0, 0, 0, 0);
-  if (PrintLevel>0)
-    Beam->Print();
+  if (PrintLevel>0) {
+    Log << "\n*******************************************************************" << endl;
+    Log << "musicsim::SetInitialKinematics ************************************" << endl;    
+    Beam->Print(Log);
+  }
 #endif
   return;
 }
@@ -1815,9 +1883,9 @@ void MUSIC_Simulator::SetPrintLevel(int Level/*0-2*/)
     PrintLevel = 0;
   }
   else {
-    cout << "Information printing level = " << Level;
+    cout << "See musicsim.log file for detailed information" << endl;
     PrintLevel = Level;
-    Log.open("music_sim.log");
+    Log.open("musicsim.log");
     Log << "================================================================================" << endl;
     Log << "|--- MUSIC simulator log file -------------------------------------------------|" << endl;
   }
@@ -1849,8 +1917,10 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
 {
   int ReactionAllowed = 1;
 #if 1
-  if (PrintLevel>0)
-    cout << "\n*** Reaction kinematics ********************************************" << endl;
+  if (PrintLevel>0) {
+    Log << "\n*******************************************************************" << endl;
+    Log << "musicsim::SetReactionKinematics ***********************************" << endl;
+  }
   double mb = Beam->Mass;
   double mt = Target->Mass;
   double mc = Compound->Mass;
@@ -1866,22 +1936,22 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
   double BetaY = pb*sin(theta_b)*sin(phi_b)/(Eb+mt);
   double BetaZ = pb*cos(theta_b)/(Eb+mt);
   if (PrintLevel>0) {
-    cout << "Center-of-mass velocity (v/c):" << endl;
-    cout << "\tBetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ << endl; 
-    cout << "--- Beam and target particles --------------------------------------" << endl;
+    Log << "Center-of-mass velocity (v/c):" << endl;
+    Log << "BetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ << endl; 
+    Log << "--- Beam and target particles --------------------------------------" << endl;
   }
 
   // Four-momentum of the beam.
   Beam->SetP(Eb, pb*sin(theta_b)*cos(phi_b), pb*sin(theta_b)*sin(phi_b), pb*cos(theta_b));
   Beam->SetX(tof, 0, 0, zr);
   if (PrintLevel>0)
-    Beam->Print();
+    Beam->Print(Log);
   
   // Four-momentum of the target.
   Target->SetP(mt, 0, 0, 0);
   Target->SetX(tof, 0, 0, zr);
   if (PrintLevel>0)
-    Target->Print();
+    Target->Print(Log);
   
   // Total four momentum in the lab.
   FourVector Ptot = Beam->GetP() + Target->GetP();
@@ -1890,42 +1960,61 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
   // Exc. energy of compound particle.
   Compound->SetP(Ptot);
   Compound->SetX(tof, 0, 0, zr);
+  Compound->SetExcEnergy(sqrt(Ptot*Ptot) - mc);
   if (PrintLevel>0) {
-    cout << "--- Compound particle ----------------------------------------------" << endl;
-    Compound->Print();
+    Log << "--- Compound particle ----------------------------------------------" << endl;
+    //    Log << "Eexc(" << Compound->Name << ") = " << sqrt(Ptot*Ptot) - mc << " MeV" << endl;
+    Compound->Print(Log);
   }
-  if (PrintLevel>0)
-    cout << "Eexc(" << Compound->Name << ") = " << sqrt(Ptot*Ptot) - mc << " MeV" << endl;
-
   // Assume all the particles will be propagated
   for (int er=0; er<CurEva; er++) {
     EvaP[er]->DoNotPropagate = false;
     EvaR[er]->DoNotPropagate = false;
   }
-
+  
   // If user specifies angles used them for the first reaction
   int user_angles = 1;
-
+  
   // Loop over the evaporation residues (heavy) and particles (light particle always in g.s.)
+  string reacstr = Beam->Name + "(" + Target->Name + "," + EvaP[0]->Name + ")" + EvaR[0]->Name; 
   for (int er=0; er<CurEva; er++) {
     double ml = EvaP[er]->Mass;
     double mh = EvaR[er]->Mass;
     double Qvalue = sqrt(Ptot*Ptot) - ml - mh;
+    if (PrintLevel>0) {
+      Log << "--- Reaction -------------------------------------------------------" << endl;
+      if (er>0)
+	reacstr = EvaR[er-1]->Name + "->" + EvaP[er]->Name + "+" + EvaR[er]->Name;      
+      Log << "reac=" << er << ": " << reacstr << endl;
+      Log << "Qvalue=" << Qvalue << " MeV" << endl;
+      
+    }
     if (Qvalue<0 /*&& er>0*/) {
       // The present reaction is not energetically allowed
       // Propagate the previuos evap res and exit the loop
       //EvaR[er-1]->DoNotPropagate = false;
+      if (PrintLevel>0)
+	Log << "Negative Qvalue!\nThe following particles will NOT be propagated:" << endl; 
       for (int i=er; i<CurEva; i++) {
 	EvaP[i]->DoNotPropagate = true;
-	EvaR[i]->DoNotPropagate = true;	
+	EvaR[i]->DoNotPropagate = true;
+	if (PrintLevel>0)
+	  Log << i << " " << EvaP[i]->Name << ", " << EvaR[i]->Name << endl;
       }
       break;
     }
+    // When the Qvalue is positive, assume that the reactio or decay
+    // took place and stop the propagation of the previous evaporation
+    // residue
+    else {
+      if (er>0)
+	EvaR[er-1]->DoNotPropagate = true;
+    }
     // if (er==CurEva-1)
     //   EvaR[er]->DoNotPropagate = false;
-
-    double Ex = Rdm->Uniform(0.0/*Qvalue/2*/, Qvalue);
-    Ex = 0; // Forcing g.s. of evaporation residue
+    
+    double Ex = Rdm->Uniform(/*0.0*/Qvalue/2, Qvalue);
+    //Ex = 0; // Forcing g.s. of evaporation residue
 #if 0
     // Warning: for 17F(alpha,p) only!!
     double ExIndex = Rdm->Uniform(0.0,3);
@@ -1936,20 +2025,21 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     else
       Ex = 4.25;
 #endif
-
-
+    EvaR[er]->SetExcEnergy(Ex);
+    
     // If the user did not specify the value of theta and phi (initial
     // theta=phi=-1) or for er>0, randomly select the scattering angle
     // in the center of mass.
     if ((theta_CM==-1 && phi_CM==-1) || er>0) {
-      theta_CM = acos(Rdm->Uniform(-1,1));
+      theta_CM = acos(Rdm->Uniform(-1.0,1.0));
       phi_CM = Rdm->Uniform(-pi,pi);
     }
-  
+    
     if (PrintLevel>0) {
-      cout << "--- Outgoing particles (evap res = " << er << ") -------------------------------" 
-	   << endl;
-      cout << "Ex=" << Ex << " MeV   theta_cm=" << theta_CM*180/pi << "   phi_cm=" << phi_CM*180/pi << endl;
+      Log << "Ex(" << EvaR[er]->Name << ")=" << Ex << " MeV\ntheta_cm=" << theta_CM*180/pi
+	  << "\nphi_cm=" << phi_CM*180/pi << endl;
+      Log << "--- Outgoing particles (evap res = " << er << ") -------------------------------" 
+	  << endl;
     }
     
     // Verify whether more particles can evaporate from the current residue or compound (Ptot)
@@ -1981,12 +2071,21 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     double phzCM = pf_CM*cos(theta_CM);
     double EhCM = sqrt((mh+Ex)*(mh+Ex) + pf_CM*pf_CM);
     EvaR[er]->SetP(EhCM, phxCM, phyCM, phzCM);
+
+    if (PrintLevel>0) {
+      Log << "(((((((((( Before lorentz boost ))))))))))" << endl;
+      EvaR[er]->Print(Log);
+      EvaP[er]->Print(Log);
+    }
       
     // Do a Lorentz transformation (boost) into the lab reference frame.
     // I've double checked the sign of the boost and is correct (-Beta).
     EvaP[er]->Boost(-BetaX, -BetaY, -BetaZ);
     EvaR[er]->Boost(-BetaX, -BetaY, -BetaZ); 
-    // Now the 4-mom of the evap res is Ptot
+
+    // Now the total four-momentum (Ptot) is the 4-mom of the evap
+    // res, so that subsequent "reactions" are just decays from the
+    // present evaporation residue.
     Ptot = EvaR[er]->GetP();
       
     // Save the angles in degrees
@@ -1997,38 +2096,49 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     // particle will be propagated.
     EvaP[er]->SetX(tof, 0, 0, zr);
     //    EvaP[er]->DoNotPropagate = false;
-    if (PrintLevel>0)
-      EvaP[er]->Print();
 
     
     // Initial position of the evaporation residue (at the
     // target). We don't yet know if this particle will be
     // propagated (this will be known in the next cycle)
     EvaR[er]->SetX(tof, 0, 0, zr);
-    if (er>0)
-      EvaR[er-1]->DoNotPropagate = true;
+    // if (er>0)
+    //   EvaR[er-1]->DoNotPropagate = true;
     
     // Save the angles in degrees
     theta_h[er] = (EvaR[er]->GetTheta())*180/pi;
     phi_h[er] = (EvaR[er]->GetPhi())*180/pi;
-    if (PrintLevel>0)
-      EvaR[er]->Print();
+
+
+    // Print after lorentz boost
+    if (PrintLevel>0) {
+      Log << ")))))))))) After lorentz boost ((((((((((" << endl;
+      EvaR[er]->Print(Log);
+      EvaP[er]->Print(Log);
+    }
 
     // Get the beta (v/c) for the evaporation residue. Will be used in the next 'er'.
     EvaR[er]->GetBeta(BetaX, BetaY, BetaZ);
-    if (PrintLevel>0) {
-      cout << "Evap residue beta (v/c):" << endl;
-      cout << "\tBetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ << endl; 
-    }
-  }
-    
+    // if (PrintLevel>0) {
+    //   Log << "Evap residue beta (v/c):" << endl;
+    //   Log << "\tBetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ << endl; 
+    // }
+  } // end for (er)
+
+  
   // Fill the leaves related to the reaction kinematics
   Kb = Beam->GetKE();
   for (int er=0; er<CurEva; er++) {
     this->theta_CM[er] = theta_CM*180/pi;
     this->phi_CM[er] = phi_CM*180/pi;
-    Kh[er] = EvaR[er]->GetKE();    
-    Kl[er] = EvaP[er]->GetKE();     
+    if (!EvaR[er]->DoNotPropagate)
+      Kh[er] = EvaR[er]->GetKE();
+    else
+      Kh[er] = 0;
+    if (!EvaP[er]->DoNotPropagate)
+      Kl[er] = EvaP[er]->GetKE();
+    else
+      Kl[er] = 0;    
     theta_l[er] = (EvaP[er]->GetTheta())*180/pi;
     phi_l[er] = (EvaP[er]->GetPhi())*180/pi;
     theta_h[er] = (EvaR[er]->GetTheta())*180/pi;
@@ -2218,23 +2328,23 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   Kb_min = Beam->GetFinalEnergy(0, Kb_after_window, MaxZ, 1E-3/*step size in cm*/);
   MaxT = Beam->GetTimeOfFlight(0);
   if (PrintLevel>0) {
-    cout << "|---- Kinematic constraints for strip ";
-    cout.width(3); cout << StpID;
-    cout << " ---------\n"
+    Log << "|---- Kinematic constraints for strip ";
+    Log.width(3); Log << StpID;
+    Log << " ---------\n"
 	 << "|     |   In    |   Out   |  Units  |\n"
 	 << "| zr  |";
-    cout.width(9);    cout << MinZ;   cout << "|";
-    cout.width(9);    cout << MaxZ;   cout << "|";
-    cout.width(9);    cout << "cm";   cout << "|\n";
-    cout << "| tof |";
-    cout.width(9);    cout << MinT;   cout << "|";
-    cout.width(9);    cout << MaxT;   cout << "|";
-    cout.width(9);    cout << "ns";   cout << "|\n";
-    cout << "| Kb  |";
-    cout.width(9);    cout << Kb_max; cout << "|";
-    cout.width(9);    cout << Kb_min; cout << "|";
-    cout.width(9);    cout << "MeV";   cout << "|\n";
-    cout << "|--------------------------------------------------" << endl; 
+    Log.width(9);    Log << MinZ;   Log << "|";
+    Log.width(9);    Log << MaxZ;   Log << "|";
+    Log.width(9);    Log << "cm";   Log << "|\n";
+    Log << "| tof |";
+    Log.width(9);    Log << MinT;   Log << "|";
+    Log.width(9);    Log << MaxT;   Log << "|";
+    Log.width(9);    Log << "ns";   Log << "|\n";
+    Log << "| Kb  |";
+    Log.width(9);    Log << Kb_max; Log << "|";
+    Log.width(9);    Log << Kb_min; Log << "|";
+    Log.width(9);    Log << "MeV";   Log << "|\n";
+    Log << "|--------------------------------------------------" << endl; 
   }
   //-------------------------------------------------------------------------------
 
@@ -2243,21 +2353,27 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   //-------------------------------------------------------------------------------
   // Event for-loop
   //-------------------------------------------------------------------------------
-  cout << "Initiating envent for-loop" << endl;
+  Log << "Initiating envent for-loop" << endl;
   for (int evt=0; evt<NEvents; evt++) {
     if (evt%1000==0)
       if (CheckMemoryUsage()==0) {
-	cout << "Exiting event for-loop" << endl;
+	Log << "Exiting event for-loop" << endl;
 	break;
       }
     
-    if (PrintLevel>0)
-      cout << "\n***************** Event " << evt << "\n" << endl;
+    if (PrintLevel>0) {
+      Log << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+      Log << "!!!       EVENT " << evt << "\n" << endl;
+      Log << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n" << endl;
+    }
+    ResetBranches();
     
     TraceCan->cd(1);
     HCT->Draw();
     TraceCan->cd(2);
     HPT->Draw();
+
+    // Reset values of TTree branches
     
     // Reset the detector response
     for (int stp=0; stp<AnodeStps; stp++) 
@@ -2281,13 +2397,13 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, this->zr, 1E-3/*cm*/);
     double TOF = Beam->GetTimeOfFlight(0);
     if (PrintLevel>0)
-      cout << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
+      Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
 
     // 3. Set the kinematics of all particles at the reaction point
     int ReacAllowed = SetReactionKinematics(Kbr, this->zr, TOF);
     // Check conservation of 4-momentum
     if (PrintLevel>0) {
-      cout << "Conservation of 4-momentum at reaction point (zr)" 
+      Log << "Conservation of 4-momentum at reaction point (zr)" 
 	   << endl;
       FourVector Pi("initial 4-momemtum (lab)",0,0,0,0);
       Pi += Beam->GetP() + Target->GetP();
@@ -2298,8 +2414,8 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
 	if (!EvaP[er]->DoNotPropagate)
 	  Pf += EvaP[er]->GetP();
       }
-      Pi.Print();
-      Pf.Print();
+      Pi.Print(Log);
+      Pf.Print(Log);
     }
 
     if (ReacAllowed) {
@@ -2354,6 +2470,9 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
 	  TraceB[col]->SetPoint(stp, stp, DeltaEB[stp][col]);
       cout << "Warninig: reaction energetically not allowed for event " << evt 
 	   << " (Kbr= " << Kbr << " MeV)." << endl;
+      Log << "Warninig: reaction energetically not allowed for event " << evt 
+	   << " (Kbr= " << Kbr << " MeV)." << endl;
+      
     }
     
     // 7. Compute detector response (i.e. DE for beam + light + heavy)
@@ -2469,23 +2588,23 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
   Kb_min = Beam->GetFinalEnergy(0, Kb_after_window, MaxZ, 1E-3/*step size in cm*/);
   MaxT = Beam->GetTimeOfFlight(0);
   if (PrintLevel>0) {
-    cout << "|---- Kinematic constraints for strip ";
-    cout.width(3); cout << StpID;
-    cout << " ---------\n"
+    Log << "|---- Kinematic constraints for strip ";
+    Log.width(3); Log << StpID;
+    Log << " ---------\n"
 	 << "|     |   In    |   Out   |  Units  |\n"
 	 << "| zr  |";
-    cout.width(9);    cout << MinZ;   cout << "|";
-    cout.width(9);    cout << MaxZ;   cout << "|";
-    cout.width(9);    cout << "cm";   cout << "|\n";
-    cout << "| tof |";
-    cout.width(9);    cout << MinT;   cout << "|";
-    cout.width(9);    cout << MaxT;   cout << "|";
-    cout.width(9);    cout << "ns";   cout << "|\n";
-    cout << "| Kb  |";
-    cout.width(9);    cout << Kb_max; cout << "|";
-    cout.width(9);    cout << Kb_min; cout << "|";
-    cout.width(9);    cout << "MeV";   cout << "|\n";
-    cout << "|--------------------------------------------------" << endl; 
+    Log.width(9);    Log << MinZ;   Log << "|";
+    Log.width(9);    Log << MaxZ;   Log << "|";
+    Log.width(9);    Log << "cm";   Log << "|\n";
+    Log << "| tof |";
+    Log.width(9);    Log << MinT;   Log << "|";
+    Log.width(9);    Log << MaxT;   Log << "|";
+    Log.width(9);    Log << "ns";   Log << "|\n";
+    Log << "| Kb  |";
+    Log.width(9);    Log << Kb_max; Log << "|";
+    Log.width(9);    Log << Kb_min; Log << "|";
+    Log.width(9);    Log << "MeV";   Log << "|\n";
+    Log << "|--------------------------------------------------" << endl; 
   }
   //-------------------------------------------------------------------------------
 
@@ -2496,7 +2615,7 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
       phi = phs*(phi_max - phi_min)/(PhiSteps - 1) + phi_min;
       
       if (PrintLevel>0)
-	cout << "\n***************** Event " << evt << "\n" << endl;
+	Log << "\n***************** Event " << evt << "\n" << endl;
     
       TraceCan->cd(1);
       HCT->Draw();
@@ -2521,7 +2640,7 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
       double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, this->zr, 1E-3);
       double TOF = Beam->GetTimeOfFlight(0);
       if (PrintLevel>0)
-	cout << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
+	Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
       
       // 3. Set the kinematics of all particles at the reaction point
       int ReacAllowed = SetReactionKinematics(Kbr, this->zr, TOF, theta, phi);
@@ -2576,7 +2695,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
 {
 #if 1
   if (PrintLevel>0)
-    cout << "Update visuals: evt=" << evt << " Kbr=" << Kbr << " MeV zr=" << zr << " cm TOF=" 
+    Log << "Update visuals: evt=" << evt << " Kbr=" << Kbr << " MeV zr=" << zr << " cm TOF=" 
 	 << TOF << " ns Wait=" << Wait << "\n3D stuff ..." << endl;
 
 
@@ -2610,7 +2729,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
 
   // 2D stuff
   if (PrintLevel>0)
-    cout << "2D stuff..." << endl;
+    Log << "2D stuff..." << endl;
 
 #if 1
   // Traces of energy loss in columns as a function of the strip
