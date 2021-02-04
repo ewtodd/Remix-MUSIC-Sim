@@ -73,7 +73,7 @@ public:
 			     double MaxTime, double UserStep, int UpdateEnabled=0, int Wait=0);
   void SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/, int ELossBins=400, 
 		float MaxELoss=5);
-  void SetBeamParticle(std::string Name, int Color, std::string ELossFile, double KineticE/*MeV*/);
+  void SetBeamParticle(std::string Name, int Color, std::string ELossFile);
   //  void SetBeamSpot(double diameter);
   void SetCompoundParticle(std::string Name);
   void SetDecayDaughter1(std::string Name, int Color, std::string ELossFile);
@@ -263,15 +263,16 @@ private:
     std::string target;
     std::string compound;
     int NumEvapPart;
-    static const int MaxNumEvapPart = 10;
+    static const int MaxNumEvapPart=10;
     std::string* res = new std::string[MaxNumEvapPart];
     std::string* SRIMres = new std::string[MaxNumEvapPart];
     std::string* evap = new std::string[MaxNumEvapPart];
     std::string* SRIMevap = new std::string[MaxNumEvapPart];
     int* color = new int[MaxNumEvapPart];
     double Kb;  // MeV - Energy of the beam after the Ti window and degrader (if any)
+    double KbFWHM=0;  // MeV - Beam energy spread (full-width half maximum)
     int strip;      // Strip where reaction takes place
-    float Eres; // MeV - Strip energy resolution (larger values increase signal randomness)
+    float Eres=0; // MeV - Strip energy resolution (larger values increase signal randomness)
     int NEvents;  // Number of simulated events (recommendation: keep it <1000)
     int Wait;       // 1 - canvas waits for user's double click, 0 - no wait
     int Update;     // 1 - update visuals for every event, 0 - don't
@@ -280,7 +281,7 @@ private:
     int Method;     // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
     std::string FileName;
     std::string FileOpt;
-    int PrintOpt = 0;
+    int PrintOpt=0;
   };
   
   controlFileParams ctf;

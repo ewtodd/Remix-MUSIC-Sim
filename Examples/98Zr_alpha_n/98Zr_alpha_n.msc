@@ -7,6 +7,7 @@ strip		 12			   Strip where reaction takes place. Use -1 for unreacted beam
 Eres		 0.05			   Energy noise level in each strip [MeV]
 beam		 98Zr			   Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
 Kb		 400			   Beam energy as it enters the dead gas layer [MeV]
+KbFWHM		 10			   Beam energy FWHM [MeV]
 target		 4He			   
 compound	 102Mo			   
 NumEvapPart	 1			   Number of evaporated particles. E.g. 1 for 17F(4He,1H)
@@ -15,7 +16,7 @@ evap0Color	 632			   Integer. See ROOT colors.
 res0Name	 101Mo
 SRIMbeam	 ../../SRIM/files/98Zr_in_GasIndex3_500Torr_293K.srim
 SRIMres0	 ../../SRIM/files/101Mo_in_GasIndex3_500Torr_293K.srim
-NEvents		 300			   Number of events simulated
+NEvents		 3000			   Number of events simulated
 Wait		 0			   Wait between simulated events? 1=yes, 0=no
 Update		 0			   Update graphics between simulated events? 1=yes, 0=no
 MaxTime		 2000			   Maximum time for an event [ns]

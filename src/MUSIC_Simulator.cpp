@@ -15,7 +15,6 @@ MUSIC_Simulator::MUSIC_Simulator()
   // Initialize variables.
   CMEMax = 0;
   CMEMin = 0;
-  EneSigma = 0;
   EexcMax = 0;
   EexcMin = 0;
   Kb_after_window = 0;
@@ -27,7 +26,7 @@ MUSIC_Simulator::MUSIC_Simulator()
 
   // Initialize selected pointers to zero (non-zero pointers initialized below).
   Beam = 0;
-  Gaussian = 0;
+  Gaussian = new TF1("Gaussian","gaus",-1e3,1e3);
   Target = 0;
   Trace = 0;
   Compound = 0;
@@ -119,7 +118,7 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
   FourVector Pb("Pb");
   FourVector Pt("Pt", mt, 0, 0, 0);
   FourVector Ptot("Total four-mom. in the lab");
-  double Kb = Kb_after_window;
+  double Kb = ctf.Kb;
   double Kb_min;
   float TotalLength = 0;
   
@@ -195,7 +194,7 @@ void MUSIC_Simulator::CalculateExcEnergyRange()
   FourVector Pb("Pb");
   FourVector Pt("Pt", mt, 0, 0, 0);
   FourVector Ptot("Total four-mom. in the lab");
-  double Kb = Kb_after_window;
+  double Kb = ctf.Kb;
   double Kb_min;
   float TotalLength = 0;
   
@@ -593,7 +592,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   
   cout << "Generating " << NEvents << " MUSIC traces ..." << endl;
   
-  SetInitialKinematics(Kb_after_window);   
+  SetInitialKinematics(ctf.Kb);   
 
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
@@ -603,14 +602,14 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   BeamCopy->Copy(Beam);
   // if (PrintLevel>0)
   //   BeamCopy->Print(Log);
-  //  DeltaEB_ave = PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserStep); 
-  PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserStep, DeltaEB_ave);
+  //  DeltaEB_ave = PropagateParticle(BeamCopy, ctf.Kb, MaxTime, UserStep); 
+  PropagateParticle(BeamCopy, 0, MaxTime, UserStep, DeltaEB_ave);
   for (int stp=0; stp<AnodeStps; stp++)
     for (int col=0; col<AnodeCols+1; col++) 
       TraceUB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
 
 
-  //  PrintEnergetics(Kb_after_window, DeltaEB_ave);
+  //  PrintEnergetics(ctf.Kb, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
   // Some kinematic variables
@@ -638,9 +637,9 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	if (AnodeStpID[stp][0]==AnodeStpID[stp_base][0])
 	  break;
       }
-      Kb_max = Beam->GetFinalEnergy(0, Kb_after_window, MinZ, 1E-3/*step size in cm*/);
+      Kb_max = Beam->GetFinalEnergy(0, ctf.Kb, MinZ, 1E-3/*step size in cm*/);
       MinT = Beam->GetTimeOfFlight(0);
-      Kb_min = Beam->GetFinalEnergy(0, Kb_after_window, MaxZ, 1E-3/*step size in cm*/);
+      Kb_min = Beam->GetFinalEnergy(0, ctf.Kb, MaxZ, 1E-3/*step size in cm*/);
       MaxT = Beam->GetTimeOfFlight(0);      
       if (PrintLevel>0) {
 	Log << "|---- Kinematic constraints for strip ";
@@ -687,13 +686,13 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	      }
 	    }
 	  // 1. Set beam inital conditions (beam energy, position)
-	  SetInitialKinematics(Kb_after_window);   
+	  SetInitialKinematics(ctf.Kb);   
 	  
 	  // 2. Within the selected strip randomly select the position
 	  // at which the beam particle interacts with the target and
 	  // calculate the kinetic energy at the reaction point
 	  this->zr = Rdm->Uniform(MinZ, MaxZ);
-	  double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, this->zr, 1E-3/*cm*/);
+	  double Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3/*cm*/);
 	  double TOF = Beam->GetTimeOfFlight(0);
 	  if (PrintLevel>0)
 	    Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
@@ -781,8 +780,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  }
 	  else {
 	    Beam->Copy(BeamInit);
-	    //	  PropagateParticle(Beam, Kb_after_window, MaxTime, UserStep); 
-	    PropagateParticle(Beam, Kb_after_window, MaxTime, UserStep, DeltaEB);
+	    PropagateParticle(Beam, evt, MaxTime, UserStep, DeltaEB);
 	    cout << "Warninig: reaction energetically not allowed for event " << evt 
 		 << " (Kbr= " << Kbr << " MeV)." << endl;
 	  }
@@ -868,9 +866,11 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       // Beam parameters
       else if (ParName=="beam")
 	ctf.beamName = ParVal;
-      else if (ParName=="Kb")
+      else if (ParName=="Ebeam" || ParName=="Kb")
 	ctf.Kb = atof(ParVal.c_str());
-      else if (ParName=="SRIMbeam")
+      else if (ParName=="EbeamFWHM" || ParName=="KbFWHM")
+	ctf.KbFWHM = atof(ParVal.c_str());
+	else if (ParName=="SRIMbeam")
 	ctf.SRIMbeam = ParVal;
       // Target parameters
       else if (ParName=="target")
@@ -1309,10 +1309,10 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
   for (int stp = 0; stp<AnodeStps; stp++) 
     for (int col = 0; col<AnodeCols; col++)  {
       if (DE[stp][col]>0) {
-	if (Gaussian!=0) {
+	if (ctf.Eres>0.0) {
 	  // Adding randomness to the energy loss to mimic eperimental jitter
-	  Gaussian->SetRange(0.0, 2*DE[stp][col]);
-	  Gaussian->SetParameters(1.0, DE[stp][col], EneSigma);
+	  Gaussian->SetRange(0.0, 10*DE[stp][col]);
+	  Gaussian->SetParameters(1.0, DE[stp][col], ctf.Eres);
 	  DE[stp][col] = Gaussian->GetRandom();
 	}	
 	DE[stp][AnodeCols] += DE[stp][col];
@@ -1398,27 +1398,39 @@ int MUSIC_Simulator::run()
   SetAnode(ctf.AnodeGeom, 90, ctf.ELossBins, ctf.MaxELoss);
 
   // Beam
-  SetBeamParticle(ctf.beamName, kBlack, ctf.SRIMbeam, ctf.Kb);
+  SetBeamParticle(ctf.beamName, kBlack, ctf.SRIMbeam);
   // Target
   SetTargetParticle(ctf.target);
   // Compound particle
   SetCompoundParticle(ctf.compound);
   // Evaporation residues and particles
   for (int i=0; i<ctf.NumEvapPart; i++)
-    SetEvapResAndPart(ctf.res[i], ctf.SRIMres[i], kGreen+i, ctf.evap[i], ctf.SRIMevap[i], ctf.color[i]);
+    SetEvapResAndPart(ctf.res[i],
+		      ctf.SRIMres[i],
+		      kGreen+i,
+		      ctf.evap[i],
+		      ctf.SRIMevap[i],
+		      ctf.color[i]);
 
-#if 1
   if (ctf.Method==0) {
     // Simulate events for one strip or generate trace data base (see below)
-    Simulate(ctf.strip, ctf.NEvents, ctf.MaxTime, ctf.SimStep, ctf.Update, ctf.Wait, ctf.FileName, ctf.FileOpt);
+    Simulate(ctf.strip,
+	     ctf.NEvents,
+	     ctf.MaxTime,
+	     ctf.SimStep,
+	     ctf.Update,
+	     ctf.Wait,
+	     ctf.FileName,
+	     ctf.FileOpt);
   }
   else if (ctf.Method==1) {
+    cout << "musicsim warning: GenerateTraceDataBase method not ready." << endl;
     // GenerateTraceDatabase("TraceDB.root", 
     // 			  ThCMMin, ThCMMax, ThSteps, 
     // 			  PhiCMMin, PhiCMMax, PhiSteps,
     // 			  MaxTime, SimStep, Update, Wait);
   }
-#endif
+  
   return 0;
 }
 
@@ -1670,7 +1682,7 @@ int MUSIC_Simulator::run()
 ///////////////////////////////////////////////////////////////////////////////////
 // Create the beam particle object.
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, double K)
+void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile)
 {
 #if 1
   // Use the nuclide finder object to determine the mass and atomic
@@ -1685,7 +1697,7 @@ void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, 
   TrackBeam->SetMainColor(Color);
   TrackBeam->SetPickable(kTRUE);
   Eve->AddElement(TrackBeam);
-  Kb_after_window = K;
+  //  Kb_after_window = K;
 #endif
   return;
 }
@@ -1706,7 +1718,7 @@ void MUSIC_Simulator::SetCompoundParticle(string Name)
   // maximum compund excitation energy, ExMax
   if (Beam && Target) {
     double mb = Beam->Mass;
-    double Kb = Kb_after_window;
+    double Kb = ctf.Kb;
     double pb = sqrt(2*mb*Kb*(1 + Kb/(2*mb)));
     double Eb = sqrt(mb*mb + pb*pb);
     FourVector Pb("Pb", Eb, 0, 0, pb);
@@ -2193,7 +2205,6 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
 void MUSIC_Simulator::SetStripEnergyResolution(float Sigma)
 {
   EneSigma = Sigma;
-  Gaussian = new TF1("Gaussian","gaus",0, 100);
   return;
 }
 
@@ -2245,8 +2256,14 @@ void MUSIC_Simulator::SetTargetParticle(string Name)
 // 7. Compute detector response (i.e. DE for beam + light + heavy + etc)
 // 8. Display trace and particle trajecories
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double UserStep, int UpdateVis, 
-			       int Wait, string FileName, string FileOpt)
+void MUSIC_Simulator::Simulate(int StpID,
+			       int NEvents,
+			       double MaxTime,
+			       double UserStep,
+			       int UpdateVis, 
+			       int Wait,
+			       string FileName,
+			       string FileOpt)
 {
   double ti,xi,yi,zi, tf,xf,yf,zf;
 #if 1
@@ -2289,25 +2306,23 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
   // detector response
   CreateTracesAndTrajectories(NEvents);
   
-  cout << "Simulating MUSIC traces ... " << endl;
-  
-  SetInitialKinematics(Kb_after_window);   
-
+  cout << "Simulating " << NEvents << " MUSIC traces ... " << endl;
+ 
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
-  Particle* BeamInit = new Particle("beam init");
+  SetInitialKinematics(ctf.Kb); // ideal case with no energy straggling
+  Particle* BeamInit = new Particle("beam init");  
   BeamInit->Copy(Beam);
   Particle* BeamCopy = new Particle("beam copy");
   BeamCopy->Copy(Beam);
   if (PrintLevel>0)
     BeamCopy->Print();
-  //  DeltaEB_ave = PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserStep); 
-  PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserStep, DeltaEB_ave);
+  PropagateParticle(BeamCopy, 0, MaxTime, UserStep, DeltaEB_ave);
   for (int stp=0; stp<AnodeStps; stp++)
     for (int col=0; col<AnodeCols+1; col++) 
       TraceUB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
   
-  // PrintEnergetics(Kb_after_window, DeltaEB_ave);
+  // PrintEnergetics(ctf.Kb, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
   // Some kinematic variables
@@ -2323,9 +2338,9 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     if (AnodeStpID[stp][0]==StpID)
       break;
   }
-  Kb_max = Beam->GetFinalEnergy(0, Kb_after_window, MinZ, 1E-3/*step size in cm*/);
+  Kb_max = Beam->GetFinalEnergy(0, ctf.Kb, MinZ, 1E-3/*step size in cm*/);
   MinT = Beam->GetTimeOfFlight(0);
-  Kb_min = Beam->GetFinalEnergy(0, Kb_after_window, MaxZ, 1E-3/*step size in cm*/);
+  Kb_min = Beam->GetFinalEnergy(0, ctf.Kb, MaxZ, 1E-3/*step size in cm*/);
   MaxT = Beam->GetTimeOfFlight(0);
   if (PrintLevel>0) {
     Log << "|---- Kinematic constraints for strip ";
@@ -2388,13 +2403,20 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
       }
     
     // 1. Set beam inital conditions (beam energy, position)
-    SetInitialKinematics(Kb_after_window);   
+    double Ebeam = ctf.Kb;
+    // If the user specified a KbFWHM>0 change the beam energy
+    // assuming a gaussian distribution.
+    if (ctf.KbFWHM>0) {
+      Gaussian->SetParameters(1.0, 0.0, ctf.KbFWHM/2.355);
+      Ebeam += Gaussian->GetRandom();
+    }
+    SetInitialKinematics(Ebeam);
 
     // 2. Within the selected strip randomly select the position at
     // which the beam particle interacts with the target and calculate
     // the kinetic energy at the reaction point
     this->zr = Rdm->Uniform(MinZ, MaxZ);
-    double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, this->zr, 1E-3/*cm*/);
+    double Kbr = Beam->GetFinalEnergy(0, Ebeam, this->zr, 1E-3/*cm*/);
     double TOF = Beam->GetTimeOfFlight(0);
     if (PrintLevel>0)
       Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
@@ -2464,7 +2486,7 @@ void MUSIC_Simulator::Simulate(int StpID, int NEvents, double MaxTime, double Us
     }
     else {
       Beam->Copy(BeamInit);
-      PropagateParticle(Beam, Kb_after_window, MaxTime, UserStep, DeltaEB);
+      PropagateParticle(Beam, evt, MaxTime, UserStep, DeltaEB);
       for (int stp=0; stp<AnodeStps; stp++)
 	for (int col=0; col<AnodeCols+1; col++) 
 	  TraceB[col]->SetPoint(stp, stp, DeltaEB[stp][col]);
@@ -2548,7 +2570,7 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
   
   cout << "Simulating MUSIC traces ... " << endl;
   
-  SetInitialKinematics(Kb_after_window);   
+  SetInitialKinematics(ctf.Kb);   
 
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
@@ -2556,12 +2578,12 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
   BeamCopy->Copy(Beam);
   if (PrintLevel>0)
     BeamCopy->Print();
-  //  DeltaEB_ave = PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserStep); 
-  PropagateParticle(BeamCopy, Kb_after_window, MaxTime, UserStep, DeltaEB_ave);
+  //  DeltaEB_ave = PropagateParticle(BeamCopy, ctf.Kb, MaxTime, UserStep); 
+  PropagateParticle(BeamCopy, ctf.Kb, MaxTime, UserStep, DeltaEB_ave);
   for (int stp=0; stp<AnodeStps; stp++)
     for (int col=0; col<AnodeCols+1; col++) 
       TraceUB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
-  //  PrintCompoundEexc(Kb_after_window, DeltaEB_ave);
+  //  PrintCompoundEexc(ctf.Kb, DeltaEB_ave);
   
   //-------------------------------------------------------------------------------
   // Some kinematic variables
@@ -2583,9 +2605,9 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
     if (AnodeStpID[stp][0]==StpID)
       break;
   }
-  Kb_max = Beam->GetFinalEnergy(0, Kb_after_window, MinZ, 1E-3/*step size in cm*/);
+  Kb_max = Beam->GetFinalEnergy(0, ctf.Kb, MinZ, 1E-3/*step size in cm*/);
   MinT = Beam->GetTimeOfFlight(0);
-  Kb_min = Beam->GetFinalEnergy(0, Kb_after_window, MaxZ, 1E-3/*step size in cm*/);
+  Kb_min = Beam->GetFinalEnergy(0, ctf.Kb, MaxZ, 1E-3/*step size in cm*/);
   MaxT = Beam->GetTimeOfFlight(0);
   if (PrintLevel>0) {
     Log << "|---- Kinematic constraints for strip ";
@@ -2631,13 +2653,13 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
 	}
       
       // 1. Set beam inital conditions (beam energy, position)
-      SetInitialKinematics(Kb_after_window);   
+      SetInitialKinematics(ctf.Kb);   
       
       // 2. Within the selected strip randomly select the position at
       // which the beam particle interacts with the target and calculate
       // the kinetic energy at the reaction point
       this->zr = Rdm->Uniform(MinZ, MaxZ);
-      double Kbr = Beam->GetFinalEnergy(0, Kb_after_window, this->zr, 1E-3);
+      double Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3);
       double TOF = Beam->GetTimeOfFlight(0);
       if (PrintLevel>0)
 	Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
