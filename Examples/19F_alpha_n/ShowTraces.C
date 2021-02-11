@@ -1,13 +1,14 @@
 {
 
   int NTraces = 100;
-  int stp = 4;
-  int Kb = 700; // MeV
-  int pressure = 480;
+  int stp = 5;
+  int Kb = 54; // MeV
+  int pressure = 600;
   
-  TFile* TFpa = new TFile("traces_pa_stp4.root");
-  TFile* TFpp = new TFile("traces_pp_stp4.root");
-  TFile* TFub = new TFile("unreacted_70Zn.root");
+  TFile* TFap = new TFile("traces_ap_stp5.root");
+  TFile* TFaa = new TFile("traces_aa_stp5.root");
+  TFile* TFan = new TFile("traces_an_stp5.root");
+  TFile* TFub = new TFile("unreacted_19F.root");
 
   TGraph** Tub = new TGraph*[NTraces];
   for (int n=0; n<NTraces; n++) {
@@ -19,30 +20,40 @@
     }
   }
 
-  TGraph** Tpa = new TGraph*[NTraces];
+  TGraph** Tap = new TGraph*[NTraces];
   for (int n=0; n<NTraces; n++) {
-    Tpa[n] = (TGraph*)TFpa->Get(Form("traces/Trace%d",n));
-    if (Tpa[n]!=0) {
-      Tpa[n]->SetLineColor(kRed);
-      Tpa[n]->SetLineWidth(2);
-      Tpa[n]->SetMarkerColor(kRed);
+    Tap[n] = (TGraph*)TFap->Get(Form("traces/Trace%d",n));
+    if (Tap[n]!=0) {
+      Tap[n]->SetLineColor(kRed);
+      Tap[n]->SetLineWidth(2);
+      Tap[n]->SetMarkerColor(kRed);
+    }
+  }
+
+  TGraph** Taa = new TGraph*[NTraces];
+  for (int n=0; n<NTraces; n++) {
+    Taa[n] = (TGraph*)TFaa->Get(Form("traces/Trace%d",n));
+    if (Taa[n]!=0) {
+      Taa[n]->SetLineColor(kGreen);
+      Taa[n]->SetLineWidth(2);
+      Taa[n]->SetMarkerColor(kGreen);
     }
   }
   
-  TGraph** Tpp = new TGraph*[NTraces];
+  TGraph** Tan = new TGraph*[NTraces];
   for (int n=0; n<NTraces; n++) {
-    Tpp[n] = (TGraph*)TFpp->Get(Form("traces/Trace%d",n));
-    if (Tpp[n]!=0) {
-      Tpp[n]->SetLineColor(kBlue);
-      Tpp[n]->SetLineWidth(2);
-      Tpp[n]->SetMarkerColor(kBlue);
+    Tan[n] = (TGraph*)TFan->Get(Form("traces/Trace%d",n));
+    if (Tan[n]!=0) {
+      Tan[n]->SetLineColor(kBlue);
+      Tan[n]->SetLineWidth(2);
+      Tan[n]->SetMarkerColor(kBlue);
     }
   }
   
 
   TCanvas* Can = new TCanvas("Can","Traces",0,0,1000,800);
-  TH2F* HELoss = new TH2F("HELoss",Form("^{70}Zn+^{1}H (CH4 at %d Torr, E_{b} = %d MeV)",pressure, Kb),
-			  18,-0.5,18-0.5, 400,0.0,50);
+  TH2F* HELoss = new TH2F("HELoss",Form("^{19}F+^{4}He (He at %d Torr, E_{b} = %d MeV)",pressure, Kb),
+			  18,-0.5,18-0.5, 400,0.0,5);
   HELoss->SetStats(0);
   Can->SetGrid();
   HELoss->GetXaxis()->SetTitle("Strip number (as in AnodeGeometry file)");
@@ -56,14 +67,18 @@
     if (Tub[n]!=0)
       Tub[n]->Draw("l same");
   for (int n=0; n<NTraces; n++)
-    if (Tpa[n]!=0)
-      Tpa[n]->Draw("l same");
+    if (Tap[n]!=0)
+      Tap[n]->Draw("l same");
+  for (int n=0; n<NTraces; n++)
+    if (Taa[n]!=0)
+      Taa[n]->Draw("l same");
   for (int n=0; n<NTraces; n++) 
-    if (Tpp[n]!=0)
-      Tpp[n]->Draw("l same");
+    if (Tan[n]!=0)
+      Tan[n]->Draw("l same");
   TLegend* Leg = new TLegend(0.174,0.156,0.346,0.374);
-  Leg->AddEntry(Tpa[0], "(p,#alpha)", "l");
-  Leg->AddEntry(Tpp[0], "(p,p)", "l");
+  Leg->AddEntry(Tan[0], "(#alpha,n)", "l");
+  Leg->AddEntry(Tap[0], "(#alpha,p)", "l");
+  Leg->AddEntry(Taa[0], "(#alpha,#alpha)", "l");
   Leg->AddEntry(Tub[0], "beam", "l");
   Leg->Draw();
 }

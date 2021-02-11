@@ -2110,7 +2110,7 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     //   EvaR[er]->DoNotPropagate = false;
     
     double Ex = Rdm->Uniform(/*0.0*/Qvalue/2, Qvalue);
-    //Ex = 0; // Forcing g.s. of evaporation residue
+    //   Ex = 0; // Forcing g.s. of evaporation residue
 #if 0
     // Warning: for 17F(alpha,p) only!!
     double ExIndex = Rdm->Uniform(0.0,3);
@@ -2462,7 +2462,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     
     if (PrintLevel>0) {
       Log << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
-      Log << "!!!       EVENT " << evt << "\n" << endl;
+      Log << "!!!       EVENT " << evt << endl;
       Log << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n" << endl;
     }
     ResetBranches();
