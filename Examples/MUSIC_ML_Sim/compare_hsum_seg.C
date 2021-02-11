@@ -12,9 +12,8 @@
   TH2F* hsim = (TH2F*)h1->Clone("hsim");
   hsim->Reset();
   hsim->SetTitle("uncalibrated simulation data");
-  //  hsim->Draw();
  
-
+  // Simulated data
   TFile* f2 = new TFile("fE37_5P406.root");
   TH2F* h2 = (TH2F*)f2->Get("hE37_5P406");
   can->cd(2)->SetGrid();
