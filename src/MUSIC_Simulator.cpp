@@ -114,6 +114,7 @@ MUSIC_Simulator::MUSIC_Simulator()
 void MUSIC_Simulator::CalculateCMEnergyRange()
 {
 #if 0
+  // Relativistic version (not working properly, use non-rel version below)
   double pb, Eb;
   double CME_beg, CME_end, pCM;
   double mb = Beam->Mass;
@@ -132,54 +133,92 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
   Pb.SetCoords(Eb, 0, 0, pb);
   // Total four momentum
   Ptot = Pb + Pt;
+  // Calculate the initial momentum (of beam and target) in the CM.
+  pCM = sqrt((Ptot*Ptot - pow(mt+mb,2))*(Ptot*Ptot - pow(mt-mb,2))/(4*(Ptot*Ptot)));
+  // Center-of-mass energy at the beginning of MUSIC (the CM energy is the sum of the kinetic
+  // energies).
+  CMEMax = CME_beg = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
+  //    cout << "Full CM energy range covered in " << TotalLength << "cm:\n CME(beg) = " 
+  //	 << CME_beg << " MeV";
+  // Now get the CM energy at the end of the segments.
+  Kb_min = Beam->GetFinalEnergy(Kb, TotalLength, 0.001);
+  pb = sqrt(2*mb*Kb_min*(1 + Kb_min/(2*mb)));
+  Eb = sqrt(mb*mb + pb*pb);
+  Pb.SetCoords(Eb, 0, 0, pb);
+  Ptot = Pb + Pt;
+  pCM = sqrt((Ptot*Ptot - pow(mt+mb,2))*(Ptot*Ptot - pow(mt-mb,2))/(4*(Ptot*Ptot)));
+  CMEMin = CME_end = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
+  //   cout << "   CME(end) = " << CME_end << " MeV" << endl;
+
+  //   cout << "CM energy range in each segment:" << endl;
+
+  for (int i=0; i<NSegments; i++) {
+    Kb = Beam->GetFinalEnergy(Kb, SegLength[i], 0.001);
+    // Linear momentum and total energy of the beam particle in the lab with the current
+    // value of the kinetic energy.
+    pb = sqrt(2*mb*Kb*(1 + Kb/(2*mb)));
+    Eb = sqrt(mb*mb + pb*pb);
+    // Four-momentum of the beam.
+    Pb.SetCoords(Eb, 0, 0, pb);
+    // Total four momentum
+    Ptot = Pb + Pt;
     // Calculate the initial momentum (of beam and target) in the CM.
     pCM = sqrt((Ptot*Ptot - pow(mt+mb,2))*(Ptot*Ptot - pow(mt-mb,2))/(4*(Ptot*Ptot)));
-    // Center-of-mass energy at the beginning of MUSIC (the CM energy is the sum of the kinetic
-    // energies).
-    CMEMax = CME_beg = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
-    //    cout << "Full CM energy range covered in " << TotalLength << "cm:\n CME(beg) = " 
-    //	 << CME_beg << " MeV";
-    // Now get the CM energy at the end of the segments.
-    Kb_min = BeamInTgt->GetFinalEnergy(Kb, TotalLength, 0.001);
-    pb = sqrt(2*mb*Kb_min*(1 + Kb_min/(2*mb)));
-    Eb = sqrt(mb*mb + pb*pb);
-    Pb.SetCoords(Eb, 0, 0, pb);
-    Ptot = Pb + Pt;
-    pCM = sqrt((Ptot*Ptot - pow(mt+mb,2))*(Ptot*Ptot - pow(mt-mb,2))/(4*(Ptot*Ptot)));
-    CMEMin = CME_end = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
-    //   cout << "   CME(end) = " << CME_end << " MeV" << endl;
+    // In this case the CM energy is the sum of the kinetic energies.
+    CME_end = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
+    SegCMERange[i] = CME_beg - CME_end;
+    // cout << i << "\t" << SegLength[i] << " cm \t" << SegCMERange[i] << " MeV \t(Kb=" 
+    // 	   << Kb << " MeV)"<< endl;
+    // The excitation energy at the end of this segment is the excitation energy at the beginnig
+    // of the next segment.
+    if (i+1<NSegments) 
+      CME_beg = CME_end;
+  }
+}
+ else {
+   cout << "Warning: energy loss file for beam has not been loaded.  Calculations were not made.\n";
+ }
+#endif
 
-    //   cout << "CM energy range in each segment:" << endl;
+#if 1
+// Non-relativistic version
+double CME_beg, CME_end;
+  double mb = Beam->Mass;
+  double mt = Target->Mass;
+  double Kb = ctf.Kb;
+  double Kb_min;
+  float TotalLength = 0;
+for (int i=0; i<AnodeRows; i++) 
+  TotalLength += AnodeDZ[i][0];
+    
+  // Center-of-mass energy at the beginning of MUSIC
+CMEMax = CME_beg = Kb*mt/(mt+mb);
+cout << "Full CM energy range covered in " << TotalLength << "cm:\n CME(beg) = " 
+ 	 << CME_beg << " MeV";
+  // Now get the CM energy at the end of the segments.
+Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength, 0.001);
+CMEMin = CME_end = Kb_min*mt/(mt+mb);
+cout << "   CME(end) = " << CME_end << " MeV" << endl;
+
+cout << "CM energy range in each segment:" << endl;
    
 
-    for (int i=0; i<NSegments; i++) {
-      Kb = BeamInTgt->GetFinalEnergy(Kb, SegLength[i], 0.001);
-      // Linear momentum and total energy of the beam particle in the lab with the current
-      // value of the kinetic energy.
-      pb = sqrt(2*mb*Kb*(1 + Kb/(2*mb)));
-      Eb = sqrt(mb*mb + pb*pb);
-      // Four-momentum of the beam.
-      Pb.SetCoords(Eb, 0, 0, pb);
-      // Total four momentum
-      Ptot = Pb + Pt;
-      // Calculate the initial momentum (of beam and target) in the CM.
-      pCM = sqrt((Ptot*Ptot - pow(mt+mb,2))*(Ptot*Ptot - pow(mt-mb,2))/(4*(Ptot*Ptot)));
-      // In this case the CM energy is the sum of the kinetic energies.
-      CME_end = (sqrt(mb*mb+pCM*pCM) - mb) + (sqrt(mt*mt+pCM*pCM) - mt);
-      SegCMERange[i] = CME_beg - CME_end;
-      // cout << i << "\t" << SegLength[i] << " cm \t" << SegCMERange[i] << " MeV \t(Kb=" 
-      // 	   << Kb << " MeV)"<< endl;
-      // The excitation energy at the end of this segment is the excitation energy at the beginnig
-      // of the next segment.
-      if (i+1<NSegments) 
-	CME_beg = CME_end;
-    }
-  }
-  else {
-    cout << "Warning: energy loss file for beam has not been loaded.  Calculations were not made.\n";
-  }
+for (int i=0; i<AnodeRows; i++) {
+  Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0], 0.001);
+  CME_end = Kb*mt/(mt+mb);
+  cout << i << "\t" << AnodeDZ[i][0]<< " cm \t" << CME_beg << "\t"
+       << CME_beg - CME_end << " MeV \t(Kb=" 
+       << Kb << " MeV)"<< endl;
+  // The excitation energy at the end of this segment is the excitation energy at the beginnig
+  // of the next segment.
+  if (i+1<AnodeRows) 
+    CME_beg = CME_end;
+ }
+
+
 #endif
-  return;
+
+return;
 }
 
 
@@ -2110,7 +2149,7 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     //   EvaR[er]->DoNotPropagate = false;
     
     double Ex = Rdm->Uniform(/*0.0*/Qvalue/2, Qvalue);
-    //   Ex = 0; // Forcing g.s. of evaporation residue
+    //Ex = 0; // Forcing g.s. of evaporation residue
 #if 0
     // Warning: for 17F(alpha,p) only!!
     double ExIndex = Rdm->Uniform(0.0,3);
@@ -2389,6 +2428,8 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
   // Create new traces and trajectories (objectrs) for visualizing the
   // detector response
   CreateTracesAndTrajectories(NEvents);
+
+
   
   cout << "Simulating " << NEvents << " MUSIC traces ... " << endl;
  
@@ -2407,7 +2448,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
       TraceUB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
   
   // PrintEnergetics(ctf.Kb, DeltaEB_ave);
-
+  
   //-------------------------------------------------------------------------------
   // Some kinematic variables
   double Kb_min, Kb_max, MinZ, MaxZ, MinT, MaxT;
@@ -2448,6 +2489,8 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
   //-------------------------------------------------------------------------------
 
 
+   CalculateCMEnergyRange();
+  
 
   //-------------------------------------------------------------------------------
   // Event for-loop

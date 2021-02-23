@@ -1,10 +1,10 @@
 ---Stopping/Range Input Data (Number-format: Period = Decimal Point)
 ---Output File Name
-"/home/dsg/Dropbox/Codes/MUSIC/sim/SRIM/files/1H_in_GasIndex3_550Torr_293K.srim"
+"/home/dsg/Dropbox/Codes/MUSIC/sim/SRIM/files/1H_in_GasIndex3_510Torr_293K.srim"
 ---Ion(Z), Ion Mass(u)
 1   1.00783
 ---Target Data: (Solid=0,Gas=1), Density(g/cm3), Compound Corr.
-1    0.00012049    1
+1    0.000111727    1
 ---Number of Target Elements
  1
 ---Target Elements: (Z), Target name, Stoich, Target Mass(u)

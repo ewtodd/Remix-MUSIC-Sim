@@ -47,6 +47,7 @@ public:
   double GetTimeOfFlight();
   double GetTimeOfFlight(float InitialEnergy, float PathLength, float StepSize);
   bool LoadSRIMFile(std::string FileName);
+  bool LoadLISEFile(std::string FileName);
   void SetIonMass(float IonMass/*MeV/c^2*/);
 
 
@@ -73,9 +74,7 @@ private:
   int points;
   double TOF;
   float dEdxScale;
-  
-  //  static const double c = 29.9792458;  // Speed of light in cm/ns (root-config ver5)
-  //  static constexpr double c = 29.9792458;  // Speed of light in cm/ns (roor-config ver6)
+
 };
 
 #endif

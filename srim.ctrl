@@ -3,12 +3,12 @@ PARAMETER        VALUE     	     	   COMMENT
 SRModuleDir	 SRIM/SRModule/		   Directory of SRModule program (end with '/')
 OutputDir	 SRIM/files/		   Directory for output files (end with '/')
 GasIndex	 3			   Integer. 1=CF4, 2=3He, 3=4He, ..., 17=CH4(methane)
-GasP		 600			   Pressure [Torr]
+GasP		 510			   Pressure [Torr]
 GasT		 293			   Temperature [K]
 NumParticles	 5			   Number of particles (pX) for which the tables will be generated (max 10)
-p0		 19F			   Particle 0. Use AEl nomenclature. E.g. 17F (A=17, El=F)
-p1		 22Na			   Particle 1
-p2		 22Ne			   Particle 2
+p0		 37Cl			   Particle 0. Use AEl nomenclature. E.g. 17F (A=17, El=F)
+p1		 40K			   Particle 1
+p2		 40Ar			   Particle 2
 p3		 4He			   Particle 3
 p4		 1H			   Particle 4
 

@@ -1,10 +1,10 @@
  ==================================================================
               Calculation using SRIM-2006 
               SRIM version ---> SRIM-2008.04
-              Calc. date   ---> November 06, 2020 
+              Calc. date   ---> February 21, 2021 
  ==================================================================
 
- Disk File Name = /home/dsg/Research/MUSIC/sim/Examples/MUSIC_ML_Sim/SRIM_files/1H_in_GasIndex3_450Torr_293K.srim
+ Disk File Name = /home/dsg/Dropbox/Codes/MUSIC/sim/SRIM/files/1H_in_GasIndex3_450Torr_293K.srim
 
  Ion = Hydrogen     [1] , Mass = 1.00783 amu
 

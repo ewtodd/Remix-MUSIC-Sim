@@ -29,7 +29,7 @@ using namespace std;
 // this member we can scale the stopping power from the SRIM tables in an attempt to
 // adjust the calculated dEdx to experimental data.
 ////////////////////////////////////////////////////////////////////////////////////////
-EnergyLoss::EnergyLoss(string SRIM_file, float IonMass, float dEdxScale)
+EnergyLoss::EnergyLoss(string dEdx_file, float IonMass, float dEdxScale)
 {
   BraggCurve = 0;
   dEdx_e = 0;
@@ -43,8 +43,14 @@ EnergyLoss::EnergyLoss(string SRIM_file, float IonMass, float dEdxScale)
   last_point = 0;
   points = 0;
   TOF = 0;
-  if (SRIM_file!="") 
-    LoadSRIMFile(SRIM_file);
+  if (dEdx_file!="") {
+    if (dEdx_file.find(".srim")!=string::npos)      
+      LoadSRIMFile(dEdx_file);
+    else if (dEdx_file.find(".lise")!=string::npos)      
+      LoadLISEFile(dEdx_file);
+    else
+      cout << "EnergyLoss ERROR: energy loss file must have a .srim or .lise extension." << endl; 
+  }
 }
 
 
@@ -456,7 +462,7 @@ bool EnergyLoss::LoadSRIMFile(string FileName)
   this->FileName = FileName;
   last_point = 0;
   if(!Read.is_open()) {
-    cout << "*** EnergyLoss Error: File " << FileName << " was not found." << endl;
+    cout << "*** EnergyLoss Error: SRIM file " << FileName << " was not found." << endl;
     GoodELossFile = 0;
   } 
   else {
@@ -510,6 +516,76 @@ bool EnergyLoss::LoadSRIMFile(string FileName)
   }
   return GoodELossFile;
 }
+
+
+////////////////////////////////////////////////////////////////////////////////////////
+// Reads the stopping power as function of incident ion energy from a table generated
+// with the program LISE++. The dEdx are given in MeV/u so the mass is needed calculate
+// the actual energy lost. The 11 columns are (with repeated information, i.e. Energy):
+// 0 - Energy (MeV/u)
+// 1 - [He-base] F.Hubert et al, AD&ND Tables 46(1990)1 (MeV/u)
+// 2 - Energy (MeV/u)
+// 3 - [H -base] J.F.Ziegler et al, Pergamon Press, NY (low energy) (MeV/u)
+// 4 - Energy (MeV/u)
+// 5 - ATIMA 1.2  LS-theory (recommended for high energy) (MeV/u)
+// 6 - Energy (MeV/u)
+// 7 - ATIMA 1.2  without LS-correction (MeV/u)
+// 8 - Energy (MeV/u)
+// 8 - electrical component of [1] - J.F.Ziegler et al (MeV/u)
+// 9 - Energy (MeV/u)
+// 10 - nuclear component of [1] - J.F.Ziegler et al	
+////////////////////////////////////////////////////////////////////////////////////////
+bool EnergyLoss::LoadLISEFile(string FileName)
+{
+  double IonEnergy, dEdx_e, dEdx_n;
+  string aux, unit;
+  int str_counter=0;
+  ifstream Read(FileName.c_str());
+  this->FileName = FileName;
+  last_point = 0;
+  if(!Read.is_open()) {
+    cout << "*** EnergyLoss Error: LISE file " << FileName << " was not found." << endl;
+    GoodELossFile = 0;
+  } 
+  else {
+    GoodELossFile = 1;
+    Energy_in_range = 1;        
+    //First line is column description, then count the number of lines.
+    getline(Read, aux);
+    do {
+      getline(Read, aux);
+      str_counter++;
+    } while (!Read.eof());
+    Read.close();
+    
+    str_counter--;  // is this needed?
+    points = str_counter;
+    //cout << "LISE points: " << points << endl;
+   
+    // Create the arrays depending on the number rows in the file.
+    this->IonEnergy = new double[points];
+    this->dEdx_e = new double[points];
+    this->dEdx_n = new double[points];    
+ 
+    // Go to the begining of the file and read it again to now save the info in the
+    // newly created arrays.
+    Read.open(FileName.c_str());
+    getline(Read, aux);
+    for (int p=0; p<points; p++) {
+      Read >> IonEnergy >> aux >> aux >> dEdx_e >> aux >> aux >> aux >> aux >> aux >> aux >> aux >> dEdx_n;
+      //cout << p << " " << IonEnergy << " MeV" << " " << dEdx_e << " " << dEdx_n << endl;
+      IonEnergy *= IonMass/931.494102; // convert from MeV/u to MeV
+      dEdx_e *= 1000;    // convert from MeV/micron to MeV/mm
+      dEdx_n *= 1000;    // convert from MeV/micron to MeV/mm
+      //cout << p << " " << IonEnergy << " MeV" << " " << dEdx_e << " " << dEdx_n << endl;
+      this->IonEnergy[p] = IonEnergy;
+      this->dEdx_e[p] = dEdx_e;
+      this->dEdx_n[p] = dEdx_n;
+    }    
+  }
+  return GoodELossFile;
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
