@@ -180,43 +180,66 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
  }
 #endif
 
-#if 1
 // Non-relativistic version
 double CME_beg, CME_end;
-  double mb = Beam->Mass;
-  double mt = Target->Mass;
-  double Kb = ctf.Kb;
-  double Kb_min;
-  float TotalLength = 0;
+double mb = Beam->Mass;
+double mt = Target->Mass;
+double Kb = ctf.Kb;
+double Kb_min;
+float TotalLength = 0;
 for (int i=0; i<AnodeRows; i++) 
   TotalLength += AnodeDZ[i][0];
     
-  // Center-of-mass energy at the beginning of MUSIC
+// Center-of-mass energy at the beginning of MUSIC
 CMEMax = CME_beg = Kb*mt/(mt+mb);
 cout << "Full CM energy range covered in " << TotalLength << "cm:\n CME(beg) = " 
- 	 << CME_beg << " MeV";
-  // Now get the CM energy at the end of the segments.
+<< CME_beg << " MeV";
+// Now get the CM energy at the end of the segments.
 Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength, 0.001);
 CMEMin = CME_end = Kb_min*mt/(mt+mb);
 cout << "   CME(end) = " << CME_end << " MeV" << endl;
 
-cout << "CM energy range in each segment:" << endl;
+cout << "Energetics for each segment:" << endl;
    
+ // std::cout << 100 << '\n';
+ //  std::cout.width(10);
+ //  std::cout << 100 << '\n';
+ //  std::cout.fill('x');
+ //  std::cout.width(15);
+ //  std::cout << std::left << 100 << '\n';
+
+cout.fill(' ');
+cout.width(2); cout << "i";
+cout.width(5); cout << "stp";
+cout.width(6); cout << "L[cm]";
+cout.width(10); cout << "Ecm_in";
+cout.width(10); cout << "DeltaEcm";
+cout.width(10); cout << "Kb_in";
+cout.width(10); cout << "DeltaKb" << endl;
 
 for (int i=0; i<AnodeRows; i++) {
+  double Kb_in = Kb;
   Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0], 0.001);
+  double Kb_out = Kb;
   CME_end = Kb*mt/(mt+mb);
-  cout << i << "\t" << AnodeDZ[i][0]<< " cm \t" << CME_beg << "\t"
-       << CME_beg - CME_end << " MeV \t(Kb_out=" 
-       << Kb << " MeV)"<< endl;
+  cout.fill(' ');
+  cout.width(2); cout << i;
+  cout.width(5); cout << AnodeStpID[i][0];
+  cout.width(6); cout << AnodeDZ[i][0];
+  cout.precision(5);
+  cout.width(10); cout << CME_beg;
+  cout.width(10); cout << CME_beg - CME_end;
+  cout.width(10); cout << Kb_in;
+  cout.width(10); cout << Kb_in - Kb_out << endl;
+  
+  // << i << "\t" << AnodeDZ[i][0]<< " cm \t" << CME_beg << "\t"
+  //      << CME_beg - CME_end << " MeV \t(Kb_out=" 
+  //      << Kb << " MeV)"<< endl;
   // The excitation energy at the end of this segment is the excitation energy at the beginnig
   // of the next segment.
   if (i+1<AnodeRows) 
     CME_beg = CME_end;
  }
-
-
-#endif
 
 return;
 }

@@ -19,7 +19,7 @@ SRIMevap0	 ../../LISE/files/4He_in_HeGas_423Torr_293K.lise
 evap0Color	 632			   Integer see ROOT colors
 res0Name	 17F
 SRIMres0	 ../../LISE/files/17F_in_HeGas_423Torr_293K.lise
-NEvents		 10000			   Number of events simulated
+NEvents		 1			   Number of events simulated
 Wait		 0			   Wait between simulated events? 1=yes, 0=no
 Update		 0			   Update graphics between simulated events? 1=yes, 0=no
 MaxTime		 2000			   Maximum time for an event [ns]
@@ -27,8 +27,9 @@ SimStep		 0.001			   Simulation step size [cm]
 Method		 0
 FileName	 traces_aa.root
 FileName	 unreacted.root
+FileName	 test.root
 FileOpt		 recreate
 CSVfile		 17F_alpha_alpha_sim_39MeV_FWHM400keV_423Torr_noise85keV.csv
-CSVfile		 class0_17F_beam_background_sim_39MeV_FWHM400keV_423Torr_noise85keV.csv
+CSVfile		 class0.csv
 reacClass	 0
 
