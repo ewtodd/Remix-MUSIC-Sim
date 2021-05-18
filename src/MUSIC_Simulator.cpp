@@ -372,6 +372,7 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
 
       if (ctf.Eres>0.0) {
 	// Adding randomness to the energy loss to mimic experimental jitter
+	Gaussian->SetRange(-10*ctf.Eres, 10*ctf.Eres);
 	Gaussian->SetParameters(1.0, 0.0, ctf.Eres);
 	DeltaE += Gaussian->GetRandom();
       }	
@@ -2618,6 +2619,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     // If the user specified a KbFWHM>0 change the beam energy
     // assuming a gaussian distribution.
     if (ctf.KbFWHM>0.0) {
+      Gaussian->SetRange(-10*ctf.KbFWHM/2.355, 10*ctf.KbFWHM/2.355);
       Gaussian->SetParameters(1.0, 0.0, ctf.KbFWHM/2.355);
       Ebeam += Gaussian->GetRandom();
     }
