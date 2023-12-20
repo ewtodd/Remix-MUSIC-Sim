@@ -216,7 +216,8 @@ private:
   float strip17;
   float cathode;
   int reacStp;
-  float Kb;
+  float Kbi;
+  float Kbr;
   float* Kl;
   float* Kh;
   float* theta_CM;
@@ -234,7 +235,7 @@ private:
   float xfe;
   float yfe;
   float zfe;
-
+  int resID;
 
   
   // Log file

@@ -69,7 +69,8 @@ MUSIC_Simulator::MUSIC_Simulator()
   zr = -1000;
   xfe = yfe = 0;
   zfe = -1000;
-
+  resID = -1;
+  
   // Nuclide finder object
   NuF = new NuclideFinder();
 
@@ -757,13 +758,14 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  // at which the beam particle interacts with the target and
 	  // calculate the kinetic energy at the reaction point
 	  this->zr = Rdm->Uniform(MinZ, MaxZ);
-	  double Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3/*cm*/);
+	  //double Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3/*cm*/);
+	  this->Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3/*cm*/);
 	  double TOF = Beam->GetTimeOfFlight(0);
 	  if (PrintLevel>0)
-	    Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
+	    Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
 	  
 	  // 3. Set the kinematics of all particles at the reaction point
-	  int ReacAllowed = SetReactionKinematics(Kbr, this->zr, TOF, theta, phi);
+	  int ReacAllowed = SetReactionKinematics(this->Kbr, this->zr, TOF, theta, phi);
 	  // Check conservation of 4-momentum
 	  if (PrintLevel>0) {
 	    Log << "Conservation of 4-momentum at reaction point (zr)" 
@@ -783,7 +785,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 #if 0
 	  if (ReacAllowed==0) {
 	    cout << "Warninig: reaction energetically not allowed for event " << evt 
-		 << " (Kbr= " << Kbr << " MeV)." << endl;
+		 << " (Kbr= " << this->Kbr << " MeV)." << endl;
 	    continue;
 	  }
 	  
@@ -838,6 +840,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 		xfe = xf;
 		yfe = yf;
 		zfe = zf;
+		resID = er;
 	      }	      
 	      TrackEvaR[er]->SetOrigin(xi,yi,zi);
 	      TrackEvaR[er]->SetVector(xf-xi,yf-yi,zf-zi);
@@ -847,7 +850,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	    Beam->Copy(BeamInit);
 	    PropagateParticle(Beam, evt, MaxTime, UserStep, DeltaEB);
 	    cout << "Warninig: reaction energetically not allowed for event " << evt 
-		 << " (Kbr= " << Kbr << " MeV)." << endl;
+		 << " (Kbr= " << this->Kbr << " MeV)." << endl;
 	  }
 	  
 	  // 7. Compute detector response (i.e. DE for beam + light + heavy)
@@ -857,7 +860,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  
 	  // 8. Display trace and particle trajecories   
 	  if (UpdateVis) 
-	    UpdateVisuals(evt, Kbr, this->zr, TOF, Wait);
+	    UpdateVisuals(evt, this->Kbr, this->zr, TOF, Wait);
 	  
 	  // Simple progress monitor
 	  EvtsProcessed++;
@@ -983,7 +986,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="SRIMevap1")
 	ctf.SRIMevap[1] = ParVal;
        else if (ParName=="dEdxScaleEvap1")
-	ctf.dEdxScaleEvap[0] = atof(ParVal.c_str());
+	ctf.dEdxScaleEvap[1] = atof(ParVal.c_str());
      
       // Evaporation residue 1
       else if (ParName=="res1Name")
@@ -1003,7 +1006,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="SRIMevap2")
 	ctf.SRIMevap[2] = ParVal;
        else if (ParName=="dEdxScaleEvap2")
-	ctf.dEdxScaleEvap[0] = atof(ParVal.c_str());
+	ctf.dEdxScaleEvap[2] = atof(ParVal.c_str());
      
       // Evaporation residue 2
       else if (ParName=="res2Name")
@@ -1014,6 +1017,26 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
 	ctf.SRIMres[2] = ParVal;
       else if (ParName=="dEdxScaleRes2")
 	ctf.dEdxScaleRes[2] = atof(ParVal.c_str());
+      
+      // Particle 3
+      else if (ParName=="evap3Name")
+	ctf.evap[3] = ParVal;
+      else if (ParName=="evap3Color")
+	ctf.colorEvap[3] = atoi(ParVal.c_str());
+      else if (ParName=="SRIMevap3")
+	ctf.SRIMevap[3] = ParVal;
+       else if (ParName=="dEdxScaleEvap3")
+	ctf.dEdxScaleEvap[3] = atof(ParVal.c_str());
+     
+      // Evaporation residue 3
+      else if (ParName=="res3Name")
+	ctf.res[3] = ParVal;
+      else if (ParName=="res3Color")
+	ctf.colorRes[3] = atoi(ParVal.c_str());
+      else if (ParName=="SRIMres3")
+	ctf.SRIMres[3] = ParVal;
+      else if (ParName=="dEdxScaleRes3")
+	ctf.dEdxScaleRes[3] = atof(ParVal.c_str());
 
       // DSG - need to generalize the residue/particle lines above and
       // make it go to MaxNumEvepPart. Maybe with sprintf().
@@ -1124,7 +1147,8 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     // The following branches are for physical quantities that at the
     // moment can only be obtained from the simulation
     tree->SetBranchAddress("reacStp",   &reacStp);
-    tree->SetBranchAddress("Kb", &Kb);
+    tree->SetBranchAddress("Kbi", &Kbi);
+    tree->SetBranchAddress("Kbr", &Kbr);
     tree->SetBranchAddress("Kl", Kl);
     tree->SetBranchAddress("Kh", Kh);
     tree->SetBranchAddress("theta_CM", theta_CM);
@@ -1144,6 +1168,7 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     tree->SetBranchAddress("xfe", &xfe);
     tree->SetBranchAddress("yfe", &yfe);
     tree->SetBranchAddress("zfe", &zfe);
+    tree->SetBranchAddress("resID", &resID);
   }
   else {
     tree = new TTree("simt","Simulated MUSIC data");
@@ -1156,7 +1181,8 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     // The following branches are for physical quantities that at the
     // moment can only be obtained from the simulation
     tree->Branch("reacStp",   &reacStp,   "reacStp/I");
-    tree->Branch("Kb", &Kb, "Kb/F");
+    tree->Branch("Kbi", &Kbi, "Kbi/F");
+    tree->Branch("Kbr", &Kbr, "Kbr/F");
     tree->Branch("Kl", Kl,  Form("Kl[%d]/F",MaxEva));
     tree->Branch("Kh", Kh,  Form("Kh[%d]/F",MaxEva));
     tree->Branch("theta_CM", theta_CM, Form("theta_CM[%d]/F",MaxEva));
@@ -1176,6 +1202,7 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     tree->Branch("xfe", &xfe, "xfe/F");
     tree->Branch("yfe", &yfe, "yfe/F");
     tree->Branch("zfe", &zfe, "zfe/F");
+    tree->Branch("resID", &resID, "resID/I");
   }
   ResetBranches();
   if (PrintLevel>0)
@@ -1497,7 +1524,7 @@ void MUSIC_Simulator::ResetBranches()
   strip17 = 0;
   cathode = 0;
   reacStp = -1;
-  Kb = 0;
+  Kbi = Kbr = 0;
   for (int er=0; er<MaxEva; er++) {
     Kl[er] = 0;
     Kh[er] = 0;
@@ -1515,6 +1542,7 @@ void MUSIC_Simulator::ResetBranches()
   zr = -1000;
   xfe = yfe = 0;
   zfe = -1000;
+  resID = -1;
 }
 
 
@@ -2248,6 +2276,10 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
     // theta=phi=-1) or for er>0, randomly select the scattering angle
     // in the center of mass.
     if ((theta_CM==-1 && phi_CM==-1) || er>0) {
+      // Randomly select the angle in the center of mass, then go to the laboratory
+      // reference frame.  Since we want the points on a unit sphere to be randomly distributed
+      // we don't just select randomly the polar angle from from [0,pi], instead we use the 
+      // formula (see http://mathworld.wolfram.com/SpherePointPicking.html):
       theta_CM = acos(Rdm->Uniform(-1.0,1.0));
       phi_CM = Rdm->Uniform(-pi,pi);
     }
@@ -2344,7 +2376,7 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
 
   
   // Fill the leaves related to the reaction kinematics
-  Kb = Beam->GetKE();
+  Kbr = Beam->GetKE();               // local Kbr (this->Kbr set outside of this method).
   for (int er=0; er<CurEva; er++) {
     this->theta_CM[er] = theta_CM*180/pi;
     this->phi_CM[er] = phi_CM*180/pi;
@@ -2623,23 +2655,25 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
       Gaussian->SetParameters(1.0, 0.0, ctf.KbFWHM/2.355);
       Ebeam += Gaussian->GetRandom();
     }
+    this->Kbi = Ebeam;
     SetInitialKinematics(Ebeam);
 
     int ReacAllowed = 0;
-    double Kbr = 0;
+    //double Kbr = 0;
+    this->Kbr = 0;
     double TOF = 0;
     if (StpID>-1) {
       // 2. Within the selected strip randomly select the position at
       // which the beam particle interacts with the target and calculate
       // the kinetic energy at the reaction point
       this->zr = Rdm->Uniform(MinZ, MaxZ);
-      Kbr = Beam->GetFinalEnergy(0, Ebeam, this->zr, 1E-3/*cm*/);
+      this->Kbr = Beam->GetFinalEnergy(0, Ebeam, this->zr, 1E-3/*cm*/);
       TOF = Beam->GetTimeOfFlight(0);
       if (PrintLevel>0)
-	Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
+	Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
       
       // 3. Set the kinematics of all particles at the reaction point
-      ReacAllowed = SetReactionKinematics(Kbr, this->zr, TOF);
+      ReacAllowed = SetReactionKinematics(this->Kbr, this->zr, TOF);
       // Check conservation of 4-momentum
       if (PrintLevel>0) {
 	Log << "Conservation of 4-momentum at reaction point (zr)" 
@@ -2703,6 +2737,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
 	  xfe = xf;
 	  yfe = yf;
 	  zfe = zf;
+	  resID = er;
 	}
 	TrackEvaR[er]->SetOrigin(xi,yi,zi);
 	TrackEvaR[er]->SetVector(xf-xi,yf-yi,zf-zi);
@@ -2717,9 +2752,9 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
 	  TraceB[col]->SetPoint(stp, stp, DeltaEB[stp][col]);
       if (StpID>-1) {
 	cout << "Warninig: reaction energetically not allowed for event " << evt 
-	     << " (Kbr= " << Kbr << " MeV)." << endl;
+	     << " (Kbr= " << this->Kbr << " MeV)." << endl;
 	Log << "Warninig: reaction energetically not allowed for event " << evt 
-	    << " (Kbr= " << Kbr << " MeV)." << endl;
+	    << " (Kbr= " << this->Kbr << " MeV)." << endl;
       }
     }
     
@@ -2737,7 +2772,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     }
     // 8. Display trace and particle trajecories
     if (UpdateVis)
-      UpdateVisuals(evt, Kbr, this->zr, TOF, Wait);
+      UpdateVisuals(evt, this->Kbr, this->zr, TOF, Wait);
     
     // Simple progress monitor
     if (NEvents>99) {
@@ -2884,16 +2919,17 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
       // which the beam particle interacts with the target and calculate
       // the kinetic energy at the reaction point
       this->zr = Rdm->Uniform(MinZ, MaxZ);
-      double Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3);
+      //double Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3);
+      this->Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3);
       double TOF = Beam->GetTimeOfFlight(0);
       if (PrintLevel>0)
-	Log << "Kbr = " << Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
+	Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
       
       // 3. Set the kinematics of all particles at the reaction point
-      int ReacAllowed = SetReactionKinematics(Kbr, this->zr, TOF, theta, phi);
+      int ReacAllowed = SetReactionKinematics(this->Kbr, this->zr, TOF, theta, phi);
       if (ReacAllowed==0) {
 	cout << "Warninig: reaction energetically not allowed for event " << evt 
-	     << " (Kbr= " << Kbr << " MeV)." << endl;
+	     << " (Kbr= " << this->Kbr << " MeV)." << endl;
 	continue;
       }
       
@@ -2918,7 +2954,7 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
       SimTree->Fill();
       
       // 8. Display trace and particle trajecories   
-      UpdateVisuals(evt, Kbr, this->zr, TOF, Wait);
+      UpdateVisuals(evt, this->Kbr, this->zr, TOF, Wait);
       
       NTraces++;
       evt++;

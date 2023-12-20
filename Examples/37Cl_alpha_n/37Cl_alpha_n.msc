@@ -19,9 +19,9 @@ SRIMbeam	 ../../LISE/files/37Cl_in_HeGas_220Torr_293K.lise
 SRIMres0	 ../../LISE/files/40K_in_HeGas_220Torr_293K.lise
 dEdxScaleBeam	 1.0			   Beam stopping power scale factor
 dEdxScaleRes0	 1.0			   Heavy particle stopping power scale factor	
-NEvents		 1000			   Number of events simulated
-Wait		 0			   Wait between simulated events? 1=yes, 0=no
-Update		 0			   Update graphics between simulated events? 1=yes, 0=no
+NEvents		 100			   Number of events simulated
+Wait		 1			   Wait between simulated events? 1=yes, 0=no
+Update		 1			   Update graphics between simulated events? 1=yes, 0=no
 MaxTime		 2000			   Maximum time for an event [ns]
 SimStep		 0.001			   Simulation step size [cm]
 Method		 0
