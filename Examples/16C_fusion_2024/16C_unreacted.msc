@@ -3,24 +3,34 @@ PARAMETER        VALUE     	     	   COMMENT
 AnodeGeom        ../../agfiles/AnodeGeometry	location of anode geometry file
 ELossBins	 500			   Number of bins for y axis
 MaxELoss	 10			   Max y value [MeV]
-strip		 -1			   Strip where reaction takes place. Use -1 for unreacted beam
+strip		 5			   Strip where reaction takes place. Use -1 for unreacted 
 Eres		 0.05			   Energy noise level (sigma) in each strip [MeV]
 beam		 16C			   Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
 Kb		 59.1			   Beam energy as it enters the dead gas layer [MeV]
-KbFWHM		 12.8			   Beam energy FWHM [MeV]
+KbFWHM		 12.5			   Beam energy FWHM [MeV] (12.5)
 target		 12C			   
 compound	 28Mg			   
-NumEvapPart	 0			   Number of evaporated particles. E.g. 1 for 17F(4He,1H)
+NumEvapPart	 2			   Number of evaporated particles. E.g. 1 for 17F(4He,1H)
+evap0Name	 1n			   
+evap0Color	 632			   Integer see ROOT colors
+evap1Name	 1n			   
+evap1Color	 632			   Integer see ROOT colors
+res0Name	 27Mg
+res1Name	 26Mg
 SRIMbeam	 ../../LISE/files/16C_in_CH4_400Torr_293K.lise
-dEdxScaleBeam	 1.0			   Beam stopping power scale factor
-NEvents		 100			   Number of events simulated
+SRIMres0	 ../../LISE/files/27Mg_in_CH4_400Torr_293K.lise
+SRIMres1	 ../../LISE/files/26Mg_in_CH4_400Torr_293K.lise
+dEdxScaleBeam	 0.855			   Beam stopping power scale factor
+dEdxScaleRes0	 0.855
+dEdxScaleRes1	 0.855
+NEvents		 20			   Number of events simulated
 Wait		 0			   Wait between simulated events? 1=yes, 0=no
 Update		 0			   Update graphics between simulated events? 1=yes, 0=no
 MaxTime		 2000			   Maximum time for an event [ns]
 SimStep		 1e-3			   Simulation step size [cm] (default 1e-3 cm)
 Method		 0			   Default 0
-CSVfile		 sim_16C_unreacted_simstep1e-3cm.csv
-FileName	 test.root
+CSVfile		 sim_16C_fusion_stp5_dEdx_0.855_FWHM_12.5_beam_59.1_N_E5.csv
+FileName	 sim_16C_fusion_stp5_dEdx_0.855_FWHM_12.5_beam_59.1_N_E5.root
 FileOpt 	 recreate
-PrintOpt	 0
+PrintOpt	 2
 
