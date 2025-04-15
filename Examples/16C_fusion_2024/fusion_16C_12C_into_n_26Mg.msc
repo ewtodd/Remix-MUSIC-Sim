@@ -3,32 +3,38 @@ PARAMETER        VALUE     	     	   COMMENT
 AnodeGeom	 agfiles/AnodeGeometry	   location of anode geometry file
 ELossBins	 500			   Number of bins for y axis
 MaxELoss	 25			   Max y value [MeV]
-stripFirst	 5			   First strip
-stripLast	 5			   Last strip
+stripFirst	 3			   First strip
+stripLast	 3			   Last strip
 Eres		 0.05			   Energy noise level (sigma) in each strip [MeV]
 beam		 16C			   Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
 Kb		 59.1			   Beam energy as it enters the dead gas layer [MeV]
 KbFWHM		 12.8			   Beam energy FWHM [MeV]
 target		 12C			   
 compound	 28Mg			   
-NumEvapPart	 1			   Number of evaporated particles. E.g. 1 for 17F(4He,1H)
-evap0Name	 n			   
+NumEvapPart	 3			   Number of evaporated particles. E.g. 1 for 17F(4He,1H)
+evap0Name	 1n			   
 evap0Color	 2			   Integer. See ROOT colors.
 res0Name	 27Mg
 res0Color	 3			   Integer. See ROOT colors.
+evap1Name	 1n			   
+evap1Color	 4			   Integer. See ROOT colors.
+res1Name	 26Mg
+res1Color	 5			   Integer. See ROOT colors.
 SRIMbeam	 LISE/files/16C_in_CH4_400Torr_293K.lise
 SRIMres0	 LISE/files/27Mg_in_CH4_400Torr_293K.lise
+SRIMres1	 LISE/files/26Mg_in_CH4_400Torr_293K.lise
 dEdxScaleBeam	 0.95			   Beam stopping power scale factor
-dEdxScaleRes0	 0.95			   Heavy particle stopping power scale factor	
-NEvents		 100			   Number of events simulated
+dEdxScaleRes0	 0.95			   Heavy particle stopping power scale factor
+dEdxScaleRes1	 0.95			   Heavy particle stopping power scale factor
+NEvents		 606			   Number of events simulated
 Wait		 1			   Wait between simulated events? 1=yes, 0=no
 Update		 1			   Update graphics between simulated events? 1=yes, 0=no
 MaxTime		 2000			   Maximum time for an event [ns]
 SimStep		 0.001			   Simulation step size [cm]
 Method		 0
-FileName	 traces_fusion.root
 FileOpt		 recreate
 PrintOpt	 1
 reacClass	 1			   Reaction lable for event classification (e.g used in ML tools)
-CSVfile		 fusion.csv		   Output CSV file with stp0,de_l+de_r,stp17,reacStp,reacClass,
+FileName	 fusion_16C12C_2n_26Mg_strip3.root
+CSVfile		 fusion_16C12C_2n_26Mg_strip3.csv		   Output CSV file with stp0,de_l+de_r,stp17,reacClass normalized to stp0
 
