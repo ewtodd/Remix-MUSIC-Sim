@@ -126,10 +126,11 @@ private:
   Particle* Light;
   Particle** EvaP;
   Particle** EvaR;
-  int MaxEva;
-  int CurEva;
+  int maxEvaporations;
+  int numEvaporations;
   double Kb_after_window;
   double EneSigma;
+  double* minEx;
 
   // Arrays where the energy loss in each strip will be saved.
   double** DeltaEB_ave;// average beam energy loss

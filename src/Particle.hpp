@@ -62,6 +62,7 @@ public:
   void GetX(double& X0, double& X1, double& X2, double& X3);
   void Print(std::ostream& log=std::cout);
   void ResetTrace();
+  void ResetKinematics();
   void SetCurrentExcState(int ExcState);
   void SetExcEnergies(int N, double* Eexc, double* Prob=0);
   void SetExcEnergy(double Ex);
