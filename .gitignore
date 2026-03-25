@@ -11,7 +11,7 @@ SRIM/files/*.srim
 Examples/*/SRIM_files/*.srim
 
 # LISE stopping power tables (auto-generated)
-# LISE/files/*.lise
+LISE/files/*.lise
 
 # SRIM module internal data tables
 SRIM/SRModule/SCOEF03.dat
@@ -27,3 +27,9 @@ lib/*.so
 *.so
 *.o
 *.d
+
+# Duplicate AnodeGeometry files in Examples
+# (canonical version lives in agfiles/)
+Examples/*/AnodeGeometry
+Examples/ECA/AnodeGeometry.MUSIC3
+Examples/Fusion16C/AnodeGeometry
