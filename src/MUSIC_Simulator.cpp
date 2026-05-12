@@ -2097,18 +2097,21 @@ int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
     HCTB->GetXaxis()->CenterTitle();
     HCTB->GetYaxis()->SetTitle("Energy loss [MeV]");
     HCTB->GetYaxis()->CenterTitle();
+    HCTB->SetStats(0);
 
     HCT = new TH2F("HCT","Column traces", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
     HCT->GetXaxis()->SetTitle("Strip ID");
     HCT->GetXaxis()->CenterTitle();
     HCT->GetYaxis()->SetTitle("Energy loss [MeV]");
     HCT->GetYaxis()->CenterTitle();
+    HCT->SetStats(0);
 
     HPT = new TH2F("HPT","Particle traces", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
     HPT->GetXaxis()->SetTitle("Strip ID");
     HPT->GetXaxis()->CenterTitle();
     HPT->GetYaxis()->SetTitle("Energy loss [MeV]");
     HPT->GetYaxis()->CenterTitle();
+    HPT->SetStats(0);
 
     // From: http://root.cern.ch/root/html/TGeoManager.html#TGeoManager:CloseGeometry
     // Closing geometry implies checking the geometry validity, fixing shapes
