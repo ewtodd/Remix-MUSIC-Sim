@@ -19,6 +19,7 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        version = "26.5.12";
         catima = pkgs.stdenv.mkDerivation {
           pname = "catima";
           version = "75d22b2";
@@ -28,7 +29,7 @@
         };
         musicsim = pkgs.stdenv.mkDerivation {
           pname = "musicsim";
-          version = "0.1";
+          inherit version;
           src = ./.;
           nativeBuildInputs = with pkgs; [
             pkg-config
@@ -39,7 +40,7 @@
             catima
           ];
           buildPhase = ''
-            make CATIMA_PREFIX=${catima}
+            make CATIMA_PREFIX=${catima} VERSION=${version}
           '';
           installPhase = ''
             mkdir -p $out/bin
@@ -55,6 +56,7 @@
           nativeBuildInputs = with pkgs; [ clang-tools ];
           shellHook = ''
             export CATIMA_PREFIX=${catima}
+            export MUSICSIM_VERSION=${version}
           '';
         };
       }
