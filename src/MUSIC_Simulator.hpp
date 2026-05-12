@@ -235,6 +235,12 @@ private:
   // Optional upstream degrader (material + length in microns along beam axis).
   catima::Material degrader_;
   bool hasDegrader_ = false;
+  // Per-layer enable flags. Disabled = the layer is skipped in all chains
+  // (straggling, ComputeExitEnergies, PreWarmCatima). Triggered by
+  // Pressure <= 0 for the gas and Thickness <= 0 for the windows.
+  bool gasEnabled_ = true;
+  bool entranceWindowEnabled_ = true;
+  bool exitWindowEnabled_ = true;
   // Beam KE at the gas surface (after entrance window). Derived from ctf.BeamEnergy.
   double Kb_at_gas;
 

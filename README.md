@@ -53,6 +53,22 @@ exit window before their energy is recorded as `Kbeam_exit` / `Kh_exit[]` /
 The old `Kb` key (beam KE at the gas surface) is no longer accepted — use
 `BeamEnergy` (accelerator KE) and the entrance-window parameters instead.
 
+### Disabling layers
+
+Any of the four physical layers can be turned off independently — the
+simulator prints a warning at startup and skips both the mean dE/dx and the
+straggling for that layer. Other layers still apply normally.
+
+| Disable                         | How                                       |
+| ---                             | ---                                       |
+| Gas energy loss + straggling    | `Pressure 0` (or any non-positive value)  |
+| Entrance window                 | `EntranceThickness -1`                    |
+| Exit window                     | `ExitThickness -1`                        |
+| Degrader                        | Omit `DegraderMaterial`, or `DegraderLength -1` |
+
+Useful for sanity checks (e.g. "what is the beam energy at the gas surface
+with no degrader?") and for debugging specific contributions in isolation.
+
 ### Multi-threading
 
 `Threads N` in the ctrl file fans the event loop out across `N` worker threads

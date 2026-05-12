@@ -1312,18 +1312,23 @@ void MUSIC_Simulator::ComputeExitEnergies()
   auto Aof = [&](Particle* P) -> int {
     return (P && P->Mass > 0) ? int(std::round(P->Mass / amu_MeV)) : 0;
   };
+  auto throughExitWindow = [&](int A, int Z, double Kf) -> float {
+    return exitWindowEnabled_
+        ? (float)EnergyOutOfMaterial(A, Z, Kf, exitWindow_)
+        : (float)Kf;
+  };
   auto kineticExit = [&](Particle* P) -> float {
     if (!P) return -2.0f;
     double Kf = P->GetKE();
     if (Kf <= 0.001) return -2.0f;  // no relevant particle for this event
     if (P->DoNotPropagate) {
-      // Neutral particle (no EM losses). Treat as exiting forward; window is transparent.
-      return (float)EnergyOutOfMaterial(Aof(P), P->Z, Kf, exitWindow_);
+      // Neutral particle (no EM losses). Treat as exiting forward.
+      return throughExitWindow(Aof(P), P->Z, Kf);
     }
     double t, x, y, z;
     P->GetX(t, x, y, z);
     if (z >= AnodeDepth)
-      return (float)EnergyOutOfMaterial(Aof(P), P->Z, Kf, exitWindow_);
+      return throughExitWindow(Aof(P), P->Z, Kf);
     return -1.0f;  // charged particle stopped inside the gas volume
   };
 
@@ -1333,7 +1338,7 @@ void MUSIC_Simulator::ComputeExitEnergies()
     double t, x, y, z;
     Beam->GetX(t, x, y, z);
     if (z >= AnodeDepth)
-      Kbeam_exit = (float)EnergyOutOfMaterial(Aof(Beam), Beam->Z, Beam->GetKE(), exitWindow_);
+      Kbeam_exit = throughExitWindow(Aof(Beam), Beam->Z, Beam->GetKE());
   }
   // Evaporation products and residues.
   for (int er = 0; er < numEvaporations; ++er) {
@@ -1610,15 +1615,19 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     // medium (0) over a small (differential) path length (dist).
     double dist = sqrt(pow(xf-xi,2) + pow(yf-yi,2) + pow(zf-zi,2));
     double Kf = 0;
-    if (UserStep>0)
+    if (!gasEnabled_) {
+      // Gas disabled (Pressure <= 0): particle propagates with no energy loss.
+      Kf = Ki;
+    } else if (UserStep>0) {
       // Forward physics step: sample per-step Gaussian energy straggling
       // from catima's sigma_E so the per-strip dE distributions reflect
       // real fluctuations rather than just the mean.
       Kf = PO->GetFinalEnergyStraggled(0, Ki, dist, Rdm);
-    else
+    } else {
       // Backward kinematic propagation (beam reconstructed back to entrance).
       // Inverse straggling is not well-defined; use the mean.
       Kf = PO->GetInitialEnergy(0, Ki, dist, dist/10);
+    }
 
     // Exit the while loop if the particle has stopped.
     if (Kf<0.001) {
@@ -1831,15 +1840,20 @@ int MUSIC_Simulator::run()
     double Eafter_degrader = hasDegrader_
         ? EnergyOutOfMaterial(A_beam, Beam->Z, Eaccel, degrader_)
         : Eaccel;
-    Kb_at_gas = EnergyOutOfMaterial(A_beam, Beam->Z, Eafter_degrader, entranceWindow_);
+    Kb_at_gas = entranceWindowEnabled_
+        ? EnergyOutOfMaterial(A_beam, Beam->Z, Eafter_degrader, entranceWindow_)
+        : Eafter_degrader;
     if (verbose_) {
       cout << "Beam energy: " << Eaccel << " MeV at accelerator";
       if (hasDegrader_)
         cout << " -> " << Eafter_degrader << " MeV after degrader ("
              << ctf.degraderMaterial << " " << ctf.degraderLength << " um)";
-      cout << " -> " << Kb_at_gas << " MeV at gas surface ("
-           << ctf.entranceMaterial << " " << ctf.entranceThickness << " mg/cm^2 window)"
-           << endl;
+      if (entranceWindowEnabled_)
+        cout << " -> " << Kb_at_gas << " MeV at gas surface ("
+             << ctf.entranceMaterial << " " << ctf.entranceThickness << " mg/cm^2 window)";
+      else
+        cout << " -> " << Kb_at_gas << " MeV at gas surface (no entrance window)";
+      cout << endl;
     }
     BeamEnergyAccel = ctf.BeamEnergy;
   }
@@ -2126,6 +2140,21 @@ int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::BuildGasMaterial()
 {
+  gasEnabled_ = (ctf.pressure > 0.0);
+  if (!gasEnabled_) {
+    if (verbose_)
+      cout << "musicsim warning: Pressure <= 0; gas energy loss disabled "
+              "(degrader/windows still apply if configured)." << endl;
+    // Build a stub vacuum-like material so any code that still touches gas_
+    // gets a well-formed catima::Material. The simulator gates the actual
+    // per-step catima call by gasEnabled_, so this stub is never read in
+    // the physics loop.
+    gas_ = catima::Material();
+    gas_.add_element(4.002602, 2, 1);
+    gas_.density(1e-12);
+    gas_.M(4.002602);
+    return;
+  }
   struct GasSpec { int A; int Z; double mass_u; int stn; };
   // (A, Z, atomic mass [u], stoichiometric number per molecule)
   std::vector<GasSpec> components;
@@ -2200,11 +2229,10 @@ void MUSIC_Simulator::PreWarmCatima()
   BuildDegrader();
   auto warmIon = [&](int A, int Z) {
     if (A <= 0 || Z <= 0) return;
-    EnergyOutOfMaterial(A, Z, 100.0, gas_);
-    EnergyOutOfMaterial(A, Z, 100.0, entranceWindow_);
-    EnergyOutOfMaterial(A, Z, 100.0, exitWindow_);
-    if (hasDegrader_)
-      EnergyOutOfMaterial(A, Z, 100.0, degrader_);
+    if (gasEnabled_)             EnergyOutOfMaterial(A, Z, 100.0, gas_);
+    if (entranceWindowEnabled_)  EnergyOutOfMaterial(A, Z, 100.0, entranceWindow_);
+    if (exitWindowEnabled_)      EnergyOutOfMaterial(A, Z, 100.0, exitWindow_);
+    if (hasDegrader_)            EnergyOutOfMaterial(A, Z, 100.0, degrader_);
   };
   auto warmName = [&](const std::string& name) {
     if (name.empty() || name == "unassigned beam" ||
@@ -2364,8 +2392,17 @@ catima::Material MUSIC_Simulator::BuildBulkMaterial(const string& name, double t
 
 void MUSIC_Simulator::BuildWindows()
 {
-  entranceWindow_ = BuildSolidMaterial(ctf.entranceMaterial, ctf.entranceThickness);
-  exitWindow_     = BuildSolidMaterial(ctf.exitMaterial,     ctf.exitThickness);
+  entranceWindowEnabled_ = (ctf.entranceThickness > 0.0);
+  if (entranceWindowEnabled_)
+    entranceWindow_ = BuildSolidMaterial(ctf.entranceMaterial, ctf.entranceThickness);
+  else if (verbose_)
+    cout << "musicsim warning: EntranceThickness <= 0; entrance window disabled." << endl;
+
+  exitWindowEnabled_ = (ctf.exitThickness > 0.0);
+  if (exitWindowEnabled_)
+    exitWindow_ = BuildSolidMaterial(ctf.exitMaterial, ctf.exitThickness);
+  else if (verbose_)
+    cout << "musicsim warning: ExitThickness <= 0; exit window disabled." << endl;
 }
 
 void MUSIC_Simulator::BuildDegrader()
@@ -2373,6 +2410,9 @@ void MUSIC_Simulator::BuildDegrader()
   hasDegrader_ = (!ctf.degraderMaterial.empty() && ctf.degraderLength > 0);
   if (hasDegrader_)
     degrader_ = BuildBulkMaterial(ctf.degraderMaterial, ctf.degraderLength);
+  else if (!ctf.degraderMaterial.empty() && verbose_)
+    cout << "musicsim warning: DegraderMaterial='" << ctf.degraderMaterial
+         << "' but DegraderLength <= 0; degrader disabled." << endl;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -3230,7 +3270,8 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
       int A_beam = (Beam->Mass > 0) ? int(std::round(Beam->Mass / amu_MeV)) : 0;
       if (hasDegrader_)
         Ebeam = EnergyThroughWithStraggling(A_beam, Beam->Z, Ebeam, degrader_);
-      Ebeam = EnergyThroughWithStraggling(A_beam, Beam->Z, Ebeam, entranceWindow_);
+      if (entranceWindowEnabled_)
+        Ebeam = EnergyThroughWithStraggling(A_beam, Beam->Z, Ebeam, entranceWindow_);
     }
     this->Kbi = Ebeam;
     SetInitialKinematics(Ebeam);
