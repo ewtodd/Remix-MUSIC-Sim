@@ -46,14 +46,14 @@ using namespace std;
 int main(int argc, char* argv[])
 {
 
+#ifndef MUSICSIM_VERSION
+#  define MUSICSIM_VERSION "dev"
+#endif
   cout << "==========================================================================" << endl;
-  cout << "|--- MUSIC simulator (musicsim)------------------------------------------|" << endl;
-  cout << "| Created by Daniel Santiago-Gonzalez (Argonne National Laboratory)      |" << endl;
-  cout << "| ver 3.2 (2024/5)                                                       |" << endl;
+  cout << "|--- MUSIC simulator (musicsim) version " << MUSICSIM_VERSION << endl;
   cout << "| Usage: ./musicsim control.file                                         |" << endl;
-  cout << "| See README.md file for basic installation and usage.                   |" << endl;
-  cout << "| For documentation, software updates and license details, please visit: |" << endl;
-  cout << "| https://gitlab.phy.anl.gov/music/sim                                   |" << endl;
+  cout << "| See README.md for installation and usage.                              |" << endl;
+  cout << "| Fork of https://gitlab.phy.anl.gov/music/sim (D. Santiago-Gonzalez)     |" << endl;
   cout << "==========================================================================" << endl;
 
   

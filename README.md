@@ -93,3 +93,12 @@ the upstream `EventBuilderNearestGrid` analysis pipeline:
 
 `Hits[k]` triggers when the corresponding channel energy exceeds
 `max(0.02 MeV, 3·Eres)` so that pure-noise cells are not counted.
+
+## A note on AI-assisted development
+
+Parts of this fork — the catima migration, std::async multi-threading,
+window / degrader plumbing, and most boilerplate around them — were
+written with the help of [Claude Code](https://claude.ai/claude-code).
+All changes to the simulation physics (kinematics, energy-loss chain,
+straggling sampling) are human-reviewed and approved before being
+committed.

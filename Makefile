@@ -1,6 +1,7 @@
 CXX = g++
 CATIMA_PREFIX ?= /usr/local
-CFLAGS = $(shell root-config --cflags) -Isrc/ -I$(CATIMA_PREFIX)/include
+VERSION ?= dev
+CFLAGS = $(shell root-config --cflags) -Isrc/ -I$(CATIMA_PREFIX)/include -DMUSICSIM_VERSION=\"$(VERSION)\"
 LIBS = $(shell root-config --glibs) -lGeom -lEve -lRGL -L$(CATIMA_PREFIX)/lib -lcatima
 OBJS = lib/main.o lib/MUSIC_Simulator.o lib/NuclideFinder.o lib/Particle.o lib/EnergyLoss.o lib/FourVector.o
 
