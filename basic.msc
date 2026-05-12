@@ -8,7 +8,11 @@ MaxELoss         5                    MeV
 strip            5                    Strip where reaction takes place
 Eres             0.001                MeV (Gaussian sigma per strip)
 beam             17F                  Use "AEl" notation
-Kb               37.5                 Beam energy at the gas window [MeV]
+BeamEnergy       37.5                 Beam KE at the accelerator (before entrance window) [MeV]
+EntranceMaterial Ti
+EntranceThickness 0.9                 mg/cm^2 areal density
+ExitMaterial     Ti
+ExitThickness    0.9                  mg/cm^2 areal density
 target           4He
 compound         21Na
 NumEvapPart      1

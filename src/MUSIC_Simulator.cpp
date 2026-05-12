@@ -44,6 +44,8 @@ MUSIC_Simulator::MUSIC_Simulator()
   EvaR = new Particle*[maxEvaporations];
   Kl = new float[maxEvaporations];
   Kh = new float[maxEvaporations];
+  Kl_exit = new float[maxEvaporations];
+  Kh_exit = new float[maxEvaporations];
   theta_CM = new float[maxEvaporations];
   phi_CM = new float[maxEvaporations];
   theta_l = new float[maxEvaporations];
@@ -129,7 +131,7 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
   FourVector Pb("Pb");
   FourVector Pt("Pt", mt, 0, 0, 0);
   FourVector Ptot("Total four-mom. in the lab");
-  double Kb = ctf.Kb;
+  double Kb = Kb_at_gas;
   double Kb_min;
   float TotalLength = 0;
   
@@ -191,7 +193,7 @@ void MUSIC_Simulator::CalculateCMEnergyRange()
 double CME_beg, CME_end;
 double mb = Beam->Mass;
 double mt = Target->Mass;
-double Kb = ctf.Kb;
+double Kb = Kb_at_gas;
 double Kb_min;
 float TotalLength = 0;
 for (int i=0; i<AnodeRows; i++) 
@@ -266,7 +268,7 @@ void MUSIC_Simulator::CalculateExcEnergyRange()
   FourVector Pb("Pb");
   FourVector Pt("Pt", mt, 0, 0, 0);
   FourVector Ptot("Total four-mom. in the lab");
-  double Kb = ctf.Kb;
+  double Kb = Kb_at_gas;
   double Kb_min;
   float TotalLength = 0;
   
@@ -659,7 +661,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   
   cout << "Generating " << NEvents << " MUSIC traces ..." << endl;
   
-  SetInitialKinematics(ctf.Kb);   
+  SetInitialKinematics(Kb_at_gas);   
 
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
@@ -669,7 +671,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   BeamCopy->Copy(Beam);
   // if (PrintLevel>0)
   //   BeamCopy->Print(Log);
-  //  DeltaEB_ave = PropagateParticle(BeamCopy, ctf.Kb, MaxTime, UserStep); 
+  //  DeltaEB_ave = PropagateParticle(BeamCopy, Kb_at_gas, MaxTime, UserStep); 
   PropagateParticle(BeamCopy, 0, MaxTime, UserStep, DeltaEB_ave);
   if (tracesCreated)
     for (int stp=0; stp<AnodeRows; stp++)
@@ -677,7 +679,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	TraceUB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
   
 
-  //  PrintEnergetics(ctf.Kb, DeltaEB_ave);
+  //  PrintEnergetics(Kb_at_gas, DeltaEB_ave);
 
   //-------------------------------------------------------------------------------
   // Some kinematic variables
@@ -705,9 +707,9 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	if (AnodeStpID[stp][0]==AnodeStpID[stp_base][0])
 	  break;
       }
-      Kb_max = Beam->GetFinalEnergy(0, ctf.Kb, MinZ, 1E-3/*step size in cm*/);
+      Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ, 1E-3/*step size in cm*/);
       MinT = Beam->GetTimeOfFlight(0);
-      Kb_min = Beam->GetFinalEnergy(0, ctf.Kb, MaxZ, 1E-3/*step size in cm*/);
+      Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ, 1E-3/*step size in cm*/);
       MaxT = Beam->GetTimeOfFlight(0);      
       if (PrintLevel>0) {
 	Log << "|---- Kinematic constraints for strip ";
@@ -754,14 +756,14 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	      }
 	    }
 	  // 1. Set beam inital conditions (beam energy, position)
-	  SetInitialKinematics(ctf.Kb);   
+	  SetInitialKinematics(Kb_at_gas);   
 	  
 	  // 2. Within the selected strip randomly select the position
 	  // at which the beam particle interacts with the target and
 	  // calculate the kinetic energy at the reaction point
 	  this->zr = Rdm->Uniform(MinZ, MaxZ);
-	  //double Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3/*cm*/);
-	  this->Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3/*cm*/);
+	  //double Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr, 1E-3/*cm*/);
+	  this->Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr, 1E-3/*cm*/);
 	  double TOF = Beam->GetTimeOfFlight(0);
 	  if (PrintLevel>0)
 	    Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
@@ -950,10 +952,20 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       // Beam parameters
       else if (ParName=="beam")
 	ctf.beamName = ParVal;
-      else if (ParName=="Ebeam" || ParName=="Kb")
-	ctf.Kb = atof(ParVal.c_str());
-      else if (ParName=="EbeamFWHM" || ParName=="KbFWHM")
+      else if (ParName=="BeamEnergy")
+	ctf.BeamEnergy = atof(ParVal.c_str());
+      else if (ParName=="Kb" || ParName=="Ebeam")
+	cout << "musicsim warning: '" << ParName << "' ignored; use 'BeamEnergy' (accelerator KE before windows)." << endl;
+      else if (ParName=="BeamEnergyFWHM" || ParName=="KbFWHM" || ParName=="EbeamFWHM")
 	ctf.KbFWHM = atof(ParVal.c_str());
+      else if (ParName=="EntranceMaterial")
+	ctf.entranceMaterial = ParVal;
+      else if (ParName=="EntranceThickness")
+	ctf.entranceThickness = atof(ParVal.c_str());
+      else if (ParName=="ExitMaterial")
+	ctf.exitMaterial = ParVal;
+      else if (ParName=="ExitThickness")
+	ctf.exitThickness = atof(ParVal.c_str());
       else if (ParName=="SRIMbeam")
 	cout << "musicsim warning: 'SRIMbeam' ignored (catima)." << endl;
       else if (ParName=="dEdxScaleBeam")
@@ -1120,8 +1132,12 @@ void MUSIC_Simulator::InitCTF()
       ctf.dEdxScaleEvap[i] = 1.0;
       ctf.colorEvap[i] = 616;
     }
-    ctf.Kb = 100;       // MeV - Energy of the beam after the Ti window and degrader (if any)
-    ctf.KbFWHM = 0.0;   // MeV - Beam energy spread (full-width half maximum)
+    ctf.BeamEnergy = 100;   // MeV - Beam KE at the accelerator (before entrance window)
+    ctf.KbFWHM = 0.0;       // MeV - Beam energy spread (full-width half maximum), at accelerator
+    ctf.entranceMaterial = "Ti";
+    ctf.entranceThickness = 0.9;  // mg/cm^2
+    ctf.exitMaterial = "Ti";
+    ctf.exitThickness = 0.9;      // mg/cm^2
     ctf.strip = 5;      // Strip where reactions takes place
     ctf.stripFirst = -1; // Strip where reactions takes place
     ctf.stripLast = -1;  // Strip where reactions takes place
@@ -1163,11 +1179,15 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     tree->SetBranchAddress("Grid",          &Grid);
     tree->SetBranchAddress("IsComplete",    &IsComplete);
     MCTree = (TTree*)ROOTfile->Get("MC");
-    MCTree->SetBranchAddress("reacStp",  &reacStp);
-    MCTree->SetBranchAddress("Kbi",      &Kbi);
-    MCTree->SetBranchAddress("Kbr",      &Kbr);
-    MCTree->SetBranchAddress("Kl",       Kl);
-    MCTree->SetBranchAddress("Kh",       Kh);
+    MCTree->SetBranchAddress("reacStp",        &reacStp);
+    MCTree->SetBranchAddress("BeamEnergyAccel",&BeamEnergyAccel);
+    MCTree->SetBranchAddress("Kbi",            &Kbi);
+    MCTree->SetBranchAddress("Kbr",            &Kbr);
+    MCTree->SetBranchAddress("Kbeam_exit",     &Kbeam_exit);
+    MCTree->SetBranchAddress("Kl",             Kl);
+    MCTree->SetBranchAddress("Kh",             Kh);
+    MCTree->SetBranchAddress("Kl_exit",        Kl_exit);
+    MCTree->SetBranchAddress("Kh_exit",        Kh_exit);
     MCTree->SetBranchAddress("theta_CM", theta_CM);
     MCTree->SetBranchAddress("theta_l",  theta_l);
     MCTree->SetBranchAddress("theta_h",  theta_h);
@@ -1196,11 +1216,15 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     tree->Branch("IsComplete",    &IsComplete,   "IsComplete/O");
 
     MCTree = new TTree("MC", "Truth-level MUSIC simulation");
-    MCTree->Branch("reacStp",  &reacStp,   "reacStp/I");
-    MCTree->Branch("Kbi",      &Kbi,       "Kbi/F");
-    MCTree->Branch("Kbr",      &Kbr,       "Kbr/F");
-    MCTree->Branch("Kl",       Kl,         Form("Kl[%d]/F",maxEvaporations));
-    MCTree->Branch("Kh",       Kh,         Form("Kh[%d]/F",maxEvaporations));
+    MCTree->Branch("reacStp",        &reacStp,         "reacStp/I");
+    MCTree->Branch("BeamEnergyAccel",&BeamEnergyAccel, "BeamEnergyAccel/F");
+    MCTree->Branch("Kbi",            &Kbi,             "Kbi/F");
+    MCTree->Branch("Kbr",            &Kbr,             "Kbr/F");
+    MCTree->Branch("Kbeam_exit",     &Kbeam_exit,      "Kbeam_exit/F");
+    MCTree->Branch("Kl",             Kl,               Form("Kl[%d]/F",maxEvaporations));
+    MCTree->Branch("Kh",             Kh,               Form("Kh[%d]/F",maxEvaporations));
+    MCTree->Branch("Kl_exit",        Kl_exit,          Form("Kl_exit[%d]/F",maxEvaporations));
+    MCTree->Branch("Kh_exit",        Kh_exit,          Form("Kh_exit[%d]/F",maxEvaporations));
     MCTree->Branch("theta_CM", theta_CM,   Form("theta_CM[%d]/F",maxEvaporations));
     MCTree->Branch("theta_l",  theta_l,    Form("theta_l[%d]/F",maxEvaporations));
     MCTree->Branch("theta_h",  theta_h,    Form("theta_h[%d]/F",maxEvaporations));
@@ -1232,8 +1256,50 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
 // the per-strip energies accumulated by ComputeDetectorResponse. Called once
 // per event right before SimTree->Fill().
 ///////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////
+// Compute exit-window energies for the beam and all evaporation products.
+// Sentinel convention (set in ResetBranches): -1.0 = stopped in gas, -2.0 = N/A.
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::ComputeExitEnergies()
+{
+  const double amu_MeV = 931.49410242;
+  auto Aof = [&](Particle* P) -> int {
+    return (P && P->Mass > 0) ? int(std::round(P->Mass / amu_MeV)) : 0;
+  };
+  auto kineticExit = [&](Particle* P) -> float {
+    if (!P) return -2.0f;
+    double Kf = P->GetKE();
+    if (Kf <= 0.001) return -2.0f;  // no relevant particle for this event
+    if (P->DoNotPropagate) {
+      // Neutral particle (no EM losses). Treat as exiting forward; window is transparent.
+      return (float)EnergyOutOfMaterial(Aof(P), P->Z, Kf, exitWindow_);
+    }
+    double t, x, y, z;
+    P->GetX(t, x, y, z);
+    if (z >= AnodeDepth)
+      return (float)EnergyOutOfMaterial(Aof(P), P->Z, Kf, exitWindow_);
+    return -1.0f;  // charged particle stopped inside the gas volume
+  };
+
+  // Beam: only contributes for unreacted-beam events; reacted-beam path leaves
+  // Beam back-propagated to the entrance, so z < AnodeDepth and we keep -2.
+  if (Beam) {
+    double t, x, y, z;
+    Beam->GetX(t, x, y, z);
+    if (z >= AnodeDepth)
+      Kbeam_exit = (float)EnergyOutOfMaterial(Aof(Beam), Beam->Z, Beam->GetKE(), exitWindow_);
+  }
+  // Evaporation products and residues.
+  for (int er = 0; er < numEvaporations; ++er) {
+    if (EvaP && EvaP[er]) Kl_exit[er] = kineticExit(EvaP[er]);
+    if (EvaR && EvaR[er]) Kh_exit[er] = kineticExit(EvaR[er]);
+  }
+}
+
 void MUSIC_Simulator::FinalizeEvent(int eventIndex)
 {
+  ComputeExitEnergies();
+
   for (int s = 1; s <= 16; ++s)
     TotaldE[s] = LeftdE[s] + RightdE[s];
 
@@ -1580,9 +1646,12 @@ void MUSIC_Simulator::ResetBranches()
   Cathode = 0; Grid = 0; IsComplete = false;
   reacStp = -1;
   Kbi = Kbr = 0;
+  Kbeam_exit = -2.0f;  // default: N/A (reaction events overwrite below if relevant)
   for (int er=0; er<maxEvaporations; er++) {
     Kl[er] = 0;
     Kh[er] = 0;
+    Kl_exit[er] = -2.0f;  // N/A unless an exit-energy is computed
+    Kh_exit[er] = -2.0f;
     phi_CM[er] = -1;
     theta_CM[er] = -1;
     phi_l[er] = -1;
@@ -1659,6 +1728,11 @@ int MUSIC_Simulator::run()
   BuildGasMaterial();
   Log << "\tGas material configured (" << ctf.gas << ", " << ctf.pressure << " Torr, "
       << ctf.temperature << " K, density " << gas_.density() << " g/cm^3)." << endl;
+  // Windows (catima)
+  BuildWindows();
+  Log << "\tEntrance window: " << ctf.entranceMaterial << " "
+      << ctf.entranceThickness << " mg/cm^2; exit: "
+      << ctf.exitMaterial << " " << ctf.exitThickness << " mg/cm^2." << endl;
   // Geometry
   if (SetAnode(90, ctf.ELossBins, ctf.MaxELoss)==0)
     exit(EXIT_FAILURE);
@@ -1667,6 +1741,17 @@ int MUSIC_Simulator::run()
   // Beam
   SetBeamParticle(ctf.beamName, kBlack, ctf.dEdxScaleBeam);
   Log << "\tBeam particle configured." << endl;
+  // Compute beam KE at the gas surface (after entrance window). Beam must be
+  // configured first so we know its (A, Z).
+  {
+    const double amu_MeV = 931.49410242;
+    int A_beam = (Beam->Mass > 0) ? int(std::round(Beam->Mass / amu_MeV)) : 0;
+    Kb_at_gas = EnergyOutOfMaterial(A_beam, Beam->Z, ctf.BeamEnergy, entranceWindow_);
+    cout << "Beam energy: " << ctf.BeamEnergy << " MeV at accelerator -> "
+         << Kb_at_gas << " MeV after entrance window ("
+         << ctf.entranceMaterial << " " << ctf.entranceThickness << " mg/cm^2)" << endl;
+    BeamEnergyAccel = ctf.BeamEnergy;
+  }
   // Target
   SetTargetParticle(ctf.target);
   Log << "\tTarget particle configured." << endl;
@@ -1995,6 +2080,69 @@ void MUSIC_Simulator::BuildGasMaterial()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
+// Build a catima::Material for a thin solid window. Thickness is in mg/cm^2
+// (areal density), the conventional way windows are specified experimentally.
+///////////////////////////////////////////////////////////////////////////////////
+catima::Material MUSIC_Simulator::BuildSolidMaterial(const string& name, double thickness_mg_per_cm2)
+{
+  catima::Material m;
+  double density_g_per_cc = 0.0;
+  if (name == "Ti" || name == "titanium") {
+    m.add_element(47.867, 22, 1);
+    density_g_per_cc = 4.506;
+  } else if (name == "Havar") {
+    // Co42 Cr19.5 Fe17.9 Ni12.7 Mo2.2 W2.7 (weight %) — typical Havar composition
+    m.add_element(58.933, 27, 42.0);
+    m.add_element(51.996, 24, 19.5);
+    m.add_element(55.845, 26, 17.9);
+    m.add_element(58.693, 28, 12.7);
+    m.add_element(95.95,  42,  2.2);
+    m.add_element(183.84, 74,  2.7);
+    density_g_per_cc = 8.3;
+  } else if (name == "Kapton") {
+    // C22 H10 N2 O5 monomer
+    m.add_element(12.011, 6, 22);
+    m.add_element(1.008,  1, 10);
+    m.add_element(14.007, 7,  2);
+    m.add_element(15.999, 8,  5);
+    density_g_per_cc = 1.42;
+  } else if (name == "Mylar") {
+    // C10 H8 O4
+    m.add_element(12.011, 6, 10);
+    m.add_element(1.008,  1,  8);
+    m.add_element(15.999, 8,  4);
+    density_g_per_cc = 1.40;
+  } else {
+    cout << "BuildSolidMaterial ERROR: unknown window material '" << name << "'. "
+         << "Supported: Ti, Havar, Kapton, Mylar." << endl;
+    exit(EXIT_FAILURE);
+  }
+  m.density(density_g_per_cc);
+  m.thickness(thickness_mg_per_cm2 / 1000.0);  // catima thickness is in g/cm^2
+  return m;
+}
+
+void MUSIC_Simulator::BuildWindows()
+{
+  entranceWindow_ = BuildSolidMaterial(ctf.entranceMaterial, ctf.entranceThickness);
+  exitWindow_     = BuildSolidMaterial(ctf.exitMaterial,     ctf.exitThickness);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Propagate a kinetic energy through an arbitrary catima::Material. Used for the
+// thin entrance/exit windows. Returns input energy unchanged for neutrals (Z<=0).
+///////////////////////////////////////////////////////////////////////////////////
+double MUSIC_Simulator::EnergyOutOfMaterial(int A, int Z, double Ein_MeV, const catima::Material& mat)
+{
+  if (Z <= 0 || A <= 0 || Ein_MeV <= 0.0)
+    return Ein_MeV;
+  catima::Projectile proj{double(A), double(Z)};
+  proj.T = Ein_MeV / A;
+  double Eout_per_u = catima::energy_out(proj, mat);
+  return Eout_per_u * A;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
 // Anode geometry, hardcoded from agfiles/AnodeGeometry (2019/11/04).
 // 20 rows × 2 columns. Strip IDs 0 and 17 are single-column (full-width) strips;
 // 1..16 are split into left/right halves; rows 0 and 19 are dead-layer caps.
@@ -2049,8 +2197,8 @@ void MUSIC_Simulator::LoadHardcodedAnodeGeometry()
   }
   // strip 17 (full width)
   put(18, 0, 17, "S17",   9, 10, 1.578, 416);
-  // dead layer downstream (full width)
-  put(19, 0, -1, "DeadDS", 9, 10, 3.522, 920);
+  // dead layer downstream (full width). stpid=-2 distinguishes from upstream dead layer.
+  put(19, 0, -2, "DeadDS", 9, 10, 3.522, 920);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -2091,7 +2239,7 @@ void MUSIC_Simulator::SetCompoundParticle(string Name)
   // maximum compund excitation energy, ExMax
   if (Beam && Target) {
     double mb = Beam->Mass;
-    double Kb = ctf.Kb;
+    double Kb = Kb_at_gas;
     double pb = sqrt(2*mb*Kb*(1 + Kb/(2*mb)));
     double Eb = sqrt(mb*mb + pb*pb);
     FourVector Pb("Pb", Eb, 0, 0, pb);
@@ -2702,7 +2850,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
  
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
-  SetInitialKinematics(ctf.Kb); // ideal case with no energy straggling
+  SetInitialKinematics(Kb_at_gas); // ideal case with no energy straggling
 
   Particle* BeamInit = new Particle("beam init");  
   BeamInit->Copy(Beam);
@@ -2716,7 +2864,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
       for (int col=0; col<AnodeCols+1; col++) 
 	TraceUB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
   
-  // PrintEnergetics(ctf.Kb, DeltaEB_ave);
+  // PrintEnergetics(Kb_at_gas, DeltaEB_ave);
 
   
   //-------------------------------------------------------------------------------
@@ -2733,9 +2881,9 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     if (AnodeStpID[stp][0]==StpID)
       break;
   }
-  Kb_max = Beam->GetFinalEnergy(0, ctf.Kb, MinZ, 1E-3/*step size in cm*/);
+  Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ, 1E-3/*step size in cm*/);
   MinT = Beam->GetTimeOfFlight(0);
-  Kb_min = Beam->GetFinalEnergy(0, ctf.Kb, MaxZ, 1E-3/*step size in cm*/);
+  Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ, 1E-3/*step size in cm*/);
   MaxT = Beam->GetTimeOfFlight(0);
   if (PrintLevel>0) {
     Log << "|---- Kinematic constraints for strip ";
@@ -2802,7 +2950,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
       }
     
     // 1. Set beam inital conditions (beam energy, position)
-    double Ebeam = ctf.Kb;
+    double Ebeam = Kb_at_gas;
     // If the user specified a KbFWHM>0 change the beam energy
     // assuming a gaussian distribution.
     if (ctf.KbFWHM>0.0)
@@ -3011,7 +3159,7 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
   
   cout << "Simulating MUSIC traces ... " << endl;
   
-  SetInitialKinematics(ctf.Kb);   
+  SetInitialKinematics(Kb_at_gas);   
 
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
@@ -3019,12 +3167,12 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
   BeamCopy->Copy(Beam);
   if (PrintLevel>0)
     BeamCopy->Print();
-  //  DeltaEB_ave = PropagateParticle(BeamCopy, ctf.Kb, MaxTime, UserStep); 
-  PropagateParticle(BeamCopy, ctf.Kb, MaxTime, UserStep, DeltaEB_ave);
+  //  DeltaEB_ave = PropagateParticle(BeamCopy, Kb_at_gas, MaxTime, UserStep); 
+  PropagateParticle(BeamCopy, Kb_at_gas, MaxTime, UserStep, DeltaEB_ave);
   for (int stp=0; stp<AnodeRows; stp++)
     for (int col=0; col<AnodeCols+1; col++) 
       TraceUB[col]->SetPoint(stp, stp, DeltaEB_ave[stp][col]);
-  //  PrintCompoundEexc(ctf.Kb, DeltaEB_ave);
+  //  PrintCompoundEexc(Kb_at_gas, DeltaEB_ave);
   
   //-------------------------------------------------------------------------------
   // Some kinematic variables
@@ -3046,9 +3194,9 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
     if (AnodeStpID[stp][0]==StpID)
       break;
   }
-  Kb_max = Beam->GetFinalEnergy(0, ctf.Kb, MinZ, 1E-3/*step size in cm*/);
+  Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ, 1E-3/*step size in cm*/);
   MinT = Beam->GetTimeOfFlight(0);
-  Kb_min = Beam->GetFinalEnergy(0, ctf.Kb, MaxZ, 1E-3/*step size in cm*/);
+  Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ, 1E-3/*step size in cm*/);
   MaxT = Beam->GetTimeOfFlight(0);
   if (PrintLevel>0) {
     Log << "|---- Kinematic constraints for strip ";
@@ -3094,14 +3242,14 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
 	}
       
       // 1. Set beam inital conditions (beam energy, position)
-      SetInitialKinematics(ctf.Kb);   
+      SetInitialKinematics(Kb_at_gas);   
       
       // 2. Within the selected strip randomly select the position at
       // which the beam particle interacts with the target and calculate
       // the kinetic energy at the reaction point
       this->zr = Rdm->Uniform(MinZ, MaxZ);
-      //double Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3);
-      this->Kbr = Beam->GetFinalEnergy(0, ctf.Kb, this->zr, 1E-3);
+      //double Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr, 1E-3);
+      this->Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr, 1E-3);
       double TOF = Beam->GetTimeOfFlight(0);
       if (PrintLevel>0)
 	Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;

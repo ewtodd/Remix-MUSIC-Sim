@@ -8,8 +8,12 @@ MaxELoss         10                   Max y value [MeV]
 strip            6                    Strip where reaction takes place. Use -1 for unreacted beam
 Eres             0.05                 Energy noise level (sigma) in each strip [MeV]
 beam             37Cl                 Use "AEl" notation
-Kb               79.0                 Beam energy as it enters the dead gas layer [MeV]
-KbFWHM           0.80                 Beam energy FWHM [MeV]
+BeamEnergy       79.0                 Beam KE at the accelerator (before entrance window) [MeV]
+KbFWHM           0.80                 Beam energy FWHM at accelerator [MeV]
+EntranceMaterial Ti
+EntranceThickness 0.9                 mg/cm^2 areal density
+ExitMaterial     Ti
+ExitThickness    1.3                  mg/cm^2 areal density
 target           4He
 compound         41K
 NumEvapPart      1                    Number of evaporated particles

@@ -96,8 +96,12 @@ public:
 
 private:
   void BuildGasMaterial();
+  void BuildWindows();
+  catima::Material BuildSolidMaterial(const std::string& name, double thickness_mg_per_cm2);
+  double EnergyOutOfMaterial(int A, int Z, double Ein_MeV, const catima::Material& mat);
   void LoadHardcodedAnodeGeometry();
   void FinalizeEvent(int eventIndex);
+  void ComputeExitEnergies();
   int CheckMemoryUsage(int Print=0);
   void ComputeDetectorResponse(int event, int reacStp, int UpdateVis);
   void CreateTracesAndTrajectories();
@@ -207,6 +211,11 @@ private:
 
   // Gas material for stopping-power calculations (catima)
   catima::Material gas_;
+  // Entrance / exit windows (configurable material + thickness in mg/cm^2)
+  catima::Material entranceWindow_;
+  catima::Material exitWindow_;
+  // Beam KE at the gas surface (after entrance window). Derived from ctf.BeamEnergy.
+  double Kb_at_gas;
 
   // TTree stuff. Layout matches the upstream EventBuilderNearestGrid output:
   // an "event" tree carrying detector-level branches plus a sibling "MC" tree
@@ -225,11 +234,17 @@ private:
   Float_t Grid;
   Bool_t IsComplete;
   // MC truth branches (live on MCTree).
+  // Sentinel values for exit-energy branches: -1.0 = particle stopped in gas,
+  // -2.0 = particle does not exist for this event (e.g. Kbeam_exit on a reacted event).
   int reacStp;
-  float Kbi;
-  float Kbr;
+  float BeamEnergyAccel;  // KE at the accelerator (= ctf.BeamEnergy)
+  float Kbi;              // KE at the gas surface (= after entrance window)
+  float Kbr;              // KE at the reaction point
+  float Kbeam_exit;       // unreacted-beam KE after exit window (sentinel for reaction events)
   float* Kl;
   float* Kh;
+  float* Kl_exit;         // light-product KE after exit window
+  float* Kh_exit;         // heavy-product KE after exit window
   float* theta_CM;
   float* phi_CM;
   float* theta_l;
@@ -287,8 +302,12 @@ private:
     std::string* evap = new std::string[MaxNumEvapPart];
     float* dEdxScaleEvap = new float[MaxNumEvapPart];
     int* colorEvap = new int[MaxNumEvapPart];
-    double Kb;       // MeV - Energy of the beam after the Ti window and degrader (if any)
-    double KbFWHM=0; // MeV - Beam energy spread (full-width half maximum)
+    double BeamEnergy;   // MeV - Kinetic energy of the beam at the accelerator (before windows)
+    double KbFWHM=0;     // MeV - Beam energy spread (full-width half maximum), at the accelerator
+    std::string entranceMaterial = "Ti";
+    std::string exitMaterial     = "Ti";
+    double entranceThickness = 0.9;  // mg/cm^2 - upstream window areal density
+    double exitThickness     = 0.9;  // mg/cm^2 - downstream window areal density
     int strip;       // Strip where reactions takes place
     int stripFirst;  // First strip where reactions takes place
     int stripLast;   // Last strip where reactions takes place
