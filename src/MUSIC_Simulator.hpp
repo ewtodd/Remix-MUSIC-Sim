@@ -71,19 +71,17 @@ public:
 			     double ThCMMin, double ThCMMax, int ThSteps,
 			     double PhiCMMin, double PhiCMMax, int PhiSteps,
 			     double MaxTime, double UserStep, int UpdateEnabled=0, int Wait=0);
-  int SetAnode(std::string AnodeGeomFile, short Trans/*From 0 to 100*/, int ELossBins=400, 
-	       float MaxELoss=5);
-  void SetBeamParticle(std::string Name, int Color, std::string ELossFile, float dEdxScale=1.0);
-  //  void SetBeamSpot(double diameter);
+  int SetAnode(short Trans/*From 0 to 100*/, int ELossBins=400, float MaxELoss=5);
+  void SetBeamParticle(std::string Name, int Color, float dEdxScale=1.0);
   void SetCompoundParticle(std::string Name);
-  void SetDecayDaughter1(std::string Name, int Color, std::string ELossFile);
-  void SetDecayDaughter2(std::string Name, int Color, std::string ELossFile);
-  void SetEvapResAndPart(std::string ResName, std::string ResELossFile, int ResColor,
-			 std::string ParName, std::string ParELossFile, int ParColor,
+  void SetDecayDaughter1(std::string Name, int Color);
+  void SetDecayDaughter2(std::string Name, int Color);
+  void SetEvapResAndPart(std::string ResName, int ResColor,
+			 std::string ParName, int ParColor,
 			 float dEdxScaleRes=1.0, float dEdxScalePar=1.0);
-  void SetHeavyParticle(std::string Name, int Color, std::string ELossFile, int NEexc=0,
+  void SetHeavyParticle(std::string Name, int Color, int NEexc=0,
 			double* Eexc=0/*MeV*/);
-  void SetLightParticle(std::string Name, int Color, std::string ELossFile);
+  void SetLightParticle(std::string Name, int Color);
 
   void SetPrintLevel(int PrintLevel);
   void SetROOTSystemPointer(TSystem* gSystem);
@@ -97,6 +95,9 @@ public:
 
 
 private:
+  void BuildGasMaterial();
+  void LoadHardcodedAnodeGeometry();
+  void FinalizeEvent(int eventIndex);
   int CheckMemoryUsage(int Print=0);
   void ComputeDetectorResponse(int event, int reacStp, int UpdateVis);
   void CreateTracesAndTrajectories();
@@ -204,15 +205,26 @@ private:
   // Nuclide finder
   NuclideFinder* NuF;
 
-  // TTree stuff similar to the one used for experimental data.
-  TTree* SimTree;
-  float strip0;
-  static const int ExpAnodeStps = 16;
-  float* de_l;
-  float* de_r;
-  int* seg;
-  float strip17;
-  float cathode;
+  // Gas material for stopping-power calculations (catima)
+  catima::Material gas_;
+
+  // TTree stuff. Layout matches the upstream EventBuilderNearestGrid output:
+  // an "event" tree carrying detector-level branches plus a sibling "MC" tree
+  // carrying truth-only branches (friended; rows correspond 1:1).
+  TTree* SimTree;   // stored as "event"
+  TTree* MCTree;    // stored as "MC"
+  static const int N_STRIPS = 18;
+  static const int N_CHAN   = 36;
+  Float_t LeftdE[N_STRIPS];
+  Float_t RightdE[N_STRIPS];
+  Float_t TotaldE[N_STRIPS];
+  ULong64_t AllTimestamps[N_CHAN];
+  UInt_t AllFlags[N_CHAN];
+  Int_t Hits[N_CHAN];
+  Float_t Cathode;
+  Float_t Grid;
+  Bool_t IsComplete;
+  // MC truth branches (live on MCTree).
   int reacStp;
   float Kbi;
   float Kbr;
@@ -257,24 +269,22 @@ private:
 
 
   struct controlFileParams {
-    int pressure; // Torr
-    std::string AnodeGeom;
+    std::string gas = "4He";    // gas species name; see BuildGasMaterial for supported values
+    float pressure = 760.0;     // Torr
+    float temperature = 293.0;  // K
     int ELossBins;
     float MaxELoss;
     // beam
     std::string beamName;
-    std::string SRIMbeam;
     float dEdxScaleBeam=1.0;
     std::string target;
     std::string compound;
     int NumEvapPart;
     static const int MaxNumEvapPart=10;
     std::string* res = new std::string[MaxNumEvapPart];
-    std::string* SRIMres = new std::string[MaxNumEvapPart];
     float* dEdxScaleRes = new float[MaxNumEvapPart];
     int* colorRes = new int[MaxNumEvapPart];
     std::string* evap = new std::string[MaxNumEvapPart];
-    std::string* SRIMevap = new std::string[MaxNumEvapPart];
     float* dEdxScaleEvap = new float[MaxNumEvapPart];
     int* colorEvap = new int[MaxNumEvapPart];
     double Kb;       // MeV - Energy of the beam after the Ti window and degrader (if any)

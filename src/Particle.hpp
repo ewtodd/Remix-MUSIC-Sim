@@ -66,8 +66,7 @@ public:
   void SetCurrentExcState(int ExcState);
   void SetExcEnergies(int N, double* Eexc, double* Prob=0);
   void SetExcEnergy(double Ex);
-  void SetMedia(int NumMedia, std::string* ELossFile, float dEdxScale=1.0);
-  void SetMedium(std::string ELossFile, float dEdxScale=1.0);
+  void SetMedium(const catima::Material* gas, float dEdxScale=1.0);
   void SetP(FourVector P);
   void SetP(double P0, double P1, double P2, double P3);
   void SetReactionIndex(int RI);
@@ -114,7 +113,8 @@ private:
   TRandom3* PDF;
   
   // Energy loss stuff
-  std::string* ELossFile;
+  const catima::Material* gas_;
+  float dEdxScale_;
   EnergyLoss** IonInMedium;
   int NumMedia;
   static const int MaxMedia = 40;

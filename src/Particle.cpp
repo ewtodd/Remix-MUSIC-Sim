@@ -8,6 +8,7 @@
 // 2014
 
 #include "Particle.hpp"
+#include <cmath>
 
 using namespace std;
 
@@ -43,8 +44,10 @@ Particle::Particle(string Name, double M, int Q, bool SaveTrajectory)
   PDF = 0;
   ProbExc = 0;
   IonInMedium = new EnergyLoss*[MaxMedia];
-  for (int m=0; m<MaxMedia; m++) 
+  for (int m=0; m<MaxMedia; m++)
     IonInMedium[m] = 0;
+  gas_ = nullptr;
+  dEdxScale_ = 1.0;
   TrT = new float[MaxPoints];
   TrX = new float[MaxPoints];
   TrY = new float[MaxPoints];
@@ -84,7 +87,7 @@ void Particle::Copy(Particle* rhs) {
     Z = rhs->Z;
     X = rhs->X;
     P = rhs->P;
-    SetMedia(rhs->NumMedia, rhs->ELossFile);
+    if (rhs->gas_) SetMedium(rhs->gas_, rhs->dEdxScale_);
   }
   return;
 }
@@ -451,10 +454,9 @@ void Particle::Print(ostream& log)
   } 
   else 
     log << "| Trajectory object not saved." << endl;
-  if (NumMedia>0) {
-    log << "| " << NumMedia << " SRIM file(s):" << endl;
-    for (int med=0; med<NumMedia; med++)
-      log << "|  - " << ELossFile[med] << endl;
+  if (NumMedia>0 && gas_) {
+    log << "| Stopping-power via catima; gas density = "
+        << gas_->density() << " g/cm³, dE/dx scale = " << dEdxScale_ << endl;
   }
   log << "|==================================================|"<< endl;
   return;
@@ -564,45 +566,28 @@ void Particle::SetExcEnergy(double Ex) {
 
 
 ///////////////////////////////////////////////////////////////////////////////////
-// With this method, the user can specify several number of energy loss files 
-// (tables). The arguments are the number of energy loss files (NumMedia) and a
-// string array with the name of each energy loss files.
+// Configure energy loss in the (single) gas medium using catima.
+// A is derived from Mass (MeV/c²) / atomic mass unit; Z is the particle's Z.
 ///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetMedia(int NumMedia, string* ELossFile, float dEdxScale)
+void Particle::SetMedium(const catima::Material* gas, float dEdxScale)
 {
-  if (Q>0 || Z>0) {
-    if (NumMedia<=MaxMedia) {
-      this->NumMedia = NumMedia;
-      this->ELossFile = new string[NumMedia];
-      for (int m=0; m<NumMedia; m++) {
-	this->ELossFile[m] = ELossFile[m];
-	IonInMedium[m] = new EnergyLoss(ELossFile[m], Mass, dEdxScale);
-	if (!IonInMedium[m]->GoodELossFile) {
-	  delete IonInMedium[m];
-	  IonInMedium[m] = 0;
-	}
-	//cout << Name << ": SRIM file " << ELossFile[m] << " loaded." << endl;
-      }
-    }
-    else
-      cout << "Warning: Particle \'" << Name << "\' cannot have more than " << MaxMedia 
-	   << " energy loss files." << endl;
+  if (gas == nullptr) return;
+  if (Z <= 0) {
+    cout << Name << ": stopping-power not configured for particle with Z=" << Z << endl;
+    return;
   }
-  else 
-    cout << Name << ": SRIM file not loaded for particle with Z=" << Z << endl;
-
-  return;
-}
-
-///////////////////////////////////////////////////////////////////////////////////
-// Similar to SetMedia but for when the user only needs one medium.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetMedium(string ELossFile, float dEdxScale)
-{
-  int NumMedia = 1;
-  string* AuxELossPtr = new string[NumMedia];
-  AuxELossPtr[0] = ELossFile;
-  SetMedia(NumMedia, AuxELossPtr, dEdxScale);
+  const double amu_MeV = 931.49410242;
+  int A_derived = (Mass > 0.0) ? int(std::round(Mass / amu_MeV)) : 0;
+  if (A_derived <= 0) {
+    cout << Name << ": cannot derive mass number from Mass=" << Mass << " MeV/c²" << endl;
+    return;
+  }
+  if (A == 0) A = A_derived;
+  NumMedia = 1;
+  gas_ = gas;
+  dEdxScale_ = dEdxScale;
+  if (IonInMedium[0]) delete IonInMedium[0];
+  IonInMedium[0] = new EnergyLoss(A_derived, Z, Mass, gas, dEdxScale);
   return;
 }
 

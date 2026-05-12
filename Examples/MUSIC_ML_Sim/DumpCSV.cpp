@@ -25,7 +25,7 @@
 //
 
 
-#include "DumpCSV.h"
+#include "DumpCSV.hpp"
 
 const float DumpCSV::ProgressFrac[6] = {0.01, 0.25, 0.5, 0.75, 0.9, 1.0};
 Long64_t mainentry = 0;
