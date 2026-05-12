@@ -1,5 +1,5 @@
 {
-  description = "MUSIC detector simulator";
+  description = "Remix-MUSIC-Sim: catima-based, multi-threaded fork of the ANL MUSIC detector simulator";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
@@ -28,7 +28,7 @@
           cmakeFlags = [ "-DBUILD_SHARED_LIBS=ON" ];
         };
         musicsim = pkgs.stdenv.mkDerivation {
-          pname = "musicsim";
+          pname = "remix-music-sim";
           inherit version;
           src = ./.;
           nativeBuildInputs = with pkgs; [
