@@ -352,7 +352,9 @@ private:
     int strip      = kStripUnset;
     int stripFirst = kStripUnset;
     int stripLast  = kStripUnset;
-    double Eres=0;   // MeV - Strip energy resolution (larger values increase signal randomness)
+    double Eres=-1;  // MeV - Ad-hoc post-physics electronic noise sigma per strip.
+                     // Negative = off (default). Gas straggling is now sampled from
+                     // catima per integration step; Eres is reserved for tuning to data.
     int NEvents;     // Number of simulated events (recommendation: keep it <1000)
     int Wait;        // 1 - canvas waits for user's double click, 0 - no wait
     int Update;      // 1 - update visuals for every event, 0 - don't

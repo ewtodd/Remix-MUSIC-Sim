@@ -46,6 +46,7 @@ public:
   double GetEexc(int ExcState);
   double GetEnergyLoss(int MediumID, double InitE/*MeV*/, double PathLength/*cm*/);
   double GetFinalEnergy(int MediumID, double InitE, double PathLength, double StepSize);
+  double GetFinalEnergyStraggled(int MediumID, double InitE, double PathLength, TRandom* rng);
   double GetInitialEnergy(int MediumID, double FinalE, double PathLength, double StepSize);
   double GetKE();
   double GetOptimumStepSize(int MediumID, double Energy);

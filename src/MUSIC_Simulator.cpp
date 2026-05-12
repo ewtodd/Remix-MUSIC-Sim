@@ -1186,7 +1186,9 @@ void MUSIC_Simulator::InitCTF()
     ctf.strip      = controlFileParams::kStripUnset;
     ctf.stripFirst = controlFileParams::kStripUnset;
     ctf.stripLast  = controlFileParams::kStripUnset;
-    ctf.Eres = 0.0;     // MeV - Strip energy resolution (larger values increase signal randomness)
+    ctf.Eres = -1.0;    // MeV - Post-physics electronic noise (Gaussian sigma per strip).
+                        // Negative = off (default). Set to a positive value to add
+                        // ad-hoc noise on top of catima's per-step gas straggling.
     ctf.NEvents = 10;   // Number of simulated events (recommendation: keep it <1000)
     ctf.Wait = 1;       // 1 - canvas waits for user's double click, 0 - no wait
     ctf.Update = 1;     // 1 - update visuals for every event, 0 - don't
@@ -1350,7 +1352,11 @@ void MUSIC_Simulator::FinalizeEvent(int eventIndex)
   // Trigger-like threshold: distinguishes real signals from cells that contain
   // only Gaussian smearing noise from ctf.Eres. Energies themselves are NOT
   // zeroed — Hits encodes whether a real-DAQ channel would have triggered.
-  const float hit_threshold = std::max(0.02f, 3.0f * float(ctf.Eres));
+  // Trigger threshold for the Hits[] / IsComplete decisions. If Eres > 0,
+  // scale it; otherwise just use the 0.02 MeV floor.
+  const float hit_threshold = (ctf.Eres > 0.0)
+      ? std::max(0.02f, 3.0f * float(ctf.Eres))
+      : 0.02f;
 
   Hits[0]  = (TotaldE[0]  > hit_threshold) ? 1 : 0;            // Strip0
   for (int s = 1; s <= 16; ++s) {
@@ -1604,9 +1610,14 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     // medium (0) over a small (differential) path length (dist).
     double dist = sqrt(pow(xf-xi,2) + pow(yf-yi,2) + pow(zf-zi,2));
     double Kf = 0;
-    if (UserStep>0) 
-      Kf = PO->GetFinalEnergy(0, Ki, dist, dist/10);
+    if (UserStep>0)
+      // Forward physics step: sample per-step Gaussian energy straggling
+      // from catima's sigma_E so the per-strip dE distributions reflect
+      // real fluctuations rather than just the mean.
+      Kf = PO->GetFinalEnergyStraggled(0, Ki, dist, Rdm);
     else
+      // Backward kinematic propagation (beam reconstructed back to entrance).
+      // Inverse straggling is not well-defined; use the mean.
       Kf = PO->GetInitialEnergy(0, Ki, dist, dist/10);
 
     // Exit the while loop if the particle has stopped.
