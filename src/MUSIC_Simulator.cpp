@@ -364,11 +364,8 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
 #if 1
   if (PrintLevel>0)
     Log << "Compute detector response evt " << evt << endl;
-  double Ethresh = 0.02;  // Right now the threshold for the multiplicity is hard-coded here.
   double DeltaE = 0;
-  if (tracesCreated)
-    TraceMult->Reset();
-  
+
   // Reset the SimTree leaves (already reset in Simulate())
   if (SimTree!=0) {
      this->reacStp = reacStp;
@@ -377,7 +374,6 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
   // Loop over the anode's rows and columns
   for (int row=0; row<AnodeRows; row++) {
     DeltaE = 0;
-    int mult = 0;
     for (int col=0; col<AnodeCols+1; col++) {
       DeltaE = DeltaEB[row][col];
       for (int er=0; er<numEvaporations; er++) {
@@ -388,10 +384,7 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
       if (ctf.Eres>0.0) {
 	// Adding randomness to the energy loss to mimic experimental jitter
 	DeltaE += Rdm->Gaus(0.0, ctf.Eres);
-      }	
-
-      if (DeltaE>Ethresh && col<AnodeCols)
-	mult++;
+      }
 
       // Accumulate per-strip energies into the event-tree layout, plus the
       // unread dead-layer energies on the MC tree. stpid -1 = upstream dead
@@ -430,8 +423,6 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
       // 	     << DeltaEL[row][col] << "+" << DeltaEH[row][col] << "+" << DeltaED1[row][col] 
       // 	     << "+" << DeltaED2[row][col] << "+E.R."<< endl;
     }
-    if (tracesCreated)
-      TraceMult->Fill(row, mult);
   }
   
 
@@ -489,10 +480,6 @@ void MUSIC_Simulator::CreateTracesAndTrajectories()
     }
   }
 
-  TraceMult = new TH1F("TraceMult","Mult.",AnodeRows,-0.5,AnodeRows-0.5);
-  TraceMult->GetXaxis()->SetTitle("Strip index (in AnodeGeometry file)");
-  TraceMult->GetXaxis()->CenterTitle();
- 
   // Initialize the traces corresponding to the unreacted beam (UB)
   TraceUB = new TGraph*[AnodeCols+1];
   for (int col=0; col<AnodeCols+1; col++) {
@@ -1789,11 +1776,9 @@ int MUSIC_Simulator::run()
     
     // Canvas and legends for traces
     TraceCan = new TCanvas("TraceCan","Traces", 0, 0, 960, 1018);
-    TraceCan->Divide(2,2);
+    TraceCan->Divide(2,1);
     TraceCan->cd(1)->SetGrid();
     TraceCan->cd(2)->SetGrid();
-    TraceCan->cd(3)->SetGrid();
-    TraceCan->cd(4)->SetGrid();
     LegCol = new TLegend(0.692,0.616,0.826,0.861);
     LegPart = new TLegend(0.692,0.616,0.826,0.861);
     LabelKine = new TPaveText(0.152,0.679,0.437,0.875,"NDC");
@@ -3708,13 +3693,7 @@ void MUSIC_Simulator::UpdateVisuals(int evt, double Kbr, double zr, double TOF, 
       }
     }
     LegPart->Draw();
-    
-    // Multiplicity 
-    TraceCan->cd(3);
-    TraceMult->GetYaxis()->SetRangeUser(0,AnodeCols+1);
-    TraceMult->Draw("HIST");
-    
-    
+
     TraceCan->Update();
     if (Wait==1)
       TraceCan->WaitPrimitive();

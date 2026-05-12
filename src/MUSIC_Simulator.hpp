@@ -187,7 +187,6 @@ private:
   TGraph*** TraceEP;   // Evaporated particle traces
   bool tracesCreated;
 
-  TH1F* TraceMult;
   int NTraces;
 
   TF1* Gaussian;   // For randomizing the detector response
