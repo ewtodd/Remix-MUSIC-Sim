@@ -8,9 +8,10 @@ using namespace std;
 ///////////////////////////////////////////////////////////////////////////////////
 // Constructor
 ///////////////////////////////////////////////////////////////////////////////////
-MUSIC_Simulator::MUSIC_Simulator()
+MUSIC_Simulator::MUSIC_Simulator(int workerId)
 {
   Name = "MUSIC_Simulator";
+  this->workerId_ = workerId;
 
   // Initialize variables.
   CMEMax = 0;
@@ -79,17 +80,20 @@ MUSIC_Simulator::MUSIC_Simulator()
   // Nuclide finder object
   NuF = new NuclideFinder();
 
-  // Geometry manager
-  Geo = new TGeoManager("Geo", "MUSIC geometry manager");
-
-  // Define some materials and media
-  MatVacuum = new TGeoMaterial("Vac", 0, 0, 0);
-  // NOTE: Not sure about units of arguments
-  Vacuum = new TGeoMedium("Vacuum", 1, MatVacuum);
-  
-  // Make the top container volume
-  VolTop = Geo->MakeBox("VolTop", Vacuum, 300., 300., 300.);
-  Geo->SetTopVolume(VolTop);
+  // Geometry manager is only built for the master (workerId 0); workers do
+  // anode-cell lookups directly from the hardcoded AnodeDX/AnodeDZ tables
+  // and never touch ROOT's geometry singletons.
+  Geo = nullptr;
+  MatVacuum = nullptr;
+  Vacuum = nullptr;
+  VolTop = nullptr;
+  if (workerId == 0) {
+    Geo = new TGeoManager("Geo", "MUSIC geometry manager");
+    MatVacuum = new TGeoMaterial("Vac", 0, 0, 0);
+    Vacuum = new TGeoMedium("Vacuum", 1, MatVacuum);
+    VolTop = Geo->MakeBox("VolTop", Vacuum, 300., 300., 300.);
+    Geo->SetTopVolume(VolTop);
+  }
   // Zero other volume pointers
   VolAnode = 0;
   
@@ -916,6 +920,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 int MUSIC_Simulator::loadCtrlFile(char* fileName)
 {
   int Status = 0;
+  ctrlFilePath_ = fileName ? fileName : "";
   ifstream Ctrl(fileName);
   string aux, ParName, ParVal;
   
@@ -1079,6 +1084,8 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
 	ctf.SimStep = atof(ParVal.c_str());
       else if (ParName=="Method")
 	ctf.Method = atoi(ParVal.c_str());
+      else if (ParName=="Threads")
+	ctf.Threads = atoi(ParVal.c_str());
       else if (ParName=="FileName")
       	ctf.FileName = ParVal;
       else if (ParName=="FileOpt")
@@ -1526,17 +1533,29 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
       break;
     }
     
-    // Find the anode segment in which the particle is moving.
+    // Find the anode segment containing (xf, yf, zf) directly from the
+    // AnodeDX/AnodeDZ tables. This used to call Geo->FindNode but that
+    // requires a TGeoManager (not available to MT workers) and is also
+    // unnecessary — the geometry is a regular grid of rectangular cells.
     int stp = -1;
     int col = -1;
-    Vol = Geo->FindNode(xf, yf, zf)->GetVolume(); 
-    for (int s=0; s<AnodeRows; s++) 
-      for (int c=0; c<AnodeCols; c++) 
-	if (Vol==VolAnode[s][c]) {
-	  stp = s;
-	  col = c;
-	  break;
-	} 
+    {
+      double zacc = 0;
+      for (int r = 0; r < AnodeRows; ++r) {
+        double dz = AnodeDZ[r][0];
+        if (zf >= zacc && zf < zacc + dz) { stp = r; break; }
+        zacc += dz;
+      }
+      if (stp >= 0) {
+        double xacc = -AnodeLength / 2.0;
+        for (int c = 0; c < AnodeCols; ++c) {
+          double dx = AnodeDX[stp][c];
+          if (dx <= 0) continue;
+          if (xf >= xacc && xf < xacc + dx) { col = c; break; }
+          xacc += dx;
+        }
+      }
+    }
     // Exit the while loop if the anode segment was not found.
     if (stp==-1 || col==-1) {
       if (PrintLevel>0)
@@ -1676,9 +1695,14 @@ void MUSIC_Simulator::ResetBranches()
 /////////////////////////////////////////////////////////////////////////////////////////////////
 int MUSIC_Simulator::run()
 {
+  // MT dispatch: only the master (workerId_==0) fans out. Workers run as
+  // single-threaded (their ctf.Threads is forced to 1 before run()).
+  if (ctf.Threads > 1 && workerId_ == 0)
+    return runMultiThreaded();
+
   TFile* ROOTfile = 0;
   int runStatus = 0;
-  
+
   SetPrintLevel(ctf.PrintOpt);
   Log << "musicsim::run() START *********************************************" << endl;
   
@@ -1923,28 +1947,36 @@ int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
       // because a medium is needed when defining a Volume, it has
       // nothing to do with the energy loss. The actual stopping power
       // tables are contained in the Particle objects.
-      double z0 = 0;
+      // Allocate VolAnode in all modes — downstream code uses (VolAnode!=0)
+      // as a "geometry is configured" sentinel. For workers (Geo==nullptr)
+      // the entries stay null; PropagateParticle finds cells via the
+      // AnodeDX/AnodeDZ tables, not via TGeoManager.
       VolAnode = new TGeoVolume**[AnodeRows];
-      for (int row=0; row<AnodeRows; row++) {
-	VolAnode[row] = new TGeoVolume*[AnodeCols];
-	z0 += AnodeDZ[row][0]/2;
-	double x0 = -AnodeLength/2;
-	for (int col=0; col<AnodeCols; col++) {
-	  if (AnodeDX[row][col]>0) {
-	    VolAnode[row][col] = Geo->MakeBox(Form("VolAnode%d%d",row,col),
-					      Vacuum /*just because a medium is need*/,
-					      AnodeDX[row][col]/2, AnodeDY[row][col]/2,
-					      AnodeDZ[row][col]/2);
-	    VolAnode[row][col]->SetLineColor(AnodeColor[row][col]);
-	    VolAnode[row][col]->SetTransparency(Trans);
-	    x0 += AnodeDX[row][col]/2;
-	    VolTop->AddNode(VolAnode[row][col], 1, new TGeoTranslation(x0,0,z0));
-	    x0 += AnodeDX[row][col]/2;
-	  }
-	  else 
-	    VolAnode[row][col] = 0;
-	}
-	z0 += AnodeDZ[row][0]/2;
+      for (int row = 0; row < AnodeRows; ++row) {
+        VolAnode[row] = new TGeoVolume*[AnodeCols];
+        for (int col = 0; col < AnodeCols; ++col)
+          VolAnode[row][col] = nullptr;
+      }
+      if (Geo) {
+        double z0 = 0;
+        for (int row=0; row<AnodeRows; row++) {
+          z0 += AnodeDZ[row][0]/2;
+          double x0 = -AnodeLength/2;
+          for (int col=0; col<AnodeCols; col++) {
+            if (AnodeDX[row][col]>0) {
+              VolAnode[row][col] = Geo->MakeBox(Form("VolAnode%d%d",row,col),
+                                                Vacuum /*just because a medium is need*/,
+                                                AnodeDX[row][col]/2, AnodeDY[row][col]/2,
+                                                AnodeDZ[row][col]/2);
+              VolAnode[row][col]->SetLineColor(AnodeColor[row][col]);
+              VolAnode[row][col]->SetTransparency(Trans);
+              x0 += AnodeDX[row][col]/2;
+              VolTop->AddNode(VolAnode[row][col], 1, new TGeoTranslation(x0,0,z0));
+              x0 += AnodeDX[row][col]/2;
+            }
+          }
+          z0 += AnodeDZ[row][0]/2;
+        }
       }
 
       // Arrays where the energy loss in each strip will be saved. The
@@ -2013,7 +2045,7 @@ int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
     // with negative parameters (run-time shapes) building the cache manager,
     // voxelizing all volumes, counting the total number of physical nodes and
     // registring the manager class to the browser.
-    Geo->CloseGeometry();
+    if (Geo) Geo->CloseGeometry();
 
     if (ctf.Update)
       DrawMUSIC(Eve, 85);
@@ -2077,6 +2109,129 @@ void MUSIC_Simulator::BuildGasMaterial()
     gas_.add_element(c.mass_u, c.Z, double(c.stn));
   gas_.density(rho);
   gas_.M(molar_mass);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Reseed the worker's RNG. Used by the MT driver to give each worker a
+// distinct, reproducible random stream.
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::SeedRandom(unsigned long s)
+{
+  delete Rdm;
+  Rdm = new TRandom3(s);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Multi-threaded event loop. The master partitions ctf.NEvents across
+// ctf.Threads workers, each runs std::launch::async with its own
+// MUSIC_Simulator instance, then per-worker output files are merged
+// into ctf.FileName via TFileMerger.
+///////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////
+// Force catima to populate its global DataPoint cache for every (projectile,
+// material) combination the workers will see. catima's cache is a process-wide
+// ring buffer; writes from concurrent workers race, but read-only lookups
+// (and the cspline_special eval that we use by default) are thread-safe. By
+// pre-warming on the master we make every worker's catima call a pure read.
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::PreWarmCatima()
+{
+  if (!NuF) NuF = new NuclideFinder();
+  BuildGasMaterial();
+  BuildWindows();
+  auto warmIon = [&](int A, int Z) {
+    if (A <= 0 || Z <= 0) return;
+    EnergyOutOfMaterial(A, Z, 100.0, gas_);
+    EnergyOutOfMaterial(A, Z, 100.0, entranceWindow_);
+    EnergyOutOfMaterial(A, Z, 100.0, exitWindow_);
+  };
+  auto warmName = [&](const std::string& name) {
+    if (name.empty() || name == "unassigned beam" ||
+        name == "unassigned target" || name == "unassigned compound" ||
+        name == "unassigned res" || name == "unassigned evap") return;
+    int Z = NuF->GetZ(name);
+    double m_u = NuF->GetMass(name, "u");
+    int A = int(std::round(m_u));
+    warmIon(A, Z);
+  };
+  warmName(ctf.beamName);
+  warmName(ctf.target);
+  warmName(ctf.compound);
+  for (int i = 0; i < ctf.NumEvapPart; ++i) {
+    warmName(ctf.res[i]);
+    warmName(ctf.evap[i]);
+  }
+}
+
+int MUSIC_Simulator::runMultiThreaded()
+{
+  ROOT::EnableThreadSafety();
+  PreWarmCatima();
+
+  const int nThreads = std::max(1, ctf.Threads);
+  const int totalEvents = ctf.NEvents;
+  const std::string baseOutput = ctf.FileName;
+  const std::string ctrlPath = ctrlFilePath_;
+
+  if (ctrlPath.empty()) {
+    cerr << "musicsim: multi-threaded mode requires a control file path." << endl;
+    return 0;
+  }
+
+  // Strip ".root" so we can insert per-worker tags.
+  std::string baseStem = baseOutput;
+  const std::string suffix = ".root";
+  size_t pos = baseStem.rfind(suffix);
+  if (pos != std::string::npos && pos + suffix.size() == baseStem.size())
+    baseStem.erase(pos);
+
+  cout << "Multi-threaded run: " << nThreads << " workers x "
+       << (totalEvents / nThreads) << "+ events." << endl;
+
+  std::vector<std::string> workerOutputs;
+  std::vector<std::future<int>> futures;
+  const int evPerWorker = totalEvents / nThreads;
+  const int extra = totalEvents % nThreads;
+
+  for (int w = 0; w < nThreads; ++w) {
+    int slice = evPerWorker + (w < extra ? 1 : 0);
+    std::string out = baseStem + "_w" + std::to_string(w) + suffix;
+    workerOutputs.push_back(out);
+
+    futures.push_back(std::async(std::launch::async,
+      [ctrlPath, out, slice, w]() -> int {
+        MUSIC_Simulator worker(w + 1);  // worker ids start at 1 (0 is master)
+        std::vector<char> path(ctrlPath.begin(), ctrlPath.end());
+        path.push_back('\0');
+        if (worker.loadCtrlFile(path.data()) == 0) return 0;
+        worker.OverrideNEvents(slice);
+        worker.OverrideOutputFile(out);
+        worker.OverrideThreads(1);
+        worker.DisableVisualization();
+        worker.SeedRandom(0xC1A55EEDULL + ULong64_t(w) * 0xDEADBEEFULL);
+        worker.run();
+        return 1;  // run() returns ctf.Update, not success; trust completion as success
+      }));
+  }
+
+  // Block until every worker thread completes. std::future::get re-throws
+  // any exception that crossed the thread boundary.
+  for (auto& f : futures) f.get();
+
+  cout << "Merging " << workerOutputs.size() << " worker outputs into "
+       << baseOutput << " ..." << endl;
+  TFileMerger merger(kFALSE);
+  merger.OutputFile(baseOutput.c_str(), "RECREATE");
+  for (const auto& p : workerOutputs) merger.AddFile(p.c_str());
+  bool ok = merger.Merge();
+  if (!ok) {
+    cerr << "musicsim: merge failed." << endl;
+    return 0;
+  }
+  for (const auto& p : workerOutputs) std::remove(p.c_str());
+  cout << "Multi-threaded run complete." << endl;
+  // Return 0 so main.cpp does not start the interactive ROOT event loop.
+  return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

@@ -14,12 +14,17 @@
 #include <fstream>
 #include <string>
 #include <cstdlib>
+#include <future>
+#include <vector>
+#include <algorithm>
 // #include <sys/types.h>
 // #include <sys/sysinfo.h>
 
 //ROOT libraries
 #include <TCanvas.h>
 #include <TDirectory.h>
+#include <TFileMerger.h>
+#include <TROOT.h>
 #include <TEveArrow.h>
 #include <TEveGeoNode.h>
 #include <TEveLine.h>
@@ -61,9 +66,16 @@
 class MUSIC_Simulator {
 
 public:
-  MUSIC_Simulator();
+  MUSIC_Simulator(int workerId = 0);
   int loadCtrlFile(char* fileName);
   int run();
+
+  // Overrides used by the MT driver to repurpose a per-worker instance.
+  void OverrideNEvents(int n)             { ctf.NEvents = n; }
+  void OverrideOutputFile(const std::string& f) { ctf.FileName = f; }
+  void OverrideThreads(int t)             { ctf.Threads = t; }
+  void DisableVisualization()             { ctf.Update = 0; ctf.Wait = 0; }
+  void SeedRandom(unsigned long s);
 
   void CalculateCMEnergyRange();   // <- Do we need this?
   void CalculateExcEnergyRange();  // <- Do we need this?
@@ -274,6 +286,15 @@ private:
   TSystem* gSystem;
   float MaxMemory;
 
+  // Worker id (0 for the main thread or single-threaded mode). Used to name
+  // per-worker TGeoManagers and per-worker output files.
+  int workerId_ = 0;
+  // Ctrl-file path remembered so the MT driver can re-load it per worker.
+  std::string ctrlFilePath_;
+
+  int runMultiThreaded();
+  void PreWarmCatima();
+
   // Use these two lines when compiling with root-config ver5
   //  static const double c = 29.9792458;  // Speed of light in cm/ns.
   //  static const double pi = 3.14159265359;
@@ -318,6 +339,7 @@ private:
     double MaxTime;  // ns - max time for an event
     double SimStep;  // cm - simulation steps size
     int Method;      // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
+    int Threads = 1; // Number of worker threads for the event loop (default: single-threaded)
     std::string FileName;
     std::string FileOpt;
     std::string CSVfile;

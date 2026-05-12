@@ -45,6 +45,16 @@ energy is recorded as `Kbeam_exit` / `Kh_exit[]` / `Kl_exit[]` on the `MC` tree.
 The old `Kb` key (beam KE at the gas surface) is no longer accepted — use
 `BeamEnergy` (accelerator KE) and the entrance-window parameters instead.
 
+### Multi-threading
+
+`Threads N` in the ctrl file fans the event loop out across `N` worker threads
+using `std::async`. Each worker is a separate `MUSIC_Simulator` instance with
+its own RNG seed and per-worker ROOT output; the master pre-warms catima's
+internal cache and then merges the per-worker output files with `TFileMerger`
+into the configured `FileName` at the end of the run. Workers force
+`Update=0`/`Wait=0`, so visualization is only available in single-threaded
+mode (the default, `Threads 1`).
+
 Per-particle `SRIMbeam`, `SRIMres*`, `SRIMevap*`, `AnodeGeom`, and `SRIMdir` keys
 are ignored (with a warning) — catima computes dE/dx from the gas composition,
 and the anode geometry is no longer file-driven. The per-particle
