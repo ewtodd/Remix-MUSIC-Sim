@@ -573,7 +573,8 @@ void Particle::SetMedium(const catima::Material* gas, float dEdxScale)
 {
   if (gas == nullptr) return;
   if (Z <= 0) {
-    cout << Name << ": stopping-power not configured for particle with Z=" << Z << endl;
+    // Expected for neutral particles (e.g. neutrons); skip silently. They
+    // are propagated by ExitWindow / kinematics-only paths, not catima.
     return;
   }
   const double amu_MeV = 931.49410242;

@@ -12,6 +12,10 @@ MUSIC_Simulator::MUSIC_Simulator(int workerId)
 {
   Name = "MUSIC_Simulator";
   this->workerId_ = workerId;
+  // Only the master (workerId 0) is chatty. In single-threaded mode the
+  // master is the runner so output is unchanged; in MT mode the master
+  // only orchestrates and the workers stay quiet.
+  this->verbose_  = (workerId == 0);
 
   // Initialize variables.
   CMEMax = 0;
@@ -205,45 +209,42 @@ for (int i=0; i<AnodeRows; i++)
     
 // Center-of-mass energy at the beginning of MUSIC
 CMEMax = CME_beg = Kb*mt/(mt+mb);
-cout << "Center-of-mass energy range covered in " << TotalLength << "cm (MUSIC length):" << endl;
-cout << "  Ecom(initial) = " << CME_beg << " MeV" << endl;
+if (verbose_) {
+  cout << "Center-of-mass energy range covered in " << TotalLength << "cm (MUSIC length):" << endl;
+  cout << "  Ecom(initial) = " << CME_beg << " MeV" << endl;
+}
 // Now get the CM energy at the end of the segments.
 Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength, 0.001);
 CMEMin = CME_end = Kb_min*mt/(mt+mb);
-cout << "   Ecom(filan) = " << CME_end << " MeV" << endl;
-
-cout << "Energetics for each segment:" << endl;
-   
- // std::cout << 100 << '\n';
- //  std::cout.width(10);
- //  std::cout << 100 << '\n';
- //  std::cout.fill('x');
- //  std::cout.width(15);
- //  std::cout << std::left << 100 << '\n';
-
-cout.fill(' ');
-cout.width(2); cout << "i";
-cout.width(5); cout << "stp";
-cout.width(6); cout << "L[cm]";
-cout.width(10); cout << "Ecm_in";
-cout.width(10); cout << "DeltaEcm";
-cout.width(10); cout << "Kb_in";
-cout.width(10); cout << "DeltaKb" << endl;
+if (verbose_) {
+  cout << "   Ecom(filan) = " << CME_end << " MeV" << endl;
+  cout << "Energetics for each segment:" << endl;
+  cout.fill(' ');
+  cout.width(2); cout << "i";
+  cout.width(5); cout << "stp";
+  cout.width(6); cout << "L[cm]";
+  cout.width(10); cout << "Ecm_in";
+  cout.width(10); cout << "DeltaEcm";
+  cout.width(10); cout << "Kb_in";
+  cout.width(10); cout << "DeltaKb" << endl;
+}
 
 for (int i=0; i<AnodeRows; i++) {
   double Kb_in = Kb;
   Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0], 0.001);
   double Kb_out = Kb;
   CME_end = Kb*mt/(mt+mb);
-  cout.fill(' ');
-  cout.width(2); cout << i;
-  cout.width(5); cout << AnodeStpID[i][0];
-  cout.width(6); cout << AnodeDZ[i][0];
-  cout.precision(5);
-  cout.width(10); cout << CME_beg;
-  cout.width(10); cout << CME_beg - CME_end;
-  cout.width(10); cout << Kb_in;
-  cout.width(10); cout << Kb_in - Kb_out << endl;
+  if (verbose_) {
+    cout.fill(' ');
+    cout.width(2); cout << i;
+    cout.width(5); cout << AnodeStpID[i][0];
+    cout.width(6); cout << AnodeDZ[i][0];
+    cout.precision(5);
+    cout.width(10); cout << CME_beg;
+    cout.width(10); cout << CME_beg - CME_end;
+    cout.width(10); cout << Kb_in;
+    cout.width(10); cout << Kb_in - Kb_out << endl;
+  }
   
   // << i << "\t" << AnodeDZ[i][0]<< " cm \t" << CME_beg << "\t"
   //      << CME_beg - CME_end << " MeV \t(Kb_out=" 
@@ -663,7 +664,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
   // detector response
   CreateTracesAndTrajectories();
   
-  cout << "Generating " << NEvents << " MUSIC traces ..." << endl;
+  if (verbose_) cout << "Generating " << NEvents << " MUSIC traces ..." << endl;
   
   SetInitialKinematics(Kb_at_gas);   
 
@@ -878,7 +879,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  EvtsProcessed++;
 	  if (NEvents>99) {
 	    if ((long double)(EvtsProcessed)>=Frac[FIndex]*NEvents) {
-	      cout << "\t" << Frac[FIndex]*100 << "% processed (" 
+	      if (verbose_) cout << "\t" << Frac[FIndex]*100 << "% processed ("
 		   << StpWatch.RealTime() << " s)" << endl;
 	      StpWatch.Start(kFALSE);
 	      FIndex++;
@@ -891,15 +892,15 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
       }
     }
   }
-  cout << "Saving traces ..." << endl;
-  StpWatch.Print();
+  if (verbose_) cout << "Saving traces ..." << endl;
+  if (verbose_) StpWatch.Print();
 
   TDB->cd();
   SimTree->Write("", TObject::kSingleKey);
   if (MCTree) MCTree->Write("", TObject::kSingleKey);
   TDB->Close();
   StpWatch.Stop();
-  StpWatch.Print();
+  if (verbose_) StpWatch.Print();
 #endif
   return;
 }
@@ -1801,9 +1802,10 @@ int MUSIC_Simulator::run()
     const double amu_MeV = 931.49410242;
     int A_beam = (Beam->Mass > 0) ? int(std::round(Beam->Mass / amu_MeV)) : 0;
     Kb_at_gas = EnergyOutOfMaterial(A_beam, Beam->Z, ctf.BeamEnergy, entranceWindow_);
-    cout << "Beam energy: " << ctf.BeamEnergy << " MeV at accelerator -> "
-         << Kb_at_gas << " MeV after entrance window ("
-         << ctf.entranceMaterial << " " << ctf.entranceThickness << " mg/cm^2)" << endl;
+    if (verbose_)
+      cout << "Beam energy: " << ctf.BeamEnergy << " MeV at accelerator -> "
+           << Kb_at_gas << " MeV after entrance window ("
+           << ctf.entranceMaterial << " " << ctf.entranceThickness << " mg/cm^2)" << endl;
     BeamEnergyAccel = ctf.BeamEnergy;
   }
   // Target
@@ -1871,9 +1873,10 @@ int MUSIC_Simulator::run()
   }
   
   if (ctf.Method==0) {
-    // Create new traces and trajectories (objectrs) for visualizing the
-    // detector response
-    if (ROOTfile!=0) {
+    // Trace TGraphs are written per event for the EVE visualization; they
+    // are wasteful in bulk MC mode where the user just wants the event
+    // tree. Only build them when Update==1 (interactive mode).
+    if (ROOTfile!=0 && ctf.Update) {
       CreateTracesAndTrajectories();
       Log << "\tTraces and trajectories created." << endl;
     }
@@ -1943,8 +1946,10 @@ int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
   }
 
   LoadHardcodedAnodeGeometry();
-  cout << "Anode strips: " << AnodeRows << endl;
-  cout << "Anode columns: " << AnodeCols << endl;
+  if (verbose_) {
+    cout << "Anode strips: " << AnodeRows << endl;
+    cout << "Anode columns: " << AnodeCols << endl;
+  }
   if (AnodeRows>0 && AnodeCols>0) {
       // The total anode depth (distance along the z axis) is the sum of
       // all segment depths for the first column
@@ -2069,8 +2074,9 @@ int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
 
     goodAnode = 1;
 
-    cout << "Anode dimensions: " << AnodeLength << "x" << AnodeHeight << "x"
-	 << AnodeDepth << "cm^3" << endl;
+    if (verbose_)
+      cout << "Anode dimensions: " << AnodeLength << "x" << AnodeHeight << "x"
+	   << AnodeDepth << "cm^3" << endl;
 
   return goodAnode;
 }
@@ -2419,7 +2425,8 @@ void MUSIC_Simulator::SetCompoundParticle(string Name)
     FourVector Ptot("Total four-mom. in the lab");
     Ptot = Pb + Pt;
     double ExMax = sqrt(Ptot*Ptot) - Compound->Mass;
-    cout << "Maximum excitation energy of " << Name << " (compound) = " << ExMax << " MeV" << endl;
+    if (verbose_)
+      cout << "Maximum excitation energy of " << Name << " (compound) = " << ExMax << " MeV" << endl;
   }
 #endif
   return;
@@ -2475,7 +2482,7 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, int ResColor,
   EvaP[numEvaporations] = new Particle(ParName, mp, Zp, false /*SaveTrajectories off*/);
   EvaP[numEvaporations]->SetTrajectoryAtt((short)ParColor);
   EvaP[numEvaporations]->SetMedium(&gas_, dEdxScalePar);
-  EvaP[numEvaporations]->Print();
+  if (verbose_) EvaP[numEvaporations]->Print();
   if (ctf.Update) {
     TrackEvaP[numEvaporations]->SetName(ParName.c_str());
     TrackEvaP[numEvaporations]->SetMainColor(ParColor);
@@ -2488,7 +2495,7 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, int ResColor,
   EvaR[numEvaporations] = new Particle(ResName, mr, Zr, false /*SaveTrajectories off*/);
   EvaR[numEvaporations]->SetTrajectoryAtt((short)ResColor);
   EvaR[numEvaporations]->SetMedium(&gas_, dEdxScaleRes);
-  EvaR[numEvaporations]->Print();
+  if (verbose_) EvaR[numEvaporations]->Print();
   if (ctf.Update) {
     TrackEvaR[numEvaporations]->SetName(ResName.c_str());
     TrackEvaR[numEvaporations]->SetMainColor(ResColor);
@@ -2579,7 +2586,7 @@ void MUSIC_Simulator::SetPrintLevel(int Level/*0-2*/)
     PrintLevel = 0;
   }
   else {
-    cout << "See musicsim.log file for detailed information" << endl;
+    if (verbose_) cout << "See musicsim.log file for detailed information" << endl;
     PrintLevel = Level;
     Log.open("musicsim.log");
     Log << "================================================================================" << endl;
@@ -3018,7 +3025,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
   long double Frac[11] = {0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};
   int FIndex = 0;
   
-  cout << "Simulating " << NEvents << " MUSIC traces for strip " << StpID << " ... " << endl;
+  if (verbose_) cout << "Simulating " << NEvents << " MUSIC traces for strip " << StpID << " ... " << endl;
  
   // Get the average beam energy loss and print the exc energy of the
   // compound nucleus sampled by each strip.
@@ -3086,7 +3093,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
   // Event for-loop
   //-------------------------------------------------------------------------------
   Log << "Initiating event for-loop" << endl;
-  cout << "\nInitiating event for-loop" << endl;
+  if (verbose_) cout << "\nInitiating event for-loop" << endl;
   
   for (int evt=0; evt<NEvents; evt++) {
     if (evt%1000==0)
@@ -3270,7 +3277,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     // Simple progress monitor
     if (NEvents>99) {
       if ((long double)(evt)>=Frac[FIndex]*NEvents) {
-	cout << "\t" << Frac[FIndex]*100 << "% processed (" 
+	if (verbose_) cout << "\t" << Frac[FIndex]*100 << "% processed ("
 	     << StpWatch.RealTime() << " s)" << endl;
 	StpWatch.Start(kFALSE);
 	FIndex++;
@@ -3280,9 +3287,9 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     NTraces++;
   }
   StpWatch.Stop();
-  StpWatch.Print();
+  if (verbose_) StpWatch.Print();
 
-  cout << "Event for-loop concluded." << endl;
+  if (verbose_) cout << "Event for-loop concluded." << endl;
   CheckMemoryUsage(1);
 
 
@@ -3321,7 +3328,7 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
   // detector response
   CreateTracesAndTrajectories();
   
-  cout << "Simulating MUSIC traces ... " << endl;
+  if (verbose_) cout << "Simulating MUSIC traces ... " << endl;
   
   SetInitialKinematics(Kb_at_gas);   
 

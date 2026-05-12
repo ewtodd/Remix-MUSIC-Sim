@@ -285,6 +285,11 @@ private:
   // Worker id (0 for the main thread or single-threaded mode). Used to name
   // per-worker TGeoManagers and per-worker output files.
   int workerId_ = 0;
+  // Gate for chatty stdout. True for the master (workerId 0), false for
+  // every MT worker. Single-threaded mode runs as master so verbosity is
+  // unchanged; in MT mode workers stay quiet and only the runMultiThreaded
+  // summary lines reach stdout.
+  bool verbose_ = true;
   // Ctrl-file path remembered so the MT driver can re-load it per worker.
   std::string ctrlFilePath_;
 
