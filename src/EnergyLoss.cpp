@@ -1,4 +1,5 @@
 #include "EnergyLoss.hpp"
+#include <TRandom.h>
 #include <cmath>
 #include <iostream>
 
@@ -29,6 +30,26 @@ double EnergyLoss::GetFinalEnergy(double InitialEnergy, double PathLength, doubl
   double Eout_per_u = catima::energy_out(proj_, layer);
   double Eout = Eout_per_u * A_;
   double Eloss = (InitialEnergy - Eout) * dEdxScale_;
+  double Efinal = InitialEnergy - Eloss;
+  if (Efinal < 0.0)
+    Efinal = 0.0;
+  return Efinal;
+}
+
+// Same as GetFinalEnergy but with per-step Gaussian energy straggling sampled
+// from catima's sigma_E. dEdxScale only scales the mean energy loss; the
+// straggling magnitude (Bohr/LSS) is physics-derived and left unscaled.
+double EnergyLoss::GetFinalEnergyStraggled(double InitialEnergy, double PathLength, TRandom* rng) {
+  if (PathLength <= 0.0 || InitialEnergy <= 0.0)
+    return InitialEnergy;
+  catima::Material layer = LayerWithThickness(PathLength);
+  proj_.T = InitialEnergy / A_;
+  catima::Result r = catima::calculate(proj_, layer);
+  double Eout = r.Eout * A_;
+  double sigma_E = r.sigma_E * A_;
+  double Eloss = (InitialEnergy - Eout) * dEdxScale_;
+  if (sigma_E > 0.0 && rng)
+    Eloss += rng->Gaus(0.0, sigma_E);
   double Efinal = InitialEnergy - Eloss;
   if (Efinal < 0.0)
     Efinal = 0.0;

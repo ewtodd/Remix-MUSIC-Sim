@@ -202,7 +202,24 @@ double Particle::GetFinalEnergy(int MediumID, double InitE/*MeV*/, double PathLe
   double FinalE = InitE;
   int m = MediumID;
   if (m>=0 && m<NumMedia) {
-    FinalE = IonInMedium[m]->GetFinalEnergy(InitE, PathLength, StepSize);   
+    FinalE = IonInMedium[m]->GetFinalEnergy(InitE, PathLength, StepSize);
+    if (FinalE<0)
+      FinalE = 0;
+  }
+  return FinalE;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Same as GetFinalEnergy but with per-step Gaussian straggling sampled from
+// catima's sigma_E. Pass rng=nullptr to fall back to the mean.
+///////////////////////////////////////////////////////////////////////////////////
+double Particle::GetFinalEnergyStraggled(int MediumID, double InitE/*MeV*/, double PathLength/*cm*/,
+                                         TRandom* rng)
+{
+  double FinalE = InitE;
+  int m = MediumID;
+  if (m>=0 && m<NumMedia) {
+    FinalE = IonInMedium[m]->GetFinalEnergyStraggled(InitE, PathLength, rng);
     if (FinalE<0)
       FinalE = 0;
   }

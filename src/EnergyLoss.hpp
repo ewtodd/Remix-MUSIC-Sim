@@ -4,6 +4,8 @@
 #include <string>
 #include "catima/catima.h"
 
+class TRandom;
+
 class EnergyLoss {
 public:
   EnergyLoss(int A, int Z, double IonMass_MeV_per_c2,
@@ -11,6 +13,11 @@ public:
   ~EnergyLoss() = default;
 
   double GetFinalEnergy(double InitialEnergy, double PathLength, double StepSize = 0.0);
+  // Forward propagation through the gas with per-step Gaussian energy
+  // straggling sampled from catima's sigma_E. dEdxScale multiplies the mean
+  // energy loss only; the straggling magnitude is left at catima's value.
+  // Pass rng=nullptr to fall back to the mean-only result.
+  double GetFinalEnergyStraggled(double InitialEnergy, double PathLength, TRandom* rng);
   double GetInitialEnergy(double FinalEnergy, double PathLength, double StepSize = 0.0);
   double GetEnergyLoss(double InitialEnergy, double PathLength);
 
