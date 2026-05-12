@@ -6,8 +6,8 @@ MaxELoss	 10			   Max y value [MeV]
 strip		 6			   Strip where reaction takes place. Use -1 for unreacted beam
 Eres		 0.05			   Energy noise level (sigma) in each strip [MeV]
 beam		 37Cl			   Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
-Kb		 79.0			   Beam energy as it enters the dead gas layer [MeV]
-KbFWHM		 0.80			   Beam energy FWHM [MeV]
+Kb		 92.0			   Beam energy as it enters the dead gas layer [MeV]
+KbFWHM		 0.90			   Beam energy FWHM [MeV]
 target		 4He			   
 compound	 41K			   
 NumEvapPart	 1			   Number of evaporated particles. E.g. 1 for 17F(4He,1H)
