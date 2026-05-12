@@ -278,10 +278,6 @@ private:
   // Log file
   std::ofstream Log;
 
-  // CSV file  (used for MUSIC ML project)
-  std::ofstream CSV;
-  long mainentry;
-
   // To be used in CheckMemory
   TSystem* gSystem;
   float MaxMemory;
@@ -329,9 +325,15 @@ private:
     std::string exitMaterial     = "Ti";
     double entranceThickness = 0.9;  // mg/cm^2 - upstream window areal density
     double exitThickness     = 0.9;  // mg/cm^2 - downstream window areal density
-    int strip;       // Strip where reactions takes place
-    int stripFirst;  // First strip where reactions takes place
-    int stripLast;   // Last strip where reactions takes place
+    // Reaction strip selection. Either set 'strip' to a single value (use
+    // -1 for unreacted beam, 0..17 for a reaction strip), OR set both
+    // 'stripFirst' and 'stripLast' to span a range. The sentinel below
+    // marks "unset" so a missing key is caught explicitly rather than
+    // silently falling back to a default.
+    static constexpr int kStripUnset = -99999;
+    int strip      = kStripUnset;
+    int stripFirst = kStripUnset;
+    int stripLast  = kStripUnset;
     double Eres=0;   // MeV - Strip energy resolution (larger values increase signal randomness)
     int NEvents;     // Number of simulated events (recommendation: keep it <1000)
     int Wait;        // 1 - canvas waits for user's double click, 0 - no wait
@@ -342,7 +344,6 @@ private:
     int Threads = 1; // Number of worker threads for the event loop (default: single-threaded)
     std::string FileName;
     std::string FileOpt;
-    std::string CSVfile;
     int reacClass;
     int PrintOpt=0;
   };

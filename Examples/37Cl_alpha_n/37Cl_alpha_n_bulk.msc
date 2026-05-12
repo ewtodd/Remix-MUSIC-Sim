@@ -1,0 +1,35 @@
+Control file for musicsim. First two lines will be skipped by loadCtrlFile method.
+PARAMETER        VALUE                COMMENT
+Gas              4He                  Fill gas: 4He, 3He, Ar, CF4, CH4, P10, iC4H10
+Pressure         220                  Torr
+Temperature      293                  K
+ELossBins        555                  Number of bins for y axis
+MaxELoss         10                   Max y value [MeV]
+strip            6                    Strip where reaction takes place. Use -1 for unreacted beam
+Eres             0.05                 Energy noise level (sigma) in each strip [MeV]
+beam             37Cl                 Use "AEl" notation
+BeamEnergy       79.0                 Beam KE at the accelerator (before entrance window) [MeV]
+KbFWHM           0.80                 Beam energy FWHM at accelerator [MeV]
+EntranceMaterial Ti
+EntranceThickness 0.9                 mg/cm^2 areal density
+ExitMaterial     Ti
+ExitThickness    1.3                  mg/cm^2 areal density
+target           4He
+compound         41K
+NumEvapPart      1                    Number of evaporated particles
+evap0Name        n
+evap0Color       4
+res0Name         40K
+res0Color        3
+dEdxScaleBeam    1.0                  Beam stopping power scale factor
+dEdxScaleRes0    1.0                  Heavy particle stopping power scale factor
+NEvents          10000
+Threads          12
+Wait             0
+Update           0
+MaxTime          2000                 ns
+SimStep          0.001                cm
+Method           0
+FileName         traces_37Cl_an_bulk.root
+FileOpt          recreate
+PrintOpt         0

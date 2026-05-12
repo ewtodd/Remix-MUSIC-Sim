@@ -23,12 +23,13 @@ res0Name         40K
 res0Color        3
 dEdxScaleBeam    1.0                  Beam stopping power scale factor
 dEdxScaleRes0    1.0                  Heavy particle stopping power scale factor
-NEvents          5
-Wait             0
-Update           0
+NEvents          20
+Threads          1
+Wait             1                    Pause between events; double-click canvas to advance
+Update           1                    Render EVE 3D view + trace canvas
 MaxTime          2000                 ns
 SimStep          0.001                cm
 Method           0
-FileName         traces_37Cl_an_stp6_220Torr_79MeV.root
+FileName         traces_37Cl_an_interactive.root
 FileOpt          recreate
 PrintOpt         0

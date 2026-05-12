@@ -1091,7 +1091,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="FileOpt")
       	ctf.FileOpt = ParVal;
       else if (ParName=="CSVfile")
-      	ctf.CSVfile = ParVal;
+      	cout << "musicsim warning: 'CSVfile' ignored (removed; use the ROOT output)." << endl;
       else if (ParName=="PrintOpt")
       	ctf.PrintOpt = atoi(ParVal.c_str());
       else if (ParName=="reacClass")
@@ -1112,7 +1112,38 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
 #endif
     }
     Status = 1;
-  } 
+  }
+
+  if (Status == 1) {
+    // Resolve and validate the reaction-strip selection. Bail with a clear
+    // message instead of silently defaulting; see kStripUnset.
+    const int U = controlFileParams::kStripUnset;
+    const bool singleSet = (ctf.strip      != U);
+    const bool firstSet  = (ctf.stripFirst != U);
+    const bool lastSet   = (ctf.stripLast  != U);
+    if (firstSet != lastSet) {
+      cerr << "musicsim ERROR: 'stripFirst' and 'stripLast' must be set together." << endl;
+      exit(EXIT_FAILURE);
+    }
+    if (singleSet && firstSet) {
+      cerr << "musicsim ERROR: cannot mix 'strip' with 'stripFirst'/'stripLast'; pick one." << endl;
+      exit(EXIT_FAILURE);
+    }
+    if (!singleSet && !firstSet) {
+      cerr << "musicsim ERROR: must specify either 'strip' or both 'stripFirst' and 'stripLast'." << endl;
+      exit(EXIT_FAILURE);
+    }
+    if (firstSet) {
+      if (ctf.stripFirst > ctf.stripLast) {
+        cerr << "musicsim ERROR: stripFirst (" << ctf.stripFirst
+             << ") must be <= stripLast (" << ctf.stripLast << ")." << endl;
+        exit(EXIT_FAILURE);
+      }
+    } else {
+      ctf.stripFirst = ctf.strip;
+      ctf.stripLast  = ctf.strip;
+    }
+  }
   return Status;
 }
 
@@ -1145,9 +1176,9 @@ void MUSIC_Simulator::InitCTF()
     ctf.entranceThickness = 0.9;  // mg/cm^2
     ctf.exitMaterial = "Ti";
     ctf.exitThickness = 0.9;      // mg/cm^2
-    ctf.strip = 5;      // Strip where reactions takes place
-    ctf.stripFirst = -1; // Strip where reactions takes place
-    ctf.stripLast = -1;  // Strip where reactions takes place
+    ctf.strip      = controlFileParams::kStripUnset;
+    ctf.stripFirst = controlFileParams::kStripUnset;
+    ctf.stripLast  = controlFileParams::kStripUnset;
     ctf.Eres = 0.0;     // MeV - Strip energy resolution (larger values increase signal randomness)
     ctf.NEvents = 10;   // Number of simulated events (recommendation: keep it <1000)
     ctf.Wait = 1;       // 1 - canvas waits for user's double click, 0 - no wait
@@ -1157,7 +1188,6 @@ void MUSIC_Simulator::InitCTF()
     ctf.Method = 0;     // Select the simulation method: 0 - Simulate, 1 - GenerateTraceDatabase
     ctf.FileName = "";
     ctf.FileOpt = "";
-    ctf.CSVfile = "";
     ctf.reacClass = -1;
     ctf.PrintOpt = 0;
     return;
@@ -1848,16 +1878,7 @@ int MUSIC_Simulator::run()
       Log << "\tTraces and trajectories created." << endl;
     }
     
-    // Simulate events for one strip or generate trace data base (see below)
-    if (ctf.stripFirst==-1)
-      ctf.stripFirst = ctf.strip;
-    if (ctf.stripLast==-1)
-      ctf.stripLast = ctf.strip;
-
-    if (!ctf.CSVfile.empty()) {
-      CSV.open(ctf.CSVfile.c_str());
-      mainentry = 0;
-    }
+    // stripFirst/stripLast were validated and resolved in loadCtrlFile.
     Log << "\tStarting simulation loop ..." << endl;
     for (int stpID=ctf.stripFirst; stpID<=ctf.stripLast; stpID++)
       Simulate(stpID,
@@ -1868,10 +1889,6 @@ int MUSIC_Simulator::run()
 	       ctf.Wait,
 	       ROOTfile);
     Log << "\tSimulation loop ended." << endl;
-    if (CSV.is_open()) {
-      CSV.close();
-      cout << "Output CSV file: " << ctf.CSVfile << endl;
-    }
   }
   else if (ctf.Method==1) {
     cout << "musicsim warning: GenerateTraceDataBase method not ready." << endl;
@@ -3246,14 +3263,6 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
       SimTree->Fill();
       if (MCTree) MCTree->Fill();
     }
-    if (CSV.is_open() && TotaldE[0] > 0.0f) {
-      CSV << TotaldE[0] << ",";
-      for (int i=1; i<=16; i++) {
-        CSV << TotaldE[i] / TotaldE[0] << ",";
-      }
-      CSV << TotaldE[17] / TotaldE[0] << "," << ctf.reacClass << endl;
-      mainentry++;
-    }
     // 8. Display trace and particle trajecories
     if (UpdateVis)
       UpdateVisuals(evt, this->Kbr, this->zr, TOF, Wait);
@@ -3273,7 +3282,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
   StpWatch.Stop();
   StpWatch.Print();
 
-  cout << "Envent for-loop concluded." << endl;
+  cout << "Event for-loop concluded." << endl;
   CheckMemoryUsage(1);
 
 

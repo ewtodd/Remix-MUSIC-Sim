@@ -6,9 +6,6 @@
 *.root
 *.log
 
-# ML cluster data files (large, auto-generated)
-Examples/MUSIC_ML_Sim/Clusters/data_cluster_*.csv
-
 # Compiled libraries and objects
 lib/
 *.so
