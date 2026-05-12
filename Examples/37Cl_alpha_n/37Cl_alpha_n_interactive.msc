@@ -14,6 +14,8 @@ EntranceMaterial Ti
 EntranceThickness 0.9                 mg/cm^2 areal density
 ExitMaterial     Ti
 ExitThickness    1.3                  mg/cm^2 areal density
+DegraderMaterial Mylar                Bulk degrader upstream of entrance window (empty = none)
+DegraderLength   6                    microns along beam axis
 target           4He
 compound         41K
 NumEvapPart      1                    Number of evaporated particles

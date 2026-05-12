@@ -972,6 +972,10 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
 	ctf.exitMaterial = ParVal;
       else if (ParName=="ExitThickness")
 	ctf.exitThickness = atof(ParVal.c_str());
+      else if (ParName=="DegraderMaterial")
+	ctf.degraderMaterial = ParVal;
+      else if (ParName=="DegraderLength")
+	ctf.degraderLength = atof(ParVal.c_str());
       else if (ParName=="SRIMbeam")
 	cout << "musicsim warning: 'SRIMbeam' ignored (catima)." << endl;
       else if (ParName=="dEdxScaleBeam")
@@ -1177,6 +1181,8 @@ void MUSIC_Simulator::InitCTF()
     ctf.entranceThickness = 0.9;  // mg/cm^2
     ctf.exitMaterial = "Ti";
     ctf.exitThickness = 0.9;      // mg/cm^2
+    ctf.degraderMaterial = "";    // default: no degrader
+    ctf.degraderLength = 0.0;     // microns
     ctf.strip      = controlFileParams::kStripUnset;
     ctf.stripFirst = controlFileParams::kStripUnset;
     ctf.stripLast  = controlFileParams::kStripUnset;
@@ -1788,6 +1794,11 @@ int MUSIC_Simulator::run()
   Log << "\tEntrance window: " << ctf.entranceMaterial << " "
       << ctf.entranceThickness << " mg/cm^2; exit: "
       << ctf.exitMaterial << " " << ctf.exitThickness << " mg/cm^2." << endl;
+  // Optional bulk degrader upstream of the entrance window
+  BuildDegrader();
+  if (hasDegrader_)
+    Log << "\tDegrader: " << ctf.degraderMaterial << " "
+        << ctf.degraderLength << " um." << endl;
   // Geometry
   if (SetAnode(90, ctf.ELossBins, ctf.MaxELoss)==0)
     exit(EXIT_FAILURE);
@@ -1801,11 +1812,24 @@ int MUSIC_Simulator::run()
   {
     const double amu_MeV = 931.49410242;
     int A_beam = (Beam->Mass > 0) ? int(std::round(Beam->Mass / amu_MeV)) : 0;
-    Kb_at_gas = EnergyOutOfMaterial(A_beam, Beam->Z, ctf.BeamEnergy, entranceWindow_);
-    if (verbose_)
-      cout << "Beam energy: " << ctf.BeamEnergy << " MeV at accelerator -> "
-           << Kb_at_gas << " MeV after entrance window ("
-           << ctf.entranceMaterial << " " << ctf.entranceThickness << " mg/cm^2)" << endl;
+    // Mean post-window energy for display / for the existing CalculateCMEnergyRange
+    // call that does range-bounds estimates. The actual per-event chain (with
+    // accelerator FWHM, degrader straggling, and window straggling) is sampled
+    // inside the event loop.
+    double Eaccel = ctf.BeamEnergy;
+    double Eafter_degrader = hasDegrader_
+        ? EnergyOutOfMaterial(A_beam, Beam->Z, Eaccel, degrader_)
+        : Eaccel;
+    Kb_at_gas = EnergyOutOfMaterial(A_beam, Beam->Z, Eafter_degrader, entranceWindow_);
+    if (verbose_) {
+      cout << "Beam energy: " << Eaccel << " MeV at accelerator";
+      if (hasDegrader_)
+        cout << " -> " << Eafter_degrader << " MeV after degrader ("
+             << ctf.degraderMaterial << " " << ctf.degraderLength << " um)";
+      cout << " -> " << Kb_at_gas << " MeV at gas surface ("
+           << ctf.entranceMaterial << " " << ctf.entranceThickness << " mg/cm^2 window)"
+           << endl;
+    }
     BeamEnergyAccel = ctf.BeamEnergy;
   }
   // Target
@@ -2162,11 +2186,14 @@ void MUSIC_Simulator::PreWarmCatima()
   if (!NuF) NuF = new NuclideFinder();
   BuildGasMaterial();
   BuildWindows();
+  BuildDegrader();
   auto warmIon = [&](int A, int Z) {
     if (A <= 0 || Z <= 0) return;
     EnergyOutOfMaterial(A, Z, 100.0, gas_);
     EnergyOutOfMaterial(A, Z, 100.0, entranceWindow_);
     EnergyOutOfMaterial(A, Z, 100.0, exitWindow_);
+    if (hasDegrader_)
+      EnergyOutOfMaterial(A, Z, 100.0, degrader_);
   };
   auto warmName = [&](const std::string& name) {
     if (name.empty() || name == "unassigned beam" ||
@@ -2258,16 +2285,19 @@ int MUSIC_Simulator::runMultiThreaded()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
-// Build a catima::Material for a thin solid window. Thickness is in mg/cm^2
-// (areal density), the conventional way windows are specified experimentally.
+// Material library. Returns a catima::Material with composition and density set
+// but no thickness; callers set thickness via the appropriate helper.
 ///////////////////////////////////////////////////////////////////////////////////
-catima::Material MUSIC_Simulator::BuildSolidMaterial(const string& name, double thickness_mg_per_cm2)
+catima::Material MUSIC_Simulator::LookupMaterial(const string& name)
 {
   catima::Material m;
   double density_g_per_cc = 0.0;
   if (name == "Ti" || name == "titanium") {
     m.add_element(47.867, 22, 1);
     density_g_per_cc = 4.506;
+  } else if (name == "Al" || name == "Aluminum" || name == "aluminum") {
+    m.add_element(26.982, 13, 1);
+    density_g_per_cc = 2.6989;
   } else if (name == "Havar") {
     // Co42 Cr19.5 Fe17.9 Ni12.7 Mo2.2 W2.7 (weight %) — typical Havar composition
     m.add_element(58.933, 27, 42.0);
@@ -2291,12 +2321,33 @@ catima::Material MUSIC_Simulator::BuildSolidMaterial(const string& name, double 
     m.add_element(15.999, 8,  4);
     density_g_per_cc = 1.40;
   } else {
-    cout << "BuildSolidMaterial ERROR: unknown window material '" << name << "'. "
-         << "Supported: Ti, Havar, Kapton, Mylar." << endl;
+    cout << "LookupMaterial ERROR: unknown material '" << name << "'. "
+         << "Supported: Ti, Al, Havar, Kapton, Mylar." << endl;
     exit(EXIT_FAILURE);
   }
   m.density(density_g_per_cc);
+  return m;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Build a catima::Material with thickness in mg/cm^2 (areal density). Used for
+// thin entrance/exit windows where the experimental spec is areal density.
+///////////////////////////////////////////////////////////////////////////////////
+catima::Material MUSIC_Simulator::BuildSolidMaterial(const string& name, double thickness_mg_per_cm2)
+{
+  catima::Material m = LookupMaterial(name);
   m.thickness(thickness_mg_per_cm2 / 1000.0);  // catima thickness is in g/cm^2
+  return m;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Build a catima::Material with thickness in microns (physical length along the
+// beam axis). Used for bulk degraders where the experimental spec is length.
+///////////////////////////////////////////////////////////////////////////////////
+catima::Material MUSIC_Simulator::BuildBulkMaterial(const string& name, double thickness_um)
+{
+  catima::Material m = LookupMaterial(name);
+  m.thickness_cm(thickness_um * 1e-4);  // um -> cm
   return m;
 }
 
@@ -2304,6 +2355,13 @@ void MUSIC_Simulator::BuildWindows()
 {
   entranceWindow_ = BuildSolidMaterial(ctf.entranceMaterial, ctf.entranceThickness);
   exitWindow_     = BuildSolidMaterial(ctf.exitMaterial,     ctf.exitThickness);
+}
+
+void MUSIC_Simulator::BuildDegrader()
+{
+  hasDegrader_ = (!ctf.degraderMaterial.empty() && ctf.degraderLength > 0);
+  if (hasDegrader_)
+    degrader_ = BuildBulkMaterial(ctf.degraderMaterial, ctf.degraderLength);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -2318,6 +2376,26 @@ double MUSIC_Simulator::EnergyOutOfMaterial(int A, int Z, double Ein_MeV, const 
   proj.T = Ein_MeV / A;
   double Eout_per_u = catima::energy_out(proj, mat);
   return Eout_per_u * A;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Per-event propagation through a material with Gaussian energy straggling
+// sampled from catima's sigma_E. Returns the mean Eout for neutrals (Z<=0) or
+// when straggling would be unphysical (sigma<=0). The sampled Eout is floored
+// at 0 to keep the result physical.
+///////////////////////////////////////////////////////////////////////////////////
+double MUSIC_Simulator::EnergyThroughWithStraggling(int A, int Z, double Ein_MeV, const catima::Material& mat)
+{
+  if (Z <= 0 || A <= 0 || Ein_MeV <= 0.0)
+    return Ein_MeV;
+  catima::Projectile proj{double(A), double(Z)};
+  proj.T = Ein_MeV / A;
+  catima::Result r = catima::calculate(proj, mat);
+  double Eout = r.Eout * A;       // catima reports energies in MeV/u
+  double sigma_E = r.sigma_E * A; // straggling in same units; scale to MeV
+  if (sigma_E > 0)
+    Eout += Rdm->Gaus(0.0, sigma_E);
+  return std::max(0.0, Eout);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -3128,12 +3206,21 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
 	}
       }
     
-    // 1. Set beam inital conditions (beam energy, position)
-    double Ebeam = Kb_at_gas;
-    // If the user specified a KbFWHM>0 change the beam energy
-    // assuming a gaussian distribution.
-    if (ctf.KbFWHM>0.0)
+    // 1. Set beam initial conditions. Per-event chain (physically correct order):
+    //    accelerator E [+ KbFWHM]
+    //    -> degrader (if any) with energy straggling
+    //    -> entrance window with energy straggling
+    //    -> Kbi at the gas surface.
+    double Ebeam = ctf.BeamEnergy;
+    if (ctf.KbFWHM > 0.0)
       Ebeam += Rdm->Gaus(0.0, ctf.KbFWHM/2.355);
+    {
+      const double amu_MeV = 931.49410242;
+      int A_beam = (Beam->Mass > 0) ? int(std::round(Beam->Mass / amu_MeV)) : 0;
+      if (hasDegrader_)
+        Ebeam = EnergyThroughWithStraggling(A_beam, Beam->Z, Ebeam, degrader_);
+      Ebeam = EnergyThroughWithStraggling(A_beam, Beam->Z, Ebeam, entranceWindow_);
+    }
     this->Kbi = Ebeam;
     SetInitialKinematics(Ebeam);
 
