@@ -6,30 +6,18 @@
 *.root
 *.log
 
-# SRIM stopping power tables (auto-generated)
-SRIM/files/*.srim
-Examples/*/SRIM_files/*.srim
-
-# LISE stopping power tables (auto-generated)
-LISE/files/*.lise
-
-# SRIM module internal data tables
-SRIM/SRModule/SCOEF03.dat
-SRIM/SRModule/SNUC03.dat
-SRIM/SRModule/_SCOEF03.dat
-SRIM/SRModule/_SNUC03.dat
-
 # ML cluster data files (large, auto-generated)
 Examples/MUSIC_ML_Sim/Clusters/data_cluster_*.csv
 
 # Compiled libraries and objects
-lib/*.so
+lib/
 *.so
 *.o
 *.d
 
-# Duplicate AnodeGeometry files in Examples
-# (canonical version lives in agfiles/)
-Examples/*/AnodeGeometry
-Examples/ECA/AnodeGeometry.MUSIC3
-Examples/Fusion16C/AnodeGeometry
+# Nix build outputs
+result
+result-*
+
+# Top-level musicsim binary from `make`
+/musicsim

@@ -1,26 +1,25 @@
 {
   "nodes": {
-    "flake-utils": {
-      "inputs": {
-        "systems": "systems"
-      },
+    "catima-src": {
+      "flake": false,
       "locked": {
-        "lastModified": 1731533236,
-        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "lastModified": 1752070093,
+        "narHash": "sha256-fyZUXlzDYccMGNU5+pRZ9izZztDiK+xQA2R0N45ZK5Q=",
+        "owner": "hrosiak",
+        "repo": "catima",
+        "rev": "75d22b260ed921f2e6d1c257ca82cf25bcd9f906",
         "type": "github"
       },
       "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
+        "owner": "hrosiak",
+        "repo": "catima",
+        "rev": "75d22b260ed921f2e6d1c257ca82cf25bcd9f906",
         "type": "github"
       }
     },
-    "flake-utils_2": {
+    "flake-utils": {
       "inputs": {
-        "systems": "systems_2"
+        "systems": "systems"
       },
       "locked": {
         "lastModified": 1731533236,
@@ -54,9 +53,9 @@
     },
     "root": {
       "inputs": {
+        "catima-src": "catima-src",
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs",
-        "utils": "utils"
+        "nixpkgs": "nixpkgs"
       }
     },
     "systems": {
@@ -71,42 +70,6 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
-        "type": "github"
-      }
-    },
-    "systems_2": {
-      "locked": {
-        "lastModified": 1681028828,
-        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
-        "owner": "nix-systems",
-        "repo": "default",
-        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-systems",
-        "repo": "default",
-        "type": "github"
-      }
-    },
-    "utils": {
-      "inputs": {
-        "flake-utils": "flake-utils_2",
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1778535870,
-        "narHash": "sha256-fIxTFjzwtUfwUAutQYw8coBRzIbqrCRqRDVMO3N3rGY=",
-        "owner": "ewtodd",
-        "repo": "Analysis-Utilities",
-        "rev": "0da379401623bbc37e035553725c903a23e6bf83",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ewtodd",
-        "repo": "Analysis-Utilities",
         "type": "github"
       }
     }

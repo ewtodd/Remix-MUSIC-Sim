@@ -1,11 +1,11 @@
 {
-  description = "ROOT Analysis Development Environment";
+  description = "MUSIC detector simulator";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    utils = {
-      url = "github:ewtodd/Analysis-Utilities";
-      inputs.nixpkgs.follows = "nixpkgs";
+    catima-src = {
+      url = "github:hrosiak/catima/75d22b260ed921f2e6d1c257ca82cf25bcd9f906";
+      flake = false;
     };
   };
   outputs =
@@ -13,30 +13,48 @@
       self,
       nixpkgs,
       flake-utils,
-      utils,
+      catima-src,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        analysis-utils = utils.packages.${system}.default;
-      in
-      {
-        devShells.default = pkgs.mkShell {
+        catima = pkgs.stdenv.mkDerivation {
+          pname = "catima";
+          version = "75d22b2";
+          src = catima-src;
+          nativeBuildInputs = with pkgs; [ cmake ];
+          cmakeFlags = [ "-DBUILD_SHARED_LIBS=ON" ];
+        };
+        musicsim = pkgs.stdenv.mkDerivation {
+          pname = "musicsim";
+          version = "0.1";
+          src = ./.;
           nativeBuildInputs = with pkgs; [
             pkg-config
             gnumake
-            clang-tools
           ];
           buildInputs = with pkgs; [
-            analysis-utils
             root
+            catima
           ];
+          buildPhase = ''
+            make CATIMA_PREFIX=${catima}
+          '';
+          installPhase = ''
+            mkdir -p $out/bin
+            cp musicsim $out/bin/
+          '';
+        };
+      in
+      {
+        packages.catima = catima;
+        packages.default = musicsim;
+        devShells.default = pkgs.mkShell {
+          inputsFrom = [ musicsim ];
+          nativeBuildInputs = with pkgs; [ clang-tools ];
           shellHook = ''
-            echo "Analysis-Utilities version: ${analysis-utils.version}"
-            export CPLUS_INCLUDE_PATH="$PWD/include''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
-            export ROOT_INCLUDE_PATH="$PWD/include''${ROOT_INCLUDE_PATH:+:$ROOT_INCLUDE_PATH}"
-            export LD_LIBRARY_PATH="$PWD/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            export CATIMA_PREFIX=${catima}
           '';
         };
       }

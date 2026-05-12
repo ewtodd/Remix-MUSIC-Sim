@@ -98,16 +98,16 @@ MUSIC_Simulator::MUSIC_Simulator()
   // every time the main program is run.
 
   
-  // Arrays for the TTree
+  // Output trees
   SimTree = 0;
-  de_r = new float[ExpAnodeStps];
-  de_l = new float[ExpAnodeStps];
-  seg = new int[ExpAnodeStps];
-  for (int stp=0; stp<ExpAnodeStps; stp++) {
-    de_r[stp] = 0;
-    de_l[stp] = 0;
-    seg[stp] = -1;
+  MCTree  = 0;
+  for (int s=0; s<N_STRIPS; ++s) {
+    LeftdE[s] = 0; RightdE[s] = 0; TotaldE[s] = 0;
   }
+  for (int c=0; c<N_CHAN; ++c) {
+    AllTimestamps[c] = 0; AllFlags[c] = 0; Hits[c] = 0;
+  }
+  Cathode = 0; Grid = 0; IsComplete = false;
 
   InitCTF(); // Initialize control file parameters.
   
@@ -386,21 +386,22 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
       if (DeltaE>Ethresh && col<AnodeCols)
 	mult++;
 
-      // Fill tree leaves
-      if (SimTree!=0) {
+      // Accumulate per-strip energies into the event-tree layout.
+      // Anode geometry: stpid==0 and stpid==17 are single-column (col 0) full-width strips;
+      // stpid 1..16 split into col 0 (beam right) and col 1 (beam left).
+      if (SimTree!=0 && col < AnodeCols) {
 	int stpid = AnodeStpID[row][col];
 	if (stpid>=0 && stpid<=17) {
-	  cathode += DeltaE;
-	  if (stpid==0 && col==0)
-	    strip0 += DeltaE;
-	  else if (stpid==17 && col==0)
-	    strip17 += DeltaE;
-	  else if (stpid-1<ExpAnodeStps) {
-	    seg[stpid-1] = stpid;
-	    if (col==0) 
-	      de_r[stpid-1] += DeltaE;
-	    else if (col==1)
-	      de_l[stpid-1] += DeltaE;
+	  Cathode += DeltaE;
+	  if (stpid==0) {
+	    TotaldE[0] += DeltaE;
+	  } else if (stpid==17) {
+	    TotaldE[17] += DeltaE;
+	  } else {
+	    if (col==0)
+	      RightdE[stpid] += DeltaE;
+	    else
+	      LeftdE[stpid] += DeltaE;
 	  }
 	}
       }
@@ -857,8 +858,11 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  // 7. Compute detector response (i.e. DE for beam + light + heavy)
 	  // Clone the particle trajectories
 	  ComputeDetectorResponse(evt, stp_base, UpdateVis);
-	  if (SimTree!=0)
+	  if (SimTree!=0) {
+	    FinalizeEvent(evt);
 	    SimTree->Fill();
+	    if (MCTree) MCTree->Fill();
+	  }
 	  
 	  // 8. Display trace and particle trajecories   
 	  if (UpdateVis) 
@@ -886,6 +890,7 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 
   TDB->cd();
   SimTree->Write("", TObject::kSingleKey);
+  if (MCTree) MCTree->Write("", TObject::kSingleKey);
   TDB->Close();
   StpWatch.Stop();
   StpWatch.Print();
@@ -920,9 +925,15 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       getline(Ctrl,aux);
       // Detector parameters
       if (ParName=="AnodeGeom")
-	ctf.AnodeGeom = ParVal;
-      else if (ParName=="pressure")
-	ctf.pressure = atoi(ParVal.c_str());
+	cout << "musicsim warning: 'AnodeGeom' ignored (geometry is hardcoded)." << endl;
+      else if (ParName=="SRIMdir")
+	cout << "musicsim warning: 'SRIMdir' ignored (catima computes dE/dx on the fly)." << endl;
+      else if (ParName=="Gas")
+	ctf.gas = ParVal;
+      else if (ParName=="Pressure" || ParName=="pressure")
+	ctf.pressure = atof(ParVal.c_str());
+      else if (ParName=="Temperature" || ParName=="temperature")
+	ctf.temperature = atof(ParVal.c_str());
       else if (ParName=="ELossBins")
 	ctf.ELossBins = atoi(ParVal.c_str());
       else if (ParName=="MaxELoss")
@@ -944,7 +955,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="EbeamFWHM" || ParName=="KbFWHM")
 	ctf.KbFWHM = atof(ParVal.c_str());
       else if (ParName=="SRIMbeam")
-	ctf.SRIMbeam = ParVal;
+	cout << "musicsim warning: 'SRIMbeam' ignored (catima)." << endl;
       else if (ParName=="dEdxScaleBeam")
 	ctf.dEdxScaleBeam = atof(ParVal.c_str());
   
@@ -966,7 +977,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="evap0Color")
 	ctf.colorEvap[0] = atoi(ParVal.c_str());
       else if (ParName=="SRIMevap0")
-	ctf.SRIMevap[0] = ParVal;
+	cout << "musicsim warning: 'SRIMevap0' ignored (catima)." << endl;
       else if (ParName=="dEdxScaleEvap0")
 	ctf.dEdxScaleEvap[0] = atof(ParVal.c_str());
  
@@ -976,7 +987,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="res0Color")
 	ctf.colorRes[0] = atoi(ParVal.c_str());
       else if (ParName=="SRIMres0")
-	ctf.SRIMres[0] = ParVal;
+	cout << "musicsim warning: 'SRIMres0' ignored (catima)." << endl;
       else if (ParName=="dEdxScaleRes0")
 	ctf.dEdxScaleRes[0] = atof(ParVal.c_str());
       
@@ -986,7 +997,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="evap1Color")
 	ctf.colorEvap[1] = atoi(ParVal.c_str());
       else if (ParName=="SRIMevap1")
-	ctf.SRIMevap[1] = ParVal;
+	cout << "musicsim warning: 'SRIMevap1' ignored (catima)." << endl;
        else if (ParName=="dEdxScaleEvap1")
 	ctf.dEdxScaleEvap[1] = atof(ParVal.c_str());
      
@@ -996,7 +1007,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="res1Color")
 	ctf.colorRes[1] = atoi(ParVal.c_str());
       else if (ParName=="SRIMres1")
-	ctf.SRIMres[1] = ParVal;
+	cout << "musicsim warning: 'SRIMres1' ignored (catima)." << endl;
       else if (ParName=="dEdxScaleRes1")
 	ctf.dEdxScaleRes[1] = atof(ParVal.c_str());
 
@@ -1006,7 +1017,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="evap2Color")
 	ctf.colorEvap[2] = atoi(ParVal.c_str());
       else if (ParName=="SRIMevap2")
-	ctf.SRIMevap[2] = ParVal;
+	cout << "musicsim warning: 'SRIMevap2' ignored (catima)." << endl;
        else if (ParName=="dEdxScaleEvap2")
 	ctf.dEdxScaleEvap[2] = atof(ParVal.c_str());
      
@@ -1016,7 +1027,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="res2Color")
 	ctf.colorRes[2] = atoi(ParVal.c_str());
       else if (ParName=="SRIMres2")
-	ctf.SRIMres[2] = ParVal;
+	cout << "musicsim warning: 'SRIMres2' ignored (catima)." << endl;
       else if (ParName=="dEdxScaleRes2")
 	ctf.dEdxScaleRes[2] = atof(ParVal.c_str());
       
@@ -1026,7 +1037,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="evap3Color")
 	ctf.colorEvap[3] = atoi(ParVal.c_str());
       else if (ParName=="SRIMevap3")
-	ctf.SRIMevap[3] = ParVal;
+	cout << "musicsim warning: 'SRIMevap3' ignored (catima)." << endl;
        else if (ParName=="dEdxScaleEvap3")
 	ctf.dEdxScaleEvap[3] = atof(ParVal.c_str());
      
@@ -1036,7 +1047,7 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
       else if (ParName=="res3Color")
 	ctf.colorRes[3] = atoi(ParVal.c_str());
       else if (ParName=="SRIMres3")
-	ctf.SRIMres[3] = ParVal;
+	cout << "musicsim warning: 'SRIMres3' ignored (catima)." << endl;
       else if (ParName=="dEdxScaleRes3")
 	ctf.dEdxScaleRes[3] = atof(ParVal.c_str());
 
@@ -1091,23 +1102,21 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
 ///////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::InitCTF()
 {
-    ctf.pressure = 100; // Torr
-    ctf.AnodeGeom = "";
+    ctf.gas = "4He";
+    ctf.pressure = 760.0;     // Torr
+    ctf.temperature = 293.0;  // K
     ctf.ELossBins = 300;
     ctf.MaxELoss = 10.0;
     ctf.beamName = "unassigned beam";
-    ctf.SRIMbeam = "";
     ctf.dEdxScaleBeam = 1.0;
     ctf.target = "unassigned target";
     ctf.compound = "unassigned compound";
     ctf.NumEvapPart = ctf.MaxNumEvapPart;
     for (int i=0; i<ctf.NumEvapPart; i++) {
       ctf.res[i] = "unassigned res";
-      ctf.SRIMres[i] = "";
       ctf.dEdxScaleRes[i] = 1.0;
       ctf.colorRes[i] = 416;
       ctf.evap[i] = "unassigned evap";
-      ctf.SRIMevap[i] = "";
       ctf.dEdxScaleEvap[i] = 1.0;
       ctf.colorEvap[i] = 616;
     }
@@ -1132,84 +1141,129 @@ void MUSIC_Simulator::InitCTF()
 }
     
 ///////////////////////////////////////////////////////////////////////////////////
-// Initialize the TTree (SimTree) similar to the one used for experimental data.
+// Initialize the "event" tree (detector-level output, layout matches the upstream
+// EventBuilderNearestGrid) and the friended "MC" tree (truth-only branches).
+// Energies are written as Float_t in MeV (the upstream data file uses Int_t ADC);
+// the analysis is expected to apply per-channel calibration to data to compare
+// against sim in MeV.
 ///////////////////////////////////////////////////////////////////////////////////
 TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
 {
   TTree* tree;
-  // Tree similar to the one used for experimental data
-  if (ROOTfile && (FileOpt=="update" || FileOpt=="UPDATE")) {
-    tree = (TTree*)ROOTfile->Get("simt");
-    tree->SetBranchAddress("de_l",  de_l);
-    tree->SetBranchAddress("de_r",  de_r);
-    tree->SetBranchAddress("seg",   seg);
-    tree->SetBranchAddress("stp0",  &strip0);
-    tree->SetBranchAddress("stp17", &strip17);
-    tree->SetBranchAddress("cath",  &cathode);
-    // The following branches are for physical quantities that at the
-    // moment can only be obtained from the simulation
-    tree->SetBranchAddress("reacStp",   &reacStp);
-    tree->SetBranchAddress("Kbi", &Kbi);
-    tree->SetBranchAddress("Kbr", &Kbr);
-    tree->SetBranchAddress("Kl", Kl);
-    tree->SetBranchAddress("Kh", Kh);
-    tree->SetBranchAddress("theta_CM", theta_CM);
-    tree->SetBranchAddress("theta_l",  theta_l);
-    tree->SetBranchAddress("theta_h",  theta_h);
-    tree->SetBranchAddress("phi_l",    phi_l);
-    tree->SetBranchAddress("phi_h",    phi_h);
-    // Final coordinates of the light evaporated particles in the reaction (arrays)
-    tree->SetBranchAddress("xfl",      xfl);
-    tree->SetBranchAddress("yfl",      yfl);
-    tree->SetBranchAddress("zfl",      zfl);
-    // Reaction point coordinates
-    tree->SetBranchAddress("xr", &xr);
-    tree->SetBranchAddress("yr", &yr);
-    tree->SetBranchAddress("zr", &zr);
-    // Final coordinates of the lightest evaporation residue in the reaction
-    tree->SetBranchAddress("xfe", &xfe);
-    tree->SetBranchAddress("yfe", &yfe);
-    tree->SetBranchAddress("zfe", &zfe);
-    tree->SetBranchAddress("resID", &resID);
-  }
-  else {
-    tree = new TTree("simt","Simulated MUSIC data");
-    tree->Branch("de_l",  de_l,     Form("de_l[%d]/F",ExpAnodeStps));
-    tree->Branch("de_r",  de_r,     Form("de_r[%d]/F",ExpAnodeStps));
-    tree->Branch("seg",   seg,      Form("seg[%d]/I",ExpAnodeStps));
-    tree->Branch("stp0",  &strip0,  "stp0/F");
-    tree->Branch("stp17", &strip17, "stp17/F");
-    tree->Branch("cath",  &cathode, "cath/F");
-    // The following branches are for physical quantities that at the
-    // moment can only be obtained from the simulation
-    tree->Branch("reacStp",   &reacStp,   "reacStp/I");
-    tree->Branch("Kbi", &Kbi, "Kbi/F");
-    tree->Branch("Kbr", &Kbr, "Kbr/F");
-    tree->Branch("Kl", Kl,  Form("Kl[%d]/F",maxEvaporations));
-    tree->Branch("Kh", Kh,  Form("Kh[%d]/F",maxEvaporations));
-    tree->Branch("theta_CM", theta_CM, Form("theta_CM[%d]/F",maxEvaporations));
-    tree->Branch("theta_l",  theta_l,  Form("theta_l[%d]/F",maxEvaporations));
-    tree->Branch("theta_h",  theta_h,  Form("theta_h[%d]/F",maxEvaporations));
-    tree->Branch("phi_l",    phi_l,    Form("phi_l[%d]/F",maxEvaporations));
-    tree->Branch("phi_h",    phi_h,    Form("phi_h[%d]/F",maxEvaporations));
-    // Final coordinates of the light evaporated particles in the reaction (arrays)
-    tree->Branch("xfl",      xfl,      Form("xfl[%d]/F",maxEvaporations));
-    tree->Branch("yfl",      yfl,      Form("yfl[%d]/F",maxEvaporations));
-    tree->Branch("zfl",      zfl,      Form("zfl[%d]/F",maxEvaporations));
-    // Reaction point coordinates
-    tree->Branch("xr", &xr, "xr/F");
-    tree->Branch("yr", &yr, "yr/F");
-    tree->Branch("zr", &zr, "zr/F");
-    // Final coordinates of the lightest evaporation residue in the reaction
-    tree->Branch("xfe", &xfe, "xfe/F");
-    tree->Branch("yfe", &yfe, "yfe/F");
-    tree->Branch("zfe", &zfe, "zfe/F");
-    tree->Branch("resID", &resID, "resID/I");
+  const bool update = (FileOpt=="update" || FileOpt=="UPDATE");
+  if (ROOTfile && update) {
+    tree = (TTree*)ROOTfile->Get("event");
+    tree->SetBranchAddress("LeftdE",        LeftdE);
+    tree->SetBranchAddress("RightdE",       RightdE);
+    tree->SetBranchAddress("TotaldE",       TotaldE);
+    tree->SetBranchAddress("AllTimestamps", AllTimestamps);
+    tree->SetBranchAddress("AllFlags",      AllFlags);
+    tree->SetBranchAddress("Hits",          Hits);
+    tree->SetBranchAddress("Cathode",       &Cathode);
+    tree->SetBranchAddress("Grid",          &Grid);
+    tree->SetBranchAddress("IsComplete",    &IsComplete);
+    MCTree = (TTree*)ROOTfile->Get("MC");
+    MCTree->SetBranchAddress("reacStp",  &reacStp);
+    MCTree->SetBranchAddress("Kbi",      &Kbi);
+    MCTree->SetBranchAddress("Kbr",      &Kbr);
+    MCTree->SetBranchAddress("Kl",       Kl);
+    MCTree->SetBranchAddress("Kh",       Kh);
+    MCTree->SetBranchAddress("theta_CM", theta_CM);
+    MCTree->SetBranchAddress("theta_l",  theta_l);
+    MCTree->SetBranchAddress("theta_h",  theta_h);
+    MCTree->SetBranchAddress("phi_l",    phi_l);
+    MCTree->SetBranchAddress("phi_h",    phi_h);
+    MCTree->SetBranchAddress("xfl",      xfl);
+    MCTree->SetBranchAddress("yfl",      yfl);
+    MCTree->SetBranchAddress("zfl",      zfl);
+    MCTree->SetBranchAddress("xr", &xr);
+    MCTree->SetBranchAddress("yr", &yr);
+    MCTree->SetBranchAddress("zr", &zr);
+    MCTree->SetBranchAddress("xfe", &xfe);
+    MCTree->SetBranchAddress("yfe", &yfe);
+    MCTree->SetBranchAddress("zfe", &zfe);
+    MCTree->SetBranchAddress("resID", &resID);
+  } else {
+    tree = new TTree("event", "Simulated MUSIC events");
+    tree->Branch("LeftdE",        LeftdE,        Form("LeftdE[%d]/F",  N_STRIPS));
+    tree->Branch("RightdE",       RightdE,       Form("RightdE[%d]/F", N_STRIPS));
+    tree->Branch("TotaldE",       TotaldE,       Form("TotaldE[%d]/F", N_STRIPS));
+    tree->Branch("AllTimestamps", AllTimestamps, Form("AllTimestamps[%d]/l", N_CHAN));
+    tree->Branch("AllFlags",      AllFlags,      Form("AllFlags[%d]/i", N_CHAN));
+    tree->Branch("Hits",          Hits,          Form("Hits[%d]/I", N_CHAN));
+    tree->Branch("Cathode",       &Cathode,      "Cathode/F");
+    tree->Branch("Grid",          &Grid,         "Grid/F");
+    tree->Branch("IsComplete",    &IsComplete,   "IsComplete/O");
+
+    MCTree = new TTree("MC", "Truth-level MUSIC simulation");
+    MCTree->Branch("reacStp",  &reacStp,   "reacStp/I");
+    MCTree->Branch("Kbi",      &Kbi,       "Kbi/F");
+    MCTree->Branch("Kbr",      &Kbr,       "Kbr/F");
+    MCTree->Branch("Kl",       Kl,         Form("Kl[%d]/F",maxEvaporations));
+    MCTree->Branch("Kh",       Kh,         Form("Kh[%d]/F",maxEvaporations));
+    MCTree->Branch("theta_CM", theta_CM,   Form("theta_CM[%d]/F",maxEvaporations));
+    MCTree->Branch("theta_l",  theta_l,    Form("theta_l[%d]/F",maxEvaporations));
+    MCTree->Branch("theta_h",  theta_h,    Form("theta_h[%d]/F",maxEvaporations));
+    MCTree->Branch("phi_l",    phi_l,      Form("phi_l[%d]/F",maxEvaporations));
+    MCTree->Branch("phi_h",    phi_h,      Form("phi_h[%d]/F",maxEvaporations));
+    MCTree->Branch("xfl",      xfl,        Form("xfl[%d]/F",maxEvaporations));
+    MCTree->Branch("yfl",      yfl,        Form("yfl[%d]/F",maxEvaporations));
+    MCTree->Branch("zfl",      zfl,        Form("zfl[%d]/F",maxEvaporations));
+    MCTree->Branch("xr",       &xr,        "xr/F");
+    MCTree->Branch("yr",       &yr,        "yr/F");
+    MCTree->Branch("zr",       &zr,        "zr/F");
+    MCTree->Branch("xfe",      &xfe,       "xfe/F");
+    MCTree->Branch("yfe",      &yfe,       "yfe/F");
+    MCTree->Branch("zfe",      &zfe,       "zfe/F");
+    MCTree->Branch("resID",    &resID,     "resID/I");
+    // Friend so users can do `event->Draw("Kbr:Cathode")` without manual loading.
+    tree->AddFriend(MCTree);
   }
   ResetBranches();
-  if (PrintLevel>0)
+  if (PrintLevel>0) {
     tree->Print();
+    if (MCTree) MCTree->Print();
+  }
   return tree;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Compute TotaldE for split strips, Hits, AllTimestamps and IsComplete based on
+// the per-strip energies accumulated by ComputeDetectorResponse. Called once
+// per event right before SimTree->Fill().
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::FinalizeEvent(int eventIndex)
+{
+  for (int s = 1; s <= 16; ++s)
+    TotaldE[s] = LeftdE[s] + RightdE[s];
+
+  // Trigger-like threshold: distinguishes real signals from cells that contain
+  // only Gaussian smearing noise from ctf.Eres. Energies themselves are NOT
+  // zeroed — Hits encodes whether a real-DAQ channel would have triggered.
+  const float hit_threshold = std::max(0.02f, 3.0f * float(ctf.Eres));
+
+  Hits[0]  = (TotaldE[0]  > hit_threshold) ? 1 : 0;            // Strip0
+  for (int s = 1; s <= 16; ++s) {
+    Hits[s]      = (LeftdE[s]  > hit_threshold) ? 1 : 0;       // L<s>
+    Hits[s + 16] = (RightdE[s] > hit_threshold) ? 1 : 0;       // R<s>
+  }
+  Hits[33] = (TotaldE[17] > hit_threshold) ? 1 : 0;            // Strip17
+  Hits[34] = (Cathode     > hit_threshold) ? 1 : 0;            // Cathode
+  Hits[35] = 1;                                                // Grid (synthetic trigger)
+
+  // Synthetic monotonic timestamp. Offset by 1 so event 0 is distinguishable from
+  // "channel didn't fire" (which stays at 0). Spacing is arbitrary but monotonic.
+  const ULong64_t ts = ULong64_t(eventIndex + 1) * 1000;
+  for (int c = 0; c < N_CHAN; ++c)
+    AllTimestamps[c] = Hits[c] ? ts : 0;
+
+  // IsComplete heuristic matches NearestGrid::CheckEventComplete in the upstream
+  // EventBuilder (Strip0 + alternating L/R pattern through strip 8).
+  IsComplete = (TotaldE[0] > hit_threshold);
+  for (int s = 1; s <= 7 && IsComplete; s += 2)
+    if (LeftdE[s] <= hit_threshold) IsComplete = false;
+  for (int s = 2; s <= 8 && IsComplete; s += 2)
+    if (RightdE[s] <= hit_threshold) IsComplete = false;
 }
 
 
@@ -1517,15 +1571,13 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 void MUSIC_Simulator::ResetBranches()
 {
-
-  for (int stp=0; stp<ExpAnodeStps; stp++) {
-    de_r[stp] = 0;
-    de_l[stp] = 0;
-    seg[stp] = -1;
+  for (int s=0; s<N_STRIPS; ++s) {
+    LeftdE[s] = 0; RightdE[s] = 0; TotaldE[s] = 0;
   }
-  strip0 = 0;
-  strip17 = 0;
-  cathode = 0;
+  for (int c=0; c<N_CHAN; ++c) {
+    AllTimestamps[c] = 0; AllFlags[c] = 0; Hits[c] = 0;
+  }
+  Cathode = 0; Grid = 0; IsComplete = false;
   reacStp = -1;
   Kbi = Kbr = 0;
   for (int er=0; er<maxEvaporations; er++) {
@@ -1603,13 +1655,17 @@ int MUSIC_Simulator::run()
   }
   
   SetStripEnergyResolution(ctf.Eres);
+  // Gas material (catima) — must come before any particle configuration.
+  BuildGasMaterial();
+  Log << "\tGas material configured (" << ctf.gas << ", " << ctf.pressure << " Torr, "
+      << ctf.temperature << " K, density " << gas_.density() << " g/cm^3)." << endl;
   // Geometry
-  if (SetAnode(ctf.AnodeGeom, 90, ctf.ELossBins, ctf.MaxELoss)==0)
+  if (SetAnode(90, ctf.ELossBins, ctf.MaxELoss)==0)
     exit(EXIT_FAILURE);
   Log << "\tAnode configured." << endl;
-  
+
   // Beam
-  SetBeamParticle(ctf.beamName, kBlack, ctf.SRIMbeam, ctf.dEdxScaleBeam);
+  SetBeamParticle(ctf.beamName, kBlack, ctf.dEdxScaleBeam);
   Log << "\tBeam particle configured." << endl;
   // Target
   SetTargetParticle(ctf.target);
@@ -1620,10 +1676,8 @@ int MUSIC_Simulator::run()
   // Evaporation residues and particles
   for (int i=0; i<ctf.NumEvapPart; i++)
     SetEvapResAndPart(ctf.res[i],
-		      ctf.SRIMres[i],
 		      ctf.colorRes[i],
 		      ctf.evap[i],
-		      ctf.SRIMevap[i],
 		      ctf.colorEvap[i],
 		      ctf.dEdxScaleRes[i],
 		      ctf.dEdxScaleEvap[i]);
@@ -1721,6 +1775,7 @@ int MUSIC_Simulator::run()
   if (ROOTfile && SimTree) {
     ROOTfile->cd();
     SimTree->Write("", TObject::kSingleKey);
+    if (MCTree) MCTree->Write("", TObject::kSingleKey);
     ROOTfile->Close();
     Log << "\tROOT file written." << endl;
   }
@@ -1746,17 +1801,9 @@ int MUSIC_Simulator::run()
 // , where '#' is meant to be replaced by an integer and '#f' by a floating point 
 // number.
 ///////////////////////////////////////////////////////////////////////////////////
-int MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans, int ELossBins, float MaxELoss)
+int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
 {
   int goodAnode = 0;
-  ifstream GeomFile;
-  string line;
-  int line_counter = 0;
-
-  // It's required for column description in the AnodeGeomFile to
-  // match the string below.
-  // string ColDescription = "Stp	Col	StpID	Name	Dx	Dy	Dz	Color	Comment";
-  string ColDescription = "Col	StpID	Name	Dx	Dy	Dz	Color	Comment";
 
   AnodeDepth = 0;
   AnodeLength = 0;
@@ -1768,103 +1815,11 @@ int MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans, int ELossBins, 
     Log << "\n*******************************************************************"
 	<< "\nmusicsim::SetAnode ************************************************" << endl;
   }
-    
-  
-  GeomFile.open(AnodeGeomFile.c_str());
-  if (!GeomFile.is_open()) {
-    cout << "ERROR: Anode geometry file \"" << AnodeGeomFile << "\" couldn't be opened." << endl;
-    cout << "Exiting program." << endl;
-    exit(EXIT_FAILURE);
-  }
-  else {
-    cout << "Loading anode geometry loaded from \"" << AnodeGeomFile << "\"." << endl;
 
-    // Get the number of strips and columns for the anode segments
-    do {
-      getline(GeomFile, line);
-      if (line.find("strips:")!=string::npos) 
-	AnodeRows = atoi(line.substr(line.find(':')+1).c_str());
-      if (line.find("columns:")!=string::npos)
-	AnodeCols = atoi(line.substr(line.find(':')+1).c_str());     
-    } while (!GeomFile.eof());
-    GeomFile.close();
-    
-    cout << "Anode strips: " << AnodeRows << endl;
-    cout << "Anode columns: " << AnodeCols << endl;    
-    if (AnodeRows>0 && AnodeCols>0) {
-      // Initialize the anode segment dimensions
-      AnodeDX = new double*[AnodeRows];
-      AnodeDY = new double*[AnodeRows];
-      AnodeDZ = new double*[AnodeRows];
-      AnodeColor = new short*[AnodeRows];
-      AnodeSegName = new string*[AnodeRows];
-      AnodeStpID = new int*[AnodeRows];
-      for (int stp=0; stp<AnodeRows; stp++) {
-	AnodeDX[stp] = new double[AnodeCols];
-	AnodeDY[stp] = new double[AnodeCols];
-	AnodeDZ[stp] = new double[AnodeCols];
-	AnodeColor[stp] = new short[AnodeCols];
-	AnodeSegName[stp] = new string[AnodeCols];
-	AnodeStpID[stp] = new int[AnodeCols];
-	for (int col=0; col<AnodeCols; col++) {
-	  AnodeDX[stp][col] = 0;
-	  AnodeDY[stp][col] = 0;
-	  AnodeDZ[stp][col] = 0;
-	  AnodeColor[stp][col] = kWhite; // kWhite = (const enum EColor) 0
-	  AnodeSegName[stp][col] = "";
-	  AnodeStpID[stp][col] = -1;
-	}
-      }
- 
-      // Get the name and dimensions for each anode segments(strip and
-      // column)
-      GeomFile.open(AnodeGeomFile.c_str());
-      do {
-	getline(GeomFile, line);
-	if (line.find(ColDescription)<line.npos)
-	  break;
-      } while (!GeomFile.eof());
-      // First we need to count how many (not empty) lines are listed
-      do {
-	getline(GeomFile, line);
-	if (!line.empty())
-	  line_counter++;
-      } while (!GeomFile.eof());
-      GeomFile.close();
-      if (PrintLevel>1)
-	Log << "Total lines: " << line_counter << endl;
-      // Now that the number of lines has been established reopen the
-      // text file to load the parameters
-      GeomFile.open(AnodeGeomFile.c_str());
-      do {
-	getline(GeomFile, line);
-	if (line.find(ColDescription)<line.npos)
-	  break;
-      } while (!GeomFile.eof());
-      // Loading parameters and printing them to confirm they have been
-      // read correctly
-      for (int nl=0; nl<line_counter; nl++) {
-	int anodeRow = 0;
-	int col = 0;
-	int id = -1;    
-	string name;
-	double dx, dy, dz;
-	short color;
-	GeomFile >> anodeRow >> col >> id >> name >> dx >> dy >> dz >> color;
-	getline(GeomFile, line); // The last column is for comments
-	AnodeStpID[anodeRow][col] = id;
-	AnodeSegName[anodeRow][col] = name;
-	AnodeDX[anodeRow][col] = dx;
-	AnodeDY[anodeRow][col] = dy;
-	AnodeDZ[anodeRow][col] = dz;
-	AnodeColor[anodeRow][col] = color;
-	if (PrintLevel>0)
-	  Log << nl << "\t" << AnodeStpID[anodeRow][col] << "\t" << AnodeSegName[anodeRow][col] << "\t" 
-	      << AnodeDX[anodeRow][col] << "\t" << AnodeDY[anodeRow][col] << "\t" << AnodeDZ[anodeRow][col] 
-	      << "\t" << AnodeColor[anodeRow][col] << endl;
-      }
-      GeomFile.close();
-    
+  LoadHardcodedAnodeGeometry();
+  cout << "Anode strips: " << AnodeRows << endl;
+  cout << "Anode columns: " << AnodeCols << endl;
+  if (AnodeRows>0 && AnodeCols>0) {
       // The total anode depth (distance along the z axis) is the sum of
       // all segment depths for the first column
       for (int anodeRow=0; anodeRow<AnodeRows; anodeRow++)
@@ -1979,18 +1934,127 @@ int MUSIC_Simulator::SetAnode(string AnodeGeomFile, short Trans, int ELossBins, 
       DrawMUSIC(Eve, 85);
 
     goodAnode = 1;
-    
-    cout << "Anode dimensions: " << AnodeLength << "x" << AnodeHeight << "x" 
+
+    cout << "Anode dimensions: " << AnodeLength << "x" << AnodeHeight << "x"
 	 << AnodeDepth << "cm^3" << endl;
-  }
-  
+
   return goodAnode;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
 // Create the beam particle object.
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, float dEdxScale)
+///////////////////////////////////////////////////////////////////////////////////
+// Build a catima::Material describing the fill gas at ctf.pressure / ctf.temperature.
+// Density comes from the ideal gas law: rho = P*M / (R*T) with
+// R = 62363.59 cm^3*Torr/(K*mol) so that P in Torr and T in K give rho in g/cm^3.
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::BuildGasMaterial()
+{
+  struct GasSpec { int A; int Z; double mass_u; int stn; };
+  // (A, Z, atomic mass [u], stoichiometric number per molecule)
+  std::vector<GasSpec> components;
+  double molar_mass = 0.0;
+  const string& g = ctf.gas;
+  if (g == "4He" || g == "He" || g == "helium") {
+    components = {{4, 2, 4.002602, 1}};
+    molar_mass = 4.002602;
+  } else if (g == "3He") {
+    components = {{3, 2, 3.0160293, 1}};
+    molar_mass = 3.0160293;
+  } else if (g == "Ar" || g == "40Ar" || g == "argon") {
+    components = {{40, 18, 39.948, 1}};
+    molar_mass = 39.948;
+  } else if (g == "CF4") {
+    components = {{12, 6, 12.011, 1}, {19, 9, 18.998, 4}};
+    molar_mass = 12.011 + 4*18.998;
+  } else if (g == "CH4" || g == "methane") {
+    components = {{12, 6, 12.011, 1}, {1, 1, 1.008, 4}};
+    molar_mass = 12.011 + 4*1.008;
+  } else if (g == "P10") {
+    // 90% Ar + 10% CH4 by volume → mole fractions same as volume fractions for ideal gas
+    components = {{40, 18, 39.948, 9}, {12, 6, 12.011, 1}, {1, 1, 1.008, 4}};
+    molar_mass = 0.9*39.948 + 0.1*(12.011 + 4*1.008);
+  } else if (g == "iC4H10" || g == "isobutane") {
+    components = {{12, 6, 12.011, 4}, {1, 1, 1.008, 10}};
+    molar_mass = 4*12.011 + 10*1.008;
+  } else {
+    cout << "BuildGasMaterial ERROR: unknown gas '" << g << "'. "
+         << "Supported: 4He, 3He, Ar, CF4, CH4, P10, iC4H10." << endl;
+    exit(EXIT_FAILURE);
+  }
+
+  const double R_gas = 62363.59;  // cm^3·Torr/(K·mol)
+  double rho = ctf.pressure * molar_mass / (R_gas * ctf.temperature);  // g/cm^3
+
+  gas_ = catima::Material();
+  for (const auto& c : components)
+    gas_.add_element(c.mass_u, c.Z, double(c.stn));
+  gas_.density(rho);
+  gas_.M(molar_mass);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Anode geometry, hardcoded from agfiles/AnodeGeometry (2019/11/04).
+// 20 rows × 2 columns. Strip IDs 0 and 17 are single-column (full-width) strips;
+// 1..16 are split into left/right halves; rows 0 and 19 are dead-layer caps.
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::LoadHardcodedAnodeGeometry()
+{
+  AnodeRows = 20;
+  AnodeCols = 2;
+  AnodeDX = new double*[AnodeRows];
+  AnodeDY = new double*[AnodeRows];
+  AnodeDZ = new double*[AnodeRows];
+  AnodeColor = new short*[AnodeRows];
+  AnodeSegName = new string*[AnodeRows];
+  AnodeStpID = new int*[AnodeRows];
+  for (int r = 0; r < AnodeRows; ++r) {
+    AnodeDX[r] = new double[AnodeCols];
+    AnodeDY[r] = new double[AnodeCols];
+    AnodeDZ[r] = new double[AnodeCols];
+    AnodeColor[r] = new short[AnodeCols];
+    AnodeSegName[r] = new string[AnodeCols];
+    AnodeStpID[r] = new int[AnodeCols];
+    for (int c = 0; c < AnodeCols; ++c) {
+      AnodeDX[r][c] = 0; AnodeDY[r][c] = 0; AnodeDZ[r][c] = 0;
+      AnodeColor[r][c] = kWhite; AnodeSegName[r][c] = ""; AnodeStpID[r][c] = -1;
+    }
+  }
+
+  // Helper to fill one (row,col) cell
+  auto put = [&](int r, int c, int id, const char* nm,
+                 double dx, double dy, double dz, short color) {
+    AnodeStpID[r][c] = id; AnodeSegName[r][c] = nm;
+    AnodeDX[r][c] = dx; AnodeDY[r][c] = dy; AnodeDZ[r][c] = dz;
+    AnodeColor[r][c] = color;
+  };
+
+  // dead layer upstream (full width)
+  put(0, 0, -1, "DeadUS", 9, 10, 3.590, 920);
+  // strip 0 (full width)
+  put(1, 0, 0,  "S0",     9, 10, 1.578, 416);
+  // strips 1..16 split L/R
+  for (int s = 1; s <= 16; ++s) {
+    int row = 1 + s;
+    // beam right (col 0): width alternates 4/5 cm starting at 4 for odd s
+    // beam left  (col 1): width is 10 − right width
+    double dxR = (s % 2 == 1) ? 4 : 5;
+    double dxL = 10 - dxR;
+    char nameR[16], nameL[16];
+    std::snprintf(nameR, sizeof(nameR), "S%dC0", s);
+    std::snprintf(nameL, sizeof(nameL), "S%dC1", s);
+    put(row, 0, s, nameR, dxR, 10, 1.578, 425);
+    put(row, 1, s, nameL, dxL, 10, 1.578, 609);
+  }
+  // strip 17 (full width)
+  put(18, 0, 17, "S17",   9, 10, 1.578, 416);
+  // dead layer downstream (full width)
+  put(19, 0, -1, "DeadDS", 9, 10, 3.522, 920);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+void MUSIC_Simulator::SetBeamParticle(string Name, int Color, float dEdxScale)
 {
 #if 1
   // Use the nuclide finder object to determine the mass and atomic
@@ -1999,8 +2063,7 @@ void MUSIC_Simulator::SetBeamParticle(string Name, int Color, string ELossFile, 
   int Z = NuF->GetZ(Name);
   Beam = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   Beam->SetTrajectoryAtt((short)Color);
-  // Currently, this simulation is restricted to one medium (gas) in MUSIC.
-  Beam->SetMedium(ELossFile, dEdxScale);
+  Beam->SetMedium(&gas_, dEdxScale);
   if (ctf.Update) {
     TrackBeam->SetName(Name.c_str());
     TrackBeam->SetMainColor(Color);
@@ -2045,17 +2108,14 @@ void MUSIC_Simulator::SetCompoundParticle(string Name)
 ///////////////////////////////////////////////////////////////////////////////////
 // Create the decay daughter1 of the heavy particle.
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetDecayDaughter1(string Name, int Color, string ELossFile)
+void MUSIC_Simulator::SetDecayDaughter1(string Name, int Color)
 {
 #if 1
-  // Use the nuclide finder object to determine the mass and atomic
-  // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
   DeDau1 = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   DeDau1->SetTrajectoryAtt((short)Color);
-  // Currently, this simulation is restricted to one medium (gas) in MUSIC.
-  DeDau1->SetMedium(ELossFile);
+  DeDau1->SetMedium(&gas_);
 #endif
   return;
 }
@@ -2063,16 +2123,13 @@ void MUSIC_Simulator::SetDecayDaughter1(string Name, int Color, string ELossFile
 ///////////////////////////////////////////////////////////////////////////////////
 // Create the decay daughter2 of the heavy particle.
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetDecayDaughter2(string Name, int Color, string ELossFile)
+void MUSIC_Simulator::SetDecayDaughter2(string Name, int Color)
 {
-  // Use the nuclide finder object to determine the mass and atomic
-  // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
   DeDau2 = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   DeDau2->SetTrajectoryAtt((short)Color);
-  // Currently, this simulation is restricted to one medium (gas) in MUSIC.
-  DeDau2->SetMedium(ELossFile);
+  DeDau2->SetMedium(&gas_);
   return;
 }
 
@@ -2082,22 +2139,22 @@ void MUSIC_Simulator::SetDecayDaughter2(string Name, int Color, string ELossFile
 // number of this particle. Mass must be in MeV/c^2 and Z in e.
 // Currently particles restricted to one medium (gas).
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetEvapResAndPart(string ResName, string ResELossFile, int ResColor, 
-					string ParName,	string ParELossFile, int ParColor,
+void MUSIC_Simulator::SetEvapResAndPart(string ResName, int ResColor,
+					string ParName,	int ParColor,
 					float dEdxScaleRes, float dEdxScalePar)
 {
   if (numEvaporations>=maxEvaporations) {
-    cout << "Warning: No more than " << maxEvaporations << " evaporation particles allowed." << endl;  
+    cout << "Warning: No more than " << maxEvaporations << " evaporation particles allowed." << endl;
     return;
   }
-  
+
   // Evaporated particle (p,n,4He)
   double mp = NuF->GetMass(ParName, "MeV/c^2");
   int Zp = NuF->GetZ(ParName);
   ParName += std::to_string(numEvaporations);
   EvaP[numEvaporations] = new Particle(ParName, mp, Zp, false /*SaveTrajectories off*/);
   EvaP[numEvaporations]->SetTrajectoryAtt((short)ParColor);
-  EvaP[numEvaporations]->SetMedium(ParELossFile, dEdxScalePar);
+  EvaP[numEvaporations]->SetMedium(&gas_, dEdxScalePar);
   EvaP[numEvaporations]->Print();
   if (ctf.Update) {
     TrackEvaP[numEvaporations]->SetName(ParName.c_str());
@@ -2110,7 +2167,7 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, string ResELossFile, int
   int Zr = NuF->GetZ(ResName);
   EvaR[numEvaporations] = new Particle(ResName, mr, Zr, false /*SaveTrajectories off*/);
   EvaR[numEvaporations]->SetTrajectoryAtt((short)ResColor);
-  EvaR[numEvaporations]->SetMedium(ResELossFile, dEdxScaleRes);
+  EvaR[numEvaporations]->SetMedium(&gas_, dEdxScaleRes);
   EvaR[numEvaporations]->Print();
   if (ctf.Update) {
     TrackEvaR[numEvaporations]->SetName(ResName.c_str());
@@ -2126,18 +2183,15 @@ void MUSIC_Simulator::SetEvapResAndPart(string ResName, string ResELossFile, int
 ///////////////////////////////////////////////////////////////////////////////////
 // Create the heavy particle (evaporation residue) object.
 ///////////////////////////////////////////////////////////////////////////////////
- void MUSIC_Simulator::SetHeavyParticle(string Name, int Color, string ELossFile, int NEexc,
+ void MUSIC_Simulator::SetHeavyParticle(string Name, int Color, int NEexc,
     double* Eexc)
 {
 #if 1
-  // Use the nuclide finder object to determine the mass and atomic
-  // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
   Heavy = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   Heavy->SetTrajectoryAtt((short)Color);
-  // Currently, this simulation is restricted to one medium (gas) in MUSIC.
-  Heavy->SetMedium(ELossFile);
+  Heavy->SetMedium(&gas_);
   Heavy->SetExcEnergies(NEexc, Eexc);
 #endif
   return;
@@ -2177,17 +2231,14 @@ void MUSIC_Simulator::SetInitialKinematics(double Kbi/*MeV*/)
 // Create the light particle object. It is assumed that the light particle 
 // (e.g. p, n, alpha) is in its ground state.
 ///////////////////////////////////////////////////////////////////////////////////
-void MUSIC_Simulator::SetLightParticle(string Name, int Color, string ELossFile)
+void MUSIC_Simulator::SetLightParticle(string Name, int Color)
 {
 #if 1
-  // Use the nuclide finder object to determine the mass and atomic
-  // number of this particle. Mass must be in MeV/c^2) and Z (in e).
   double m = NuF->GetMass(Name, "MeV/c^2");
   int Z = NuF->GetZ(Name);
   Light = new Particle(Name, m, Z, false /*SaveTrajectories off*/);
   Light->SetTrajectoryAtt((short)Color);
-  // Currently, this simulation is restricted to one medium (gas) in MUSIC.
-  Light->SetMedium(ELossFile);
+  Light->SetMedium(&gas_);
 #endif
   return;
 }
@@ -2887,16 +2938,17 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     ComputeDetectorResponse(evt, StpID, UpdateVis);
     Log << "\tDone computing detector response." << endl;
     //    ROOTfile->cd();
-    if (SimTree!=0)
+    if (SimTree!=0) {
+      FinalizeEvent(evt);
       SimTree->Fill();
-    if (CSV.is_open()) {
-      //CSV << mainentry << "," << strip0 << ",";
-      CSV << strip0 << ",";
-      for (int i=0; i<16; i++) { 
-	//CSV << de_l[i] << "," << de_r[i] << ",";
-	CSV << (de_l[i] + de_r[i])/strip0 << ",";
+      if (MCTree) MCTree->Fill();
+    }
+    if (CSV.is_open() && TotaldE[0] > 0.0f) {
+      CSV << TotaldE[0] << ",";
+      for (int i=1; i<=16; i++) {
+        CSV << TotaldE[i] / TotaldE[0] << ",";
       }
-      CSV << strip17/strip0 << "," << ctf.reacClass << endl;
+      CSV << TotaldE[17] / TotaldE[0] << "," << ctf.reacClass << endl;
       mainentry++;
     }
     // 8. Display trace and particle trajecories
@@ -3080,7 +3132,9 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
       // 7. Compute detector response (i.e. DE for beam + light + heavy)
       // Clone the particle trajectories
       ComputeDetectorResponse(evt, StpID, 1);
+      FinalizeEvent(evt);
       SimTree->Fill();
+      if (MCTree) MCTree->Fill();
       
       // 8. Display trace and particle trajecories   
       UpdateVisuals(evt, this->Kbr, this->zr, TOF, Wait);
@@ -3093,6 +3147,7 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
   if (ROOTfile) {
     ROOTfile->cd();
     SimTree->Write("", TObject::kSingleKey);
+    if (MCTree) MCTree->Write("", TObject::kSingleKey);
     ROOTfile->Close();
   }
   
