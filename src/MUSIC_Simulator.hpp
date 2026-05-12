@@ -109,8 +109,14 @@ public:
 private:
   void BuildGasMaterial();
   void BuildWindows();
+  void BuildDegrader();
+  catima::Material LookupMaterial(const std::string& name);
   catima::Material BuildSolidMaterial(const std::string& name, double thickness_mg_per_cm2);
+  catima::Material BuildBulkMaterial(const std::string& name, double thickness_um);
   double EnergyOutOfMaterial(int A, int Z, double Ein_MeV, const catima::Material& mat);
+  // Propagate through a material with catima-derived Gaussian straggling.
+  // Returns Ein unchanged for neutrals (Z<=0).
+  double EnergyThroughWithStraggling(int A, int Z, double Ein_MeV, const catima::Material& mat);
   void LoadHardcodedAnodeGeometry();
   void FinalizeEvent(int eventIndex);
   void ComputeExitEnergies();
@@ -226,6 +232,9 @@ private:
   // Entrance / exit windows (configurable material + thickness in mg/cm^2)
   catima::Material entranceWindow_;
   catima::Material exitWindow_;
+  // Optional upstream degrader (material + length in microns along beam axis).
+  catima::Material degrader_;
+  bool hasDegrader_ = false;
   // Beam KE at the gas surface (after entrance window). Derived from ctf.BeamEnergy.
   double Kb_at_gas;
 
@@ -330,6 +339,10 @@ private:
     std::string exitMaterial     = "Ti";
     double entranceThickness = 0.9;  // mg/cm^2 - upstream window areal density
     double exitThickness     = 0.9;  // mg/cm^2 - downstream window areal density
+    // Optional bulk degrader between accelerator and entrance window.
+    // Empty material disables it; length is along the beam axis in microns.
+    std::string degraderMaterial = "";
+    double degraderLength = 0.0;     // microns
     // Reaction strip selection. Either set 'strip' to a single value (use
     // -1 for unreacted beam, 0..17 for a reaction strip), OR set both
     // 'stripFirst' and 'stripLast' to span a range. The sentinel below

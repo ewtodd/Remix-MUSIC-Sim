@@ -1,40 +1,44 @@
 Control file for musicsim. First two lines will be skipped by loadCtrlFile method.
-PARAMETER        VALUE     	     	   COMMENT
-AnodeGeom	 agfiles/AnodeGeometry	   location of anode geometry file
-ELossBins	 500			   Number of bins for y axis
-MaxELoss	 25			   Max y value [MeV]
-stripFirst	 3			   First strip
-stripLast	 3			   Last strip
-Eres		 0.05			   Energy noise level (sigma) in each strip [MeV]
-beam		 16C			   Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
-Kb		 59.1			   Beam energy as it enters the dead gas layer [MeV]
-KbFWHM		 12.8			   Beam energy FWHM [MeV]
-target		 12C			   
-compound	 28Mg			   
-NumEvapPart	 2			   Number of evaporated particles. E.g. 1 for 17F(4He,1H)
-evap0Name	 1n			   
-evap0Color	 2			   Integer. See ROOT colors.
-res0Name	 27Mg
-res0Color	 3			   Integer. See ROOT colors.
-evap1Name	 1n			   
-evap1Color	 4			   Integer. See ROOT colors.
-res1Name	 26Mg
-res1Color	 5			   Integer. See ROOT colors.
-SRIMbeam	 LISE/files/16C_in_CH4_400Torr_293K.lise
-SRIMres0	 LISE/files/27Mg_in_CH4_400Torr_293K.lise
-SRIMres1	 LISE/files/26Mg_in_CH4_400Torr_293K.lise
-dEdxScaleBeam	 0.95			   Beam stopping power scale factor
-dEdxScaleRes0	 0.95			   Heavy particle stopping power scale factor
-dEdxScaleRes1	 0.95			   Heavy particle stopping power scale factor
-NEvents		 606			   Number of events simulated
-Wait		 0			   Wait between simulated events? 1=yes, 0=no
-Update		 0			   Update graphics between simulated events? 1=yes, 0=no
-MaxTime		 2000			   Maximum time for an event [ns]
-SimStep		 0.001			   Simulation step size [cm]
-Method		 0
-FileOpt		 recreate
-PrintOpt	 1
-reacClass	 1			   Reaction lable for event classification (e.g used in ML tools)
-FileName	 fusion_16C12C_2n_26Mg_strip3.root
-CSVfile		 fusion_16C12C_2n_26Mg_strip3.csv		   Output CSV file with stp0,de_l+de_r,stp17,reacClass normalized to stp0
-
+PARAMETER        VALUE                COMMENT
+Gas              CH4                  Fill gas: 4He, 3He, Ar, CF4, CH4, P10, iC4H10
+Pressure         400                  Torr
+Temperature      293                  K
+ELossBins        500
+MaxELoss         25                   MeV
+stripFirst       3
+stripLast        3
+Eres             0.05                 MeV (Gaussian sigma per strip)
+beam             16C
+BeamEnergy       197.0                Beam KE at accelerator (before degrader) [MeV]; gives Kbi ~ 58 MeV at gas surface
+KbFWHM           12.8                 Beam energy FWHM at accelerator [MeV]
+EntranceMaterial Ti
+EntranceThickness 0.9                 mg/cm^2 areal density
+ExitMaterial     Ti
+ExitThickness    0.9                  mg/cm^2 areal density
+DegraderMaterial Al                   Bulk degrader upstream of entrance window (empty = none)
+DegraderLength   360                  microns Al along beam axis
+target           12C
+compound         28Mg
+NumEvapPart      2                    Two-step evaporation: 16C+12C -> 28Mg* -> 27Mg + n -> 26Mg + 2n
+evap0Name        1n
+evap0Color       2
+res0Name         27Mg
+res0Color        3
+evap1Name        1n
+evap1Color       4
+res1Name         26Mg
+res1Color        5
+dEdxScaleBeam    0.95                 Beam stopping power scale factor
+dEdxScaleRes0    0.95                 Heavy particle (27Mg) stopping power scale factor
+dEdxScaleRes1    0.95                 Heavy particle (26Mg) stopping power scale factor
+NEvents          10000
+Threads          8
+Wait             0
+Update           0
+MaxTime          2000                 ns
+SimStep          0.001                cm
+Method           0
+FileName         fusion_16C12C_2n_26Mg_strip3.root
+FileOpt          recreate
+PrintOpt         0
+reacClass        1                    Reaction label for event classification

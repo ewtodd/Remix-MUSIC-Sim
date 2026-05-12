@@ -34,13 +34,21 @@ Stopping-power inputs are now specified per-run rather than per-particle:
 | `KbFWHM`            | Beam energy FWHM in MeV at the accelerator                       |
 | `EntranceMaterial`  | Entrance window: `Ti` (default), `Havar`, `Kapton`, or `Mylar`   |
 | `EntranceThickness` | Entrance window areal density in mg/cm²                          |
-| `ExitMaterial`      | Exit window material (same vocabulary)                           |
+| `ExitMaterial`      | Exit window material (same vocabulary, plus `Al`/`Aluminum`)     |
 | `ExitThickness`     | Exit window areal density in mg/cm²                              |
+| `DegraderMaterial`  | Optional bulk degrader between the accelerator and the entrance window. Empty (default) = no degrader. |
+| `DegraderLength`    | Degrader length along the beam axis in μm                        |
 
-The simulator propagates `BeamEnergy` through the entrance window with catima at
-startup to obtain `Kbi` (KE at the gas surface). Particles that exit the
-downstream face of the gas are propagated through the exit window before their
-energy is recorded as `Kbeam_exit` / `Kh_exit[]` / `Kl_exit[]` on the `MC` tree.
+The per-event beam-energy chain is:
+`BeamEnergy ± KbFWHM` (accelerator) → degrader (if any) → entrance window →
+`Kbi` (gas surface). Energy straggling is sampled per event from catima's
+`sigma_E` at both the degrader and the entrance window — the accelerator
+spread (`KbFWHM`) and straggling add in quadrature naturally because each is
+applied as an independent Gaussian draw.
+
+Particles that exit the downstream face of the gas are propagated through the
+exit window before their energy is recorded as `Kbeam_exit` / `Kh_exit[]` /
+`Kl_exit[]` on the `MC` tree.
 
 The old `Kb` key (beam KE at the gas surface) is no longer accepted — use
 `BeamEnergy` (accelerator KE) and the entrance-window parameters instead.
