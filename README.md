@@ -101,11 +101,13 @@ the upstream `EventBuilderNearestGrid` analysis pipeline:
 - **`MC`** — truth-only branches, friended to `event`: reaction strip, beam
   kinematics (`BeamEnergyAccel` at the accelerator, `Kbi` at the gas surface,
   `Kbr` at the reaction point, `Kbeam_exit` after the exit window),
-  light/heavy four-vector components, vertex and exit positions, and per-evap
-  exit energies (`Kl_exit[]`, `Kh_exit[]`). Sentinel values on exit-energy
-  branches: `-1` = particle stopped in the gas, `-2` = no such particle for
-  this event (e.g. `Kbeam_exit` on a reacted event). A literal `0` means the
-  particle reached the exit window but stopped inside it.
+  light/heavy four-vector components, vertex and exit positions, per-evap
+  exit energies (`Kl_exit[]`, `Kh_exit[]`), and dead-layer energy deposits
+  `DeadUS_dE` / `DeadDS_dE` (MeV) for the unread gas regions upstream and
+  downstream of the readout strips. Sentinel values on exit-energy branches:
+  `-1` = particle stopped in the gas, `-2` = no such particle for this event
+  (e.g. `Kbeam_exit` on a reacted event). A literal `0` means the particle
+  reached the exit window but stopped inside it.
 
 `Hits[k]` triggers when the corresponding channel energy exceeds
 `max(0.02 MeV, 3·Eres)` so that pure-noise cells are not counted.

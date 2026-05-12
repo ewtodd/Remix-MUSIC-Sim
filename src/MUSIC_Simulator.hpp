@@ -268,6 +268,8 @@ private:
   float Kbi;              // KE at the gas surface (= after entrance window)
   float Kbr;              // KE at the reaction point
   float Kbeam_exit;       // unreacted-beam KE after exit window (sentinel for reaction events)
+  float DeadUS_dE;        // Total energy deposited in the upstream dead gas layer (not read out)
+  float DeadDS_dE;        // Total energy deposited in the downstream dead gas layer (not read out)
   float* Kl;
   float* Kh;
   float* Kl_exit;         // light-product KE after exit window

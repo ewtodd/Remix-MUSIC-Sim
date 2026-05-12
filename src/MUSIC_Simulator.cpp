@@ -393,12 +393,17 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
       if (DeltaE>Ethresh && col<AnodeCols)
 	mult++;
 
-      // Accumulate per-strip energies into the event-tree layout.
-      // Anode geometry: stpid==0 and stpid==17 are single-column (col 0) full-width strips;
-      // stpid 1..16 split into col 0 (beam right) and col 1 (beam left).
+      // Accumulate per-strip energies into the event-tree layout, plus the
+      // unread dead-layer energies on the MC tree. stpid -1 = upstream dead
+      // layer (DeadUS), stpid -2 = downstream dead layer (DeadDS), stpid
+      // 0..17 = readout strips (0 and 17 single-column; 1..16 split L/R).
       if (SimTree!=0 && col < AnodeCols) {
 	int stpid = AnodeStpID[row][col];
-	if (stpid>=0 && stpid<=17) {
+	if (stpid == -1) {
+	  DeadUS_dE += DeltaE;
+	} else if (stpid == -2) {
+	  DeadDS_dE += DeltaE;
+	} else if (stpid>=0 && stpid<=17) {
 	  Cathode += DeltaE;
 	  if (stpid==0) {
 	    TotaldE[0] += DeltaE;
@@ -412,14 +417,14 @@ void MUSIC_Simulator::ComputeDetectorResponse(int evt, int reacStp, int UpdateVi
 	  }
 	}
       }
-      // Changed randomness to PropagateParticle method
-      // if (EneSigma!=0 && Gaussian!=0 && DeltaE>0) {
-      // 	Gaussian->SetRange(0.0, 2*DeltaE);
-      // 	Gaussian->SetParameters(1.0, DeltaE, EneSigma);
-      // 	DeltaE = Gaussian->GetRandom();
-      // }
-      if (tracesCreated)
-	Trace[col]->SetPoint(row, row, DeltaE);
+      // Trace TGraphs (interactive visualisation only): plot one point per
+      // readout strip, indexed by stpid on the x-axis. Dead-layer rows are
+      // skipped so the trace shape matches the experimental readout.
+      if (tracesCreated) {
+	int stpid = AnodeStpID[row][0];
+	if (stpid >= 0 && stpid <= 17)
+	  Trace[col]->SetPoint(stpid, stpid, DeltaE);
+      }
       // if (PrintLevel>0)
       // 	cout << row << " " << col << ": " << DeltaE << " = " << DeltaEB[row][col] << "+" 
       // 	     << DeltaEL[row][col] << "+" << DeltaEH[row][col] << "+" << DeltaED1[row][col] 
@@ -1230,6 +1235,8 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     MCTree->SetBranchAddress("Kbi",            &Kbi);
     MCTree->SetBranchAddress("Kbr",            &Kbr);
     MCTree->SetBranchAddress("Kbeam_exit",     &Kbeam_exit);
+    MCTree->SetBranchAddress("DeadUS_dE",      &DeadUS_dE);
+    MCTree->SetBranchAddress("DeadDS_dE",      &DeadDS_dE);
     MCTree->SetBranchAddress("Kl",             Kl);
     MCTree->SetBranchAddress("Kh",             Kh);
     MCTree->SetBranchAddress("Kl_exit",        Kl_exit);
@@ -1267,6 +1274,8 @@ TTree* MUSIC_Simulator::InitTree(TFile* ROOTfile, string FileOpt)
     MCTree->Branch("Kbi",            &Kbi,             "Kbi/F");
     MCTree->Branch("Kbr",            &Kbr,             "Kbr/F");
     MCTree->Branch("Kbeam_exit",     &Kbeam_exit,      "Kbeam_exit/F");
+    MCTree->Branch("DeadUS_dE",      &DeadUS_dE,       "DeadUS_dE/F");
+    MCTree->Branch("DeadDS_dE",      &DeadDS_dE,       "DeadDS_dE/F");
     MCTree->Branch("Kl",             Kl,               Form("Kl[%d]/F",maxEvaporations));
     MCTree->Branch("Kh",             Kh,               Form("Kh[%d]/F",maxEvaporations));
     MCTree->Branch("Kl_exit",        Kl_exit,          Form("Kl_exit[%d]/F",maxEvaporations));
@@ -1723,6 +1732,8 @@ void MUSIC_Simulator::ResetBranches()
   reacStp = -1;
   Kbi = Kbr = 0;
   Kbeam_exit = -2.0f;  // default: N/A (reaction events overwrite below if relevant)
+  DeadUS_dE = 0.0f;
+  DeadDS_dE = 0.0f;
   for (int er=0; er<maxEvaporations; er++) {
     Kl[er] = 0;
     Kh[er] = 0;
@@ -2093,23 +2104,26 @@ int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
 
     } // end if (AnodeRows>0 && AnodeCols>0)
     
-    HCTB = new TH2F("HCTB","Beam", AnodeRows,-0.5, AnodeRows-0.5, ELossBins,0,MaxELoss);
-    HCTB->GetXaxis()->SetTitle("Strip index (in AnodeGeometry file)");
+    // Trace canvases show the 18 readout strips only; dead-layer dE is on
+    // the MC tree as DeadUS_dE / DeadDS_dE rather than in the trace.
+    const int NReadout = 18;
+    HCTB = new TH2F("HCTB","Beam", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
+    HCTB->GetXaxis()->SetTitle("Strip ID");
     HCTB->GetXaxis()->CenterTitle();
     HCTB->GetYaxis()->SetTitle("Energy loss [MeV]");
-    HCTB->GetYaxis()->CenterTitle(); 
-    
-    HCT = new TH2F("HCT","Column traces", AnodeRows,-0.5, AnodeRows-0.5, ELossBins,0,MaxELoss);
-    HCT->GetXaxis()->SetTitle("Strip index (in AnodeGeometry file)");
+    HCTB->GetYaxis()->CenterTitle();
+
+    HCT = new TH2F("HCT","Column traces", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
+    HCT->GetXaxis()->SetTitle("Strip ID");
     HCT->GetXaxis()->CenterTitle();
     HCT->GetYaxis()->SetTitle("Energy loss [MeV]");
-    HCT->GetYaxis()->CenterTitle(); 
-    
-    HPT = new TH2F("HPT","Particle traces", AnodeRows,-0.5, AnodeRows-0.5, ELossBins,0,MaxELoss);
-    HPT->GetXaxis()->SetTitle("Strip index (in AnodeGeometry file)");
+    HCT->GetYaxis()->CenterTitle();
+
+    HPT = new TH2F("HPT","Particle traces", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
+    HPT->GetXaxis()->SetTitle("Strip ID");
     HPT->GetXaxis()->CenterTitle();
     HPT->GetYaxis()->SetTitle("Energy loss [MeV]");
-    HPT->GetYaxis()->CenterTitle(); 
+    HPT->GetYaxis()->CenterTitle();
 
     // From: http://root.cern.ch/root/html/TGeoManager.html#TGeoManager:CloseGeometry
     // Closing geometry implies checking the geometry validity, fixing shapes
