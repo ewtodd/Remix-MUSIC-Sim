@@ -243,10 +243,11 @@ private:
   // Beam KE at the gas surface (after entrance window). Derived from ctf.BeamEnergy.
   double Kb_at_gas;
 
-  // TTree stuff. Layout matches the upstream EventBuilderNearestGrid output:
-  // an "event" tree carrying detector-level branches plus a sibling "MC" tree
-  // carrying truth-only branches (friended; rows correspond 1:1).
-  TTree* SimTree;   // stored as "event"
+  // TTree stuff. Layout matches the upstream EventBuilderNearestGrid output
+  // (but with MeV energies rather than ADC counts, hence the _MeV suffix):
+  // an "event_MeV" tree carrying detector-level branches plus a sibling "MC"
+  // tree carrying truth-only branches (friended; rows correspond 1:1).
+  TTree* SimTree;   // stored as "event_MeV"
   TTree* MCTree;    // stored as "MC"
   static const int N_STRIPS = 18;
   static const int N_CHAN   = 36;

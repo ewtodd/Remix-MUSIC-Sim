@@ -25,7 +25,7 @@ make
 Control files are TOML.
 Sections and keys are case-sensitive.
 Every section is optional.
-Anything you don't write will its compiled-in default.
+Anything you don't write will be its compiled-in default.
 Example:
 <!---->
 ```toml
@@ -199,7 +199,8 @@ Particle names use `AEl` notation (e.g. `37Cl`, `4He`, `1H`, `n`).
 ### Bringing over upstream `.msc` files
 <!---->
 The pre-TOML `.msc` format used by the original ANL musicsim isn't accepted by
-this fork. A python converter is included:
+this fork.
+A python converter is included:
 <!---->
 ```bash
 tools/legacy_msc_to_toml.py path/to/upstream/file.msc
@@ -217,17 +218,18 @@ and `AnodeGeom` are dropped (catima handles dE/dx; geometry is hardcoded).
 ## Output tree layout
 <!---->
 Each run produces one ROOT file with two trees, mirroring the format produced by
-the upstream `EventBuilderNearestGrid` analysis pipeline:
+the upstream `EventBuilderNearestGrid` analysis used [here](https://github.com/ewtodd/MUSIC/tree/main/ProductionMode_37Cl/macros):
 <!---->
-- **`event`** — detector-level branches.
+- **`event_MeV`** — detector-level branches.
 `LeftdE[18]`, `RightdE[18]`,
   `TotaldE[18]` (Float, MeV); `AllTimestamps[36]` (ULong64), `AllFlags[36]`
   (UInt, always 0 in sim), `Hits[36]` (Int, 0/1 above noise threshold);
   `Cathode`, `Grid` (Float, MeV); `IsComplete` (Bool, same heuristic as the
   upstream event builder).
-  Energies are MeV truth, so analysis macros should
+  Energies are MeV truth (hence the `_MeV` suffix
+  vs the upstream ADC-valued `event` tree), so analysis macros should
   calibrate data to MeV rather than rescaling sim to ADC.
-- **`MC`** — truth-only branches, friended to `event`: reaction strip, beam
+- **`MC`** — truth-only branches, friended to `event_MeV`: reaction strip, beam
   kinematics (`BeamEnergyAccel` at the accelerator, `Kbi` at the gas surface,
   `Kbr` at the reaction point, `Kbeam_exit` after the exit window),
   light/heavy four-vector components, vertex and exit positions, per-evap
