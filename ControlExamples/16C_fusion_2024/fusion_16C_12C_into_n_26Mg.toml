@@ -16,17 +16,17 @@ compound = "28Mg"
 [windows.entrance]
 # mg/cm^2 areal density
 material = "Ti"
-thickness = 0.9
+thickness_mg_cm2 = 0.9
 
 [windows.exit]
 # mg/cm^2 areal density
 material = "Ti"
-thickness = 0.9
+thickness_mg_cm2 = 0.9
 
 [windows.degrader]
 # Bulk degrader upstream of entrance window (empty = none) / microns Al along beam axis
 material = "Al"
-length = 360.0
+thickness_um = 360.0
 
 [detector]
 eloss_bins = 500

@@ -14,12 +14,12 @@ compound = "21Na"
 [windows.entrance]
 # mg/cm^2 areal density
 material = "Ti"
-thickness = 0.9
+thickness_mg_cm2 = 0.9
 
 [windows.exit]
 # mg/cm^2 areal density
 material = "Ti"
-thickness = 0.9
+thickness_mg_cm2 = 0.9
 
 [detector]
 eloss_bins = 300

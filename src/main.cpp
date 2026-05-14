@@ -51,7 +51,7 @@ int main(int argc, char* argv[])
 #endif
   cout << "==========================================================================" << endl;
   cout << "|--- MUSIC simulator (musicsim) version " << MUSICSIM_VERSION << endl;
-  cout << "| Usage: ./musicsim control.file                                         |" << endl;
+  cout << "| Usage: ./musicsim control.toml                                         |" << endl;
   cout << "| See README.md for installation and usage.                              |" << endl;
   cout << "| Fork of https://gitlab.phy.anl.gov/music/sim (D. Santiago-Gonzalez)     |" << endl;
   cout << "==========================================================================" << endl;

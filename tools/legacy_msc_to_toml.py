@@ -75,14 +75,17 @@ SCALAR_MAP = {
     "reacClass":        ("run",      "reac_class",  "int"),
 }
 
-# Inline tables under [windows]: msc keys -> (sub-table-name, field, kind)
+# Inline tables under [windows]: msc keys -> (sub-table-name, field, kind).
+# Upstream legacy units: entrance/exit are mg/cm², degrader is μm. The new
+# schema accepts either thickness_mg_cm2 or thickness_um for any layer, so
+# we emit the key that matches the legacy unit.
 WINDOW_MAP = {
-    "EntranceMaterial":  ("entrance", "material",  "str"),
-    "EntranceThickness": ("entrance", "thickness", "float"),
-    "ExitMaterial":      ("exit",     "material",  "str"),
-    "ExitThickness":     ("exit",     "thickness", "float"),
-    "DegraderMaterial":  ("degrader", "material",  "str"),
-    "DegraderLength":    ("degrader", "length",    "float"),
+    "EntranceMaterial":  ("entrance", "material",         "str"),
+    "EntranceThickness": ("entrance", "thickness_mg_cm2", "float"),
+    "ExitMaterial":      ("exit",     "material",         "str"),
+    "ExitThickness":     ("exit",     "thickness_mg_cm2", "float"),
+    "DegraderMaterial":  ("degrader", "material",         "str"),
+    "DegraderLength":    ("degrader", "thickness_um",     "float"),
 }
 
 # Reaction-step keys: msc base name -> (which-subtable, field, kind)
@@ -274,7 +277,7 @@ def to_toml(rows):
             for name in ("entrance", "exit", "degrader"):
                 if window_subs[name]:
                     dump_block(f"windows.{name}",
-                               ["material", "thickness", "length"],
+                               ["material", "thickness_mg_cm2", "thickness_um"],
                                window_subs[name],
                                window_comments[name])
             continue

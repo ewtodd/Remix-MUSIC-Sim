@@ -42,17 +42,17 @@ dedx_scale  = 1.0
 species  = "4He"
 compound = "41K"
 
-[windows.entrance]                                   # mg/cm²
-material  = "Ti"
-thickness = 0.9
+[windows.entrance]
+material         = "Ti"
+thickness_mg_cm2 = 0.9       # alternatively: thickness_um = X
 
 [windows.exit]
-material  = "Ti"
-thickness = 1.3
+material         = "Ti"
+thickness_mg_cm2 = 1.3
 
-[windows.degrader]                                   # μm along beam axis
-material = "Mylar"
-length   = 6.0
+[windows.degrader]
+material     = "Mylar"
+thickness_um = 6.0           # alternatively: thickness_mg_cm2 = X
 
 [detector]
 eloss_bins  = 555
@@ -133,12 +133,19 @@ Any of the four physical layers can be turned off independently — the
 simulator prints a warning at startup and skips both the mean dE/dx and the
 straggling for that layer.
 
-| Disable                         | How                                                          |
-| ---                             | ---                                                          |
-| Gas energy loss + straggling    | `gas.pressure = 0` (or any non-positive value)              |
-| Entrance window                 | `windows.entrance.thickness = -1`                            |
-| Exit window                     | `windows.exit.thickness = -1`                                |
-| Degrader                        | Omit the `[windows].degrader` line, or set `length = -1`     |
+| Disable                         | How                                                                            |
+| ---                             | ---                                                                            |
+| Gas energy loss + straggling    | `gas.pressure = 0` (or any non-positive value)                                |
+| Entrance window                 | Set `thickness_mg_cm2` (or `thickness_um`) to `-1` under `[windows.entrance]` |
+| Exit window                     | Same, under `[windows.exit]`                                                  |
+| Degrader                        | Omit the `[windows.degrader]` block, or set its thickness to `-1`             |
+
+Each of the three layer sub-tables (`[windows.entrance]`, `[windows.exit]`,
+`[windows.degrader]`) accepts **exactly one** of `thickness_mg_cm2` (areal
+density, mg/cm²) or `thickness_um` (linear length along the beam axis, μm).
+Setting both in the same sub-table is an error. Pick whichever matches the
+spec sheet for the physical layer; the loader dispatches to catima's areal
+or linear thickness path accordingly.
 
 ### Multi-threading
 

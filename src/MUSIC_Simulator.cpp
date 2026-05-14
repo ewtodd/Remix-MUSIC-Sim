@@ -914,7 +914,8 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 //   [gas]      species, pressure (Torr), temperature (K)
 //   [beam]     species, energy (MeV), energy_fwhm (MeV), dedx_scale
 //   [target]   species, compound
-//   [windows]  entrance = {material, thickness}, exit = {...}, degrader = {material, length}
+//   [windows.entrance], [windows.exit]  material, thickness_mg_cm2
+//   [windows.degrader]                   material, length_um
 //   [detector] eloss_bins, max_eloss, strip OR (strip_first, strip_last), eres
 //   [[reaction.step]]  evap = {name, color, dedx_scale}, res = {name, color, dedx_scale}
 //   [run]      n_events, threads, wait, update, max_time, sim_step, method,
@@ -978,22 +979,32 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
   getString("target", "compound", ctf.compound);
 
   // ---- [windows] -----------------------------------------------------------
+  // Each subtable accepts exactly one of thickness_mg_cm2 (areal density,
+  // mg/cm²) or thickness_um (linear length along beam axis, μm). The matching
+  // *ByLength flag controls catima dispatch in BuildWindows/BuildDegrader.
   if (auto w = tbl["windows"]; w.is_table()) {
+    auto loadLayer = [&](toml::node_view<toml::node> sub, std::string& mat,
+                         double& thick, bool& byLen,
+                         const char* layerName) {
+      getInlineString(sub, "material", mat);
+      bool hasMg = false, hasUm = false;
+      if (auto v = sub["thickness_mg_cm2"].value<double>()) { thick = *v; byLen = false; hasMg = true; }
+      if (auto v = sub["thickness_um"].value<double>())     { thick = *v; byLen = true;  hasUm = true; }
+      if (hasMg && hasUm) {
+        cerr << "musicsim ERROR: [windows." << layerName
+             << "] cannot specify both thickness_mg_cm2 and thickness_um." << endl;
+        exit(EXIT_FAILURE);
+      }
+    };
     auto entrance = w["entrance"];
-    if (entrance.is_table()) {
-      getInlineString(entrance, "material",  ctf.entranceMaterial);
-      getInlineDouble(entrance, "thickness", ctf.entranceThickness);
-    }
+    if (entrance.is_table()) loadLayer(entrance, ctf.entranceMaterial,
+                                       ctf.entranceThickness, ctf.entranceByLength, "entrance");
     auto exitw = w["exit"];
-    if (exitw.is_table()) {
-      getInlineString(exitw, "material",  ctf.exitMaterial);
-      getInlineDouble(exitw, "thickness", ctf.exitThickness);
-    }
+    if (exitw.is_table())    loadLayer(exitw, ctf.exitMaterial,
+                                       ctf.exitThickness, ctf.exitByLength, "exit");
     auto deg = w["degrader"];
-    if (deg.is_table()) {
-      getInlineString(deg, "material", ctf.degraderMaterial);
-      getInlineDouble(deg, "length",   ctf.degraderLength);
-    }
+    if (deg.is_table())      loadLayer(deg, ctf.degraderMaterial,
+                                       ctf.degraderLength, ctf.degraderByLength, "degrader");
   }
 
   // ---- [detector] ----------------------------------------------------------
@@ -1748,14 +1759,16 @@ int MUSIC_Simulator::run()
       << ctf.temperature << " K, density " << gas_.density() << " g/cm^3)." << endl;
   // Windows (catima)
   BuildWindows();
+  auto unitOf = [](bool byLen) { return byLen ? "um" : "mg/cm^2"; };
   Log << "\tEntrance window: " << ctf.entranceMaterial << " "
-      << ctf.entranceThickness << " mg/cm^2; exit: "
-      << ctf.exitMaterial << " " << ctf.exitThickness << " mg/cm^2." << endl;
+      << ctf.entranceThickness << " " << unitOf(ctf.entranceByLength)
+      << "; exit: " << ctf.exitMaterial << " " << ctf.exitThickness
+      << " " << unitOf(ctf.exitByLength) << "." << endl;
   // Optional bulk degrader upstream of the entrance window
   BuildDegrader();
   if (hasDegrader_)
     Log << "\tDegrader: " << ctf.degraderMaterial << " "
-        << ctf.degraderLength << " um." << endl;
+        << ctf.degraderLength << " " << unitOf(ctf.degraderByLength) << "." << endl;
   // Geometry
   if (SetAnode(90, ctf.ELossBins, ctf.MaxELoss)==0)
     exit(EXIT_FAILURE);
@@ -1781,13 +1794,16 @@ int MUSIC_Simulator::run()
         ? EnergyOutOfMaterial(A_beam, Beam->Z, Eafter_degrader, entranceWindow_)
         : Eafter_degrader;
     if (verbose_) {
+      auto unitOf = [](bool byLen) { return byLen ? "um" : "mg/cm^2"; };
       cout << "Beam energy: " << Eaccel << " MeV at accelerator";
       if (hasDegrader_)
         cout << " -> " << Eafter_degrader << " MeV after degrader ("
-             << ctf.degraderMaterial << " " << ctf.degraderLength << " um)";
+             << ctf.degraderMaterial << " " << ctf.degraderLength << " "
+             << unitOf(ctf.degraderByLength) << ")";
       if (entranceWindowEnabled_)
         cout << " -> " << Kb_at_gas << " MeV at gas surface ("
-             << ctf.entranceMaterial << " " << ctf.entranceThickness << " mg/cm^2 window)";
+             << ctf.entranceMaterial << " " << ctf.entranceThickness << " "
+             << unitOf(ctf.entranceByLength) << " window)";
       else
         cout << " -> " << Kb_at_gas << " MeV at gas surface (no entrance window)";
       cout << endl;
@@ -2340,27 +2356,33 @@ catima::Material MUSIC_Simulator::BuildBulkMaterial(const string& name, double t
 
 void MUSIC_Simulator::BuildWindows()
 {
+  auto buildLayer = [&](const string& material, double thick, bool byLen) {
+    return byLen ? BuildBulkMaterial(material, thick)
+                 : BuildSolidMaterial(material, thick);
+  };
   entranceWindowEnabled_ = (ctf.entranceThickness > 0.0);
   if (entranceWindowEnabled_)
-    entranceWindow_ = BuildSolidMaterial(ctf.entranceMaterial, ctf.entranceThickness);
+    entranceWindow_ = buildLayer(ctf.entranceMaterial, ctf.entranceThickness, ctf.entranceByLength);
   else if (verbose_)
-    cout << "musicsim warning: EntranceThickness <= 0; entrance window disabled." << endl;
+    cout << "musicsim warning: entrance window thickness <= 0; disabled." << endl;
 
   exitWindowEnabled_ = (ctf.exitThickness > 0.0);
   if (exitWindowEnabled_)
-    exitWindow_ = BuildSolidMaterial(ctf.exitMaterial, ctf.exitThickness);
+    exitWindow_ = buildLayer(ctf.exitMaterial, ctf.exitThickness, ctf.exitByLength);
   else if (verbose_)
-    cout << "musicsim warning: ExitThickness <= 0; exit window disabled." << endl;
+    cout << "musicsim warning: exit window thickness <= 0; disabled." << endl;
 }
 
 void MUSIC_Simulator::BuildDegrader()
 {
   hasDegrader_ = (!ctf.degraderMaterial.empty() && ctf.degraderLength > 0);
   if (hasDegrader_)
-    degrader_ = BuildBulkMaterial(ctf.degraderMaterial, ctf.degraderLength);
+    degrader_ = ctf.degraderByLength
+        ? BuildBulkMaterial(ctf.degraderMaterial, ctf.degraderLength)
+        : BuildSolidMaterial(ctf.degraderMaterial, ctf.degraderLength);
   else if (!ctf.degraderMaterial.empty() && verbose_)
-    cout << "musicsim warning: DegraderMaterial='" << ctf.degraderMaterial
-         << "' but DegraderLength <= 0; degrader disabled." << endl;
+    cout << "musicsim warning: degrader material='" << ctf.degraderMaterial
+         << "' but thickness <= 0; degrader disabled." << endl;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

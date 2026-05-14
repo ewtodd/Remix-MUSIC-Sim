@@ -344,12 +344,17 @@ private:
     double KbFWHM=0;     // MeV - Beam energy spread (full-width half maximum), at the accelerator
     std::string entranceMaterial = "Ti";
     std::string exitMaterial     = "Ti";
-    double entranceThickness = 0.9;  // mg/cm^2 - upstream window areal density
-    double exitThickness     = 0.9;  // mg/cm^2 - downstream window areal density
-    // Optional bulk degrader between accelerator and entrance window.
-    // Empty material disables it; length is along the beam axis in microns.
+    // Layer thickness: stored as either mg/cm² (areal density) or μm
+    // (linear length along beam axis) depending on the matching `*ByLength`
+    // flag. Default convention follows upstream .msc: windows in mg/cm²,
+    // degrader in μm — but the TOML loader accepts either key for any layer.
+    double entranceThickness = 0.9;
+    bool   entranceByLength  = false;  // false = mg/cm², true = μm
+    double exitThickness     = 0.9;
+    bool   exitByLength      = false;
     std::string degraderMaterial = "";
-    double degraderLength = 0.0;     // microns
+    double degraderLength    = 0.0;
+    bool   degraderByLength  = true;
     // Reaction strip selection. Either set 'strip' to a single value (use
     // -1 for unreacted beam, 0..17 for a reaction strip), OR set both
     // 'stripFirst' and 'stripLast' to span a range. The sentinel below
