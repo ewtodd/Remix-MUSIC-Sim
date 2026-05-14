@@ -10,12 +10,7 @@ using namespace std;
 FourVector::FourVector()
 {
   Name = "";
-  x = new double[4];
   x[0] = x[1] = x[2] = x[3] = 0;
-  B = new double[3];
-  B[0] = B[1] = B[2] = 0;
-  Beta = 0;
-  Gamma = 1;
 }
 
 
@@ -25,12 +20,7 @@ FourVector::FourVector()
 FourVector::FourVector(string Name, double x0, double x1, double x2, double x3)
 {
   SetName(Name);
-  x = new double[4];
   SetCoords(x0, x1, x2, x3);
-  B = new double[3];
-  B[0] = B[1] = B[2] = 0;
-  Beta = 0;
-  Gamma = 1;
 }
 
 
@@ -41,16 +31,14 @@ void FourVector::Boost(double BetaX, double BetaY, double BetaZ)
 {
   double A[4][4];
   double new_x[4];
-  B[0] = BetaX;
-  B[1] = BetaY;
-  B[2] = BetaZ;
-  Beta = sqrt(B[0]*B[0] + B[1]*B[1] + B[2]*B[2]);
-  Gamma = 1/sqrt(1-Beta*Beta);
+  const double B[3] = {BetaX, BetaY, BetaZ};
+  const double Beta = sqrt(B[0]*B[0] + B[1]*B[1] + B[2]*B[2]);
+  const double Gamma = 1/sqrt(1-Beta*Beta);
   // Transformation matrix
   A[0][0] = Gamma;
   for (int i=1; i<4; i++) {
     A[0][i] = A[i][0] = -Gamma*B[i-1];
-    for (int j=1; j<4; j++) 
+    for (int j=1; j<4; j++)
       if (Beta==0)
 	A[j][i] = A[i][j] = Delta(i,j);
       else
@@ -96,15 +84,9 @@ string FourVector::GetName() { return Name; }
 ///////////////////////////////////////////////////////////////////////////////////
 double FourVector::GetTheta()
 {
-  double theta;
-  double pi = 3.1415926535898;
   double px = GetX1();
   double py = GetX2();
-  double pz = GetX3();
-  theta = atan(sqrt(px*px+py*py)/pz);
-  if (pz<0)
-    theta += pi;
-  return theta;
+  return atan2(sqrt(px*px + py*py), GetX3());
 }
 
 

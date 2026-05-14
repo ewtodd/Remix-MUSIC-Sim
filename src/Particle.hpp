@@ -82,8 +82,6 @@ public:
   int A;
   double Mass;
   static const int MaxPoints = 50000;
-  //  static const int MaxEvents = 50000;
-  static const int MaxEvents = 1000;
   std::string Name;
   int NEexc;
   int Q;
@@ -91,7 +89,6 @@ public:
   bool SaveTrajectory;
   bool DoNotPropagate;
   TEveStraightLineSet* Trajectory;
-  TEveStraightLineSet** AllTraj;
   int Z;
 
 private:

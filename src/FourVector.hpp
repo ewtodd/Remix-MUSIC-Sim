@@ -38,9 +38,7 @@ private:
   double Delta(int i, int j);
 
   std::string Name;
-  double* x;
-  double* B;
-  double Beta, Gamma;
+  double x[4];
 };
 
 #endif

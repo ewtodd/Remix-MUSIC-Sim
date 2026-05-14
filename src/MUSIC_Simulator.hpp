@@ -128,7 +128,15 @@ private:
   TTree* InitTree(TFile* ROOTfile, std::string FileOpt);
   void PrintCompoundEexc(double Kb, double** DeltaEB);
   void PrintEnergetics(double Kb, double** DeltaEB);
-  int PropagateParticle(Particle* PO, int Event, double MaxTime, double UserStep, double ** DE);
+  // Propagate `PO` step-by-step through the gas, accumulating per-strip
+  // energy deposits in `DE`. If `endZ` is positive, the loop exits when the
+  // particle crosses that z (forward sweep up to a reaction vertex); if
+  // negative, the bound is the full anode depth. If `reset_DE` is false, the
+  // caller-provided `DE` array is *added to* rather than zeroed first —
+  // useful for continuing an interrupted sweep (e.g. unreacted continuation
+  // past the rejected reaction vertex).
+  int PropagateParticle(Particle* PO, int Event, double MaxTime, double UserStep, double** DE,
+                        double endZ = -1.0, bool reset_DE = true);
   void ResetBranches();
   void SetInitialKinematics(double Kbi);
   int SetReactionKinematics(double Kbr, double zr, double tof, double theta_CM=-1, double phi_CM=-1);
@@ -188,8 +196,6 @@ private:
   bool tracesCreated;
 
   int NTraces;
-
-  TF1* Gaussian;   // For randomizing the detector response
 
   int NEvents;
 

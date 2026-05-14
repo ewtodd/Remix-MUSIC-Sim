@@ -35,8 +35,6 @@ MUSIC_Simulator::MUSIC_Simulator(int workerId)
 
   // Initialize selected pointers to zero (non-zero pointers initialized below).
   Beam = 0;
-  Gaussian = new TF1("Gaussian","gaus",-1e2,1e2);
-  Gaussian->SetNpx(1000);
   Target = 0;
   Trace = 0;
   Compound = 0;
@@ -1510,11 +1508,15 @@ void MUSIC_Simulator::PrintEnergetics(double Kb, double** DeltaEB)
 // is retured when this method ends. The last column element (AnodeCols) is
 // reserved for the total energy loss in all other columns for that strip.
 ///////////////////////////////////////////////////////////////////////////////////
-int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, double UserStep, double** DE)
+int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, double UserStep, double** DE,
+                                       double endZ, bool reset_DE)
 {
-  for (int stp = 0; stp<AnodeRows; stp++) 
-    for (int col = 0; col<AnodeCols+1; col++) 
-      DE[stp][col] = 0;
+  if (reset_DE) {
+    for (int stp = 0; stp<AnodeRows; stp++)
+      for (int col = 0; col<AnodeCols+1; col++)
+        DE[stp][col] = 0;
+  }
+  const double active_max_z = (endZ > 0.0) ? std::min(endZ, AnodeDepth) : AnodeDepth;
 
   if (PrintLevel>0) {
     Log << "\n*******************************************************************"
@@ -1549,7 +1551,11 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
   zt = zi;
   Kt = Ki;
   PO->SetTracePoint((float)tt, (float)xt, (float)yt, (float)zt, (float)Kt);
-  //  PO->AllTraj[Event]->SetName(Form("%s evt %d", PO->Name.c_str(), Event));
+  // Distance accumulated since the last emitted trace point. Trace points are
+  // emitted every kTraceStepFactor simulation steps, giving O(few thousand)
+  // points per full traversal (well under Particle::MaxPoints).
+  const int kTraceStepFactor = 10;
+  double dist_since_trace = 0;
   PO->Trajectory->RemoveElements();
   PO->Trajectory->SetName(Form("%s evt %d", PO->Name.c_str(), Event));
   
@@ -1592,8 +1598,10 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
 	Log << tf << "ns, " << xf << "cm, " << yf << "cm, " << zf << "cm)  Dt=" << Dt << "ns" << endl;
       } 
     
-    // Exit the while loop if the particle leaves the anode volume.
-    if (zf>AnodeDepth || zf<0 || xf>AnodeLength/2 || xf<-AnodeLength/2 || 
+    // Exit the while loop if the particle leaves the anode volume (or
+    // crosses the caller-requested endZ, used to stop a forward beam sweep
+    // exactly at the reaction vertex).
+    if (zf>active_max_z || zf<0 || xf>AnodeLength/2 || xf<-AnodeLength/2 ||
 	yf>AnodeHeight/2 || yf<-AnodeHeight/2) {
       if (PrintLevel>0)
 	Log << "Particle reached end of active volume." << endl;
@@ -1686,26 +1694,24 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     zi = zf;
     Ki = Kf;
     step++;
-    // Add a new point to the trace and trajectory if enough time has
-    // passed.
-    if (tf-tt>UserStep) {   
-      // if (PO->SaveTrajectory) {
-      // 	if (!Skip) {
-      // 	  //	  PO->AllTraj[Event]->AddLine(xt,yt,zt, xf,yf,zf);
-      // 	  PO->Trajectory->AddLine(xt,yt,zt, xf,yf,zf);
-      // 	  Skip = 1;
-      // 	}
-      // 	else 
-      // 	  Skip = 0;
-      // }
-      tt = tf;
-      xt = xf;
-      yt = yf;
-      zt = zf;
-      Kt = Kf;
+    // Add a new point to the trace if enough distance has accumulated since
+    // the last one. The original code compared (tf - tt) > UserStep, which is
+    // a units mismatch — tf-tt is ns, UserStep is cm — and effectively never
+    // fired. Now we drop a trace point every kTraceStepFactor simulation
+    // steps. SaveTrajectory drives the optional 3D-trajectory polyline.
+    dist_since_trace += dist;
+    if (dist_since_trace >= kTraceStepFactor * std::fabs(UserStep)) {
+      if (PO->SaveTrajectory)
+        PO->Trajectory->AddLine(xt, yt, zt, xf, yf, zf);
+      tt = ti;
+      xt = xi;
+      yt = yi;
+      zt = zi;
+      Kt = Ki;
       PO->SetTracePoint((float)tt, (float)xt, (float)yt, (float)zt, (float)Kt);
+      dist_since_trace = 0;
     }
-  } // end 
+  } // end
 
 
   for (int stp = 0; stp<AnodeRows; stp++) 
@@ -3319,24 +3325,42 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     SetInitialKinematics(Ebeam);
 
     int ReacAllowed = 0;
-    //double Kbr = 0;
     this->Kbr = 0;
     double TOF = 0;
     if (StpID>-1) {
-      // 2. Within the selected strip randomly select the position at
-      // which the beam particle interacts with the target and calculate
-      // the kinetic energy at the reaction point
+      // 2. Pick the reaction vertex uniformly inside the chosen strip, then
+      //    forward-propagate the beam with per-step Vavilov straggling from
+      //    the gas surface to z=zr. DeltaEB is filled by PropagateParticle on
+      //    the way, and Kbr / TOF inherit the per-event straggling
+      //    fluctuations (so the reaction kinematics see the actually-sampled
+      //    energy at the vertex, not the deterministic mean).
       this->zr = Rdm->Uniform(MinZ, MaxZ);
-      this->Kbr = Beam->GetFinalEnergy(0, Ebeam, this->zr);
-      TOF = Beam->GetTimeOfFlight(0);
+      Beam->GetX(ti, xi, yi, zi);  // entrance origin recorded for visualisation
+      PropagateParticle(Beam, evt, MaxTime, UserStep, DeltaEB, /*endZ=*/this->zr);
+      double t_at_vertex, x_at_vertex, y_at_vertex, z_at_vertex;
+      Beam->GetX(t_at_vertex, x_at_vertex, y_at_vertex, z_at_vertex);
+      this->Kbr = (float)Beam->GetKE();
+      TOF = t_at_vertex;
+      if (tracesCreated) {
+        for (int stp=0; stp<AnodeRows; stp++)
+          for (int col=0; col<AnodeCols+1; col++)
+            TraceB[col]->SetPoint(stp, stp, DeltaEB[stp][col]);
+      }
+      if (UpdateVis) {
+        TrackBeam->SetOrigin(xi, yi, zi);
+        TrackBeam->SetVector(x_at_vertex-xi, y_at_vertex-yi, z_at_vertex-zi);
+      }
       if (PrintLevel>0)
-	Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
-      
-      // 3. Set the kinematics of all particles at the reaction point
+        Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
+
+      // 3. Set the kinematics of all particles at the reaction point.
+      //    SetReactionKinematics overwrites Beam->X / Beam->P to put the beam
+      //    at (TOF, 0, 0, zr) with KE=Kbr; the previous propagated state has
+      //    already been captured in DeltaEB and TrackBeam above.
       ReacAllowed = SetReactionKinematics(this->Kbr, this->zr, TOF);
       // Check conservation of 4-momentum
       if (PrintLevel>0) {
-	Log << "Conservation of 4-momentum at reaction point (zr)" 
+	Log << "Conservation of 4-momentum at reaction point (zr)"
 	    << endl;
 	FourVector Pi("initial 4-momemtum (lab)",0,0,0,0);
 	Pi += Beam->GetP() + Target->GetP();
@@ -3359,22 +3383,10 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
 	LabelKine->AddText(Form("beam: K=%.2f MeV", Ebeam));
       }
     }
-    
+
     if (ReacAllowed) {
-      // 4. Propagate the beam particle (backwards in time) from the
-      // reaction point to the entrance of MUSIC
-      Beam->GetX(tf,xf,yf,zf);
-      PropagateParticle(Beam, evt, MaxTime, -UserStep, DeltaEB);
-      if (tracesCreated) {
-	for (int stp=0; stp<AnodeRows; stp++)
-	  for (int col=0; col<AnodeCols+1; col++) 
-	    TraceB[col]->SetPoint(stp, stp, DeltaEB[stp][col]);
-      }
-      Beam->GetX(ti,xi,yi,zi);                      // <- This is not a mistake
-      if (UpdateVis) {
-	TrackBeam->SetOrigin(xi,yi,zi);
-	TrackBeam->SetVector(xf-xi,yf-yi,zf-zi);
-      }
+      // Beam has already been propagated entrance->vertex above; outgoing
+      // particles are propagated next.
       
       // 5-6. Propagate outgoing particles (evaporation residues)
       for (int er=0; er<numEvaporations; er++) {
@@ -3417,11 +3429,20 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
 	}
       }
     }
-    // reaction not allowed, only propagate beam
+    // Reaction not allowed (or StpID == -1 unreacted-beam mode). Propagate
+    // beam from its current position to the exit:
+    //   - StpID == -1: Beam is at the entrance (no vertex pick happened).
+    //                  reset_DE=true, single forward sweep.
+    //   - StpID >  -1, energetically forbidden: Beam was already swept from
+    //                  entrance to zr above (DeltaEB partially filled), then
+    //                  SetReactionKinematics overwrote its position to
+    //                  (TOF, 0, 0, zr). We continue forward from zr with
+    //                  reset_DE=false so the entrance→zr deposits are kept.
     else {
-      //Beam->Copy(BeamInit);
+      const bool resume = (StpID > -1);
       Beam->GetX(ti,xi,yi,zi);
-      PropagateParticle(Beam, evt, MaxTime, UserStep, DeltaEB);
+      PropagateParticle(Beam, evt, MaxTime, UserStep, DeltaEB,
+                        /*endZ=*/-1.0, /*reset_DE=*/!resume);
       Beam->GetX(tf,xf,yf,zf);
       if (UpdateVis) {
 	TrackBeam->SetOrigin(xi,yi,zi);
@@ -3429,14 +3450,14 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
       }
       if (tracesCreated) {
 	for (int stp=0; stp<AnodeRows; stp++)
-	  for (int col=0; col<AnodeCols+1; col++) 
+	  for (int col=0; col<AnodeCols+1; col++)
 	    TraceB[col]->SetPoint(stp, stp, DeltaEB[stp][col]);
-	
+
       }
       if (StpID>-1) {
-	cout << "Warninig: reaction energetically not allowed for event " << evt 
+	cout << "Warninig: reaction energetically not allowed for event " << evt
 	     << " (Kbr= " << this->Kbr << " MeV)." << endl;
-	Log << "Warninig: reaction energetically not allowed for event " << evt 
+	Log << "Warninig: reaction energetically not allowed for event " << evt
 	    << " (Kbr= " << this->Kbr << " MeV)." << endl;
       }
     }
