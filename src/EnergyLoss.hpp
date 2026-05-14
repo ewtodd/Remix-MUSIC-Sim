@@ -43,6 +43,14 @@ private:
   // <Z/A> of the gas, weighted by mass fraction. Cached on first use.
   double GasZoverA();
 
+  // Build the log-spaced (Ki -> dE/dx, dsigma²/dx) tables. Called once from
+  // the constructor; uses ~kNTable catima::calculate calls on a thin
+  // reference layer, then the hot path interpolates without touching catima.
+  void BuildTables();
+  // Log-linear interpolation of one of the tables at the given total kinetic
+  // energy (MeV). Clamps to grid endpoints.
+  double InterpAt(const std::vector<double>& vals, double Ki) const;
+
   catima::Projectile proj_;
   const catima::Material* gas_;
   int A_;
@@ -52,6 +60,13 @@ private:
   double TOF_;
 
   double gas_ZoverA_ = -1.0;  // sentinel: <0 means uncached
+
+  // Pre-tabulated stopping power and straggling for this (projectile, gas)
+  // combo. Hot path uses these to skip catima entirely.
+  static constexpr int kNTable = 256;
+  std::vector<double> log_ki_grid_;     // log-spaced kinetic energy grid
+  std::vector<double> eloss_per_cm_;    // MeV / cm, evaluated at exp(log_ki_grid_[i])
+  std::vector<double> sigma2_per_cm_;   // MeV² / cm, same grid
 
   static constexpr double c_cm_ns = 29.9792458;
 };
