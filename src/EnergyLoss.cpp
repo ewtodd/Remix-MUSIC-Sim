@@ -15,7 +15,9 @@ EnergyLoss::EnergyLoss(int A, int Z, double IonMass_MeV_per_c2,
       Z_(Z),
       IonMass_(IonMass_MeV_per_c2),
       dEdxScale_(dEdxScale),
-      TOF_(0.0) {}
+      TOF_(0.0) {
+  BuildTables();
+}
 
 catima::Material EnergyLoss::LayerWithThickness(double PathLength_cm) const {
   catima::Material layer = *gas_;
@@ -23,20 +25,67 @@ catima::Material EnergyLoss::LayerWithThickness(double PathLength_cm) const {
   return layer;
 }
 
-// Kinetic energy (MeV total, not MeV/u) after traversing PathLength of gas.
-// StepSize is ignored — catima integrates internally.
+// Pre-tabulate (mean energy loss / cm) and (straggling variance / cm) as a
+// function of total kinetic energy. Each grid point is one catima::calculate
+// call on a thin reference layer; the per-cm rate is recovered by dividing
+// out the layer thickness. Range is wide enough (1e-4 to 1e4 MeV) to cover
+// every projectile/energy combination we plausibly simulate; outside that
+// the hot-path interpolation clamps to the endpoints.
+void EnergyLoss::BuildTables() {
+  if (gas_ == nullptr) return;
+  log_ki_grid_.resize(kNTable);
+  eloss_per_cm_.resize(kNTable);
+  sigma2_per_cm_.resize(kNTable);
+
+  const double Ki_min = 1e-4;   // MeV total
+  const double Ki_max = 1e4;
+  const double log_min = std::log(Ki_min);
+  const double log_max = std::log(Ki_max);
+  // Reference thickness chosen small enough that the per-cm rate is well
+  // approximated by (Ki - Eout)/dx, large enough that catima doesn't return
+  // numerical garbage. 1e-5 cm of gas at ~mg/cm² density is well below any
+  // physical step we take.
+  const double dx_ref = 1e-5;
+  catima::Material layer = *gas_;
+  layer.thickness_cm(dx_ref);
+
+  for (int i = 0; i < kNTable; ++i) {
+    const double logKi = log_min + (log_max - log_min) * i / (kNTable - 1);
+    log_ki_grid_[i] = logKi;
+    const double Ki = std::exp(logKi);
+    proj_.T = Ki / A_;
+    catima::Result r = catima::calculate(proj_, layer);
+    const double Eout    = r.Eout    * A_;     // MeV
+    const double sigma_E = r.sigma_E * A_;     // MeV
+    eloss_per_cm_[i]  = std::max(0.0, (Ki - Eout) / dx_ref);
+    sigma2_per_cm_[i] = std::max(0.0, sigma_E * sigma_E / dx_ref);
+  }
+}
+
+// Log-energy linear interpolation; clamps to grid endpoints.
+double EnergyLoss::InterpAt(const std::vector<double>& vals, double Ki) const {
+  if (log_ki_grid_.empty()) return 0.0;
+  const double x = std::log(std::max(Ki, 1e-30));
+  if (x <= log_ki_grid_.front()) return vals.front();
+  if (x >= log_ki_grid_.back())  return vals.back();
+  // Uniform-spaced log grid → direct index.
+  const double t = (x - log_ki_grid_.front())
+                 / (log_ki_grid_.back() - log_ki_grid_.front());
+  const double fpos = t * (kNTable - 1);
+  const int i = static_cast<int>(fpos);
+  const double frac = fpos - i;
+  return vals[i] * (1.0 - frac) + vals[i + 1] * frac;
+}
+
+// Kinetic energy (MeV total) after traversing PathLength of gas, mean only
+// (no straggling). Hot-path lookup in the pre-tabulated dE/dx.
 double EnergyLoss::GetFinalEnergy(double InitialEnergy, double PathLength, double /*StepSize*/) {
   if (PathLength <= 0.0 || InitialEnergy <= 0.0)
     return InitialEnergy;
-  catima::Material layer = LayerWithThickness(PathLength);
-  proj_.T = InitialEnergy / A_;
-  double Eout_per_u = catima::energy_out(proj_, layer);
-  double Eout = Eout_per_u * A_;
-  double Eloss = (InitialEnergy - Eout) * dEdxScale_;
-  double Efinal = InitialEnergy - Eloss;
-  if (Efinal < 0.0)
-    Efinal = 0.0;
-  return Efinal;
+  double Eloss = InterpAt(eloss_per_cm_, InitialEnergy) * PathLength * dEdxScale_;
+  if (Eloss < 0.0)         Eloss = 0.0;
+  if (Eloss > InitialEnergy) Eloss = InitialEnergy;
+  return InitialEnergy - Eloss;
 }
 
 // <Z/A> weighted by mass fraction of each constituent. Constant for a fixed
@@ -64,12 +113,14 @@ double EnergyLoss::GasZoverA() {
 double EnergyLoss::GetFinalEnergyStraggled(double InitialEnergy, double PathLength, TRandom* rng) {
   if (PathLength <= 0.0 || InitialEnergy <= 0.0)
     return InitialEnergy;
-  catima::Material layer = LayerWithThickness(PathLength);
-  proj_.T = InitialEnergy / A_;
-  catima::Result r = catima::calculate(proj_, layer);
-  const double Eout    = r.Eout    * A_;
-  const double sigma_E = r.sigma_E * A_;
-  double Eloss = (InitialEnergy - Eout) * dEdxScale_;
+  // Pre-tabulated dE/dx and dsigma²/dx (per cm) at this kinetic energy.
+  // sigma_E for the step scales as sqrt(dsigma²/dx · dx); the dEdxScale knob
+  // multiplies only the mean energy loss, leaving the straggling magnitude
+  // at catima's physics-derived value.
+  const double dedx_per_cm   = InterpAt(eloss_per_cm_,  InitialEnergy);
+  const double sigma2_per_cm = InterpAt(sigma2_per_cm_, InitialEnergy);
+  const double sigma_E       = std::sqrt(std::max(0.0, sigma2_per_cm * PathLength));
+  double Eloss = dedx_per_cm * PathLength * dEdxScale_;
 
   if (sigma_E > 0.0 && rng) {
     // Compute κ and β² for Vavilov. Standard definitions (Yi & Han Eqs. 1–3):
