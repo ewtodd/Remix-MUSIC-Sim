@@ -4,6 +4,8 @@
 #include "MUSIC_Simulator.hpp"
 #include "toml.hpp"
 
+#include "catima/config.h"
+
 using namespace std;
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -914,16 +916,48 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 //   [gas]      species, pressure (Torr), temperature (K)
 //   [beam]     species, energy (MeV), energy_fwhm (MeV), dedx_scale
 //   [target]   species, compound
-//   [windows.entrance], [windows.exit]  material, thickness_mg_cm2
-//   [windows.degrader]                   material, length_um
+//   [windows.entrance], [windows.exit], [windows.degrader]
+//                   material, and exactly one of thickness_mg_cm2 / thickness_um
 //   [detector] eloss_bins, max_eloss, strip OR (strip_first, strip_last), eres
 //   [[reaction.step]]  evap = {name, color, dedx_scale}, res = {name, color, dedx_scale}
+//   [physics]  z_effective, low_energy   (catima Config knobs; see below)
 //   [run]      n_events, threads, wait, update, max_time, sim_step, method,
 //              output, file_opt, print_opt, reac_class
 ////////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+// Map string -> catima::z_eff_type enum value. Returns -1 if the name is
+// unrecognised. Names match the catima header (config.h, z_eff_type enum).
+int parseZeffName(const std::string& s) {
+  if (s == "none")            return catima::z_eff_type::none;
+  if (s == "pierce_blann")    return catima::z_eff_type::pierce_blann;
+  if (s == "anthony_landorf") return catima::z_eff_type::anthony_landorf;
+  if (s == "hubert")          return catima::z_eff_type::hubert;
+  if (s == "winger")          return catima::z_eff_type::winger;
+  if (s == "schiwietz")       return catima::z_eff_type::schiwietz;
+  if (s == "global")          return catima::z_eff_type::global;
+  if (s == "atima14")         return catima::z_eff_type::atima14;
+  return -1;
+}
+
+// Map string -> catima::low_energy_types enum value. -1 on unknown.
+int parseLowEnergyName(const std::string& s) {
+  if (s == "srim_85") return catima::low_energy_types::srim_85;
+  if (s == "srim_95") return catima::low_energy_types::srim_95;
+  return -1;
+}
+}  // namespace
+
 int MUSIC_Simulator::loadCtrlFile(char* fileName)
 {
   ctrlFilePath_ = fileName ? fileName : "";
+
+  // Our defaults differ from catima's library defaults: we want the ATIMA-14
+  // effective-charge model and SRIM-95 low-energy tables to better match
+  // what LISE++ reports. Users can still override either via [physics] in
+  // the TOML, or both back to catima's compiled defaults.
+  catima::default_config.z_effective = catima::z_eff_type::atima14;
+  catima::default_config.low_energy  = catima::low_energy_types::srim_95;
 
   toml::table tbl;
   try {
@@ -1014,6 +1048,47 @@ int MUSIC_Simulator::loadCtrlFile(char* fileName)
   getInt   ("detector", "strip_first", ctf.stripFirst);
   getInt   ("detector", "strip_last",  ctf.stripLast);
   getDouble("detector", "eres",        ctf.Eres);
+
+  // ---- [physics] -----------------------------------------------------------
+  // catima Config knobs. These mutate catima's process-wide default_config,
+  // so the values picked here affect every dE/dx and straggling call.
+  //
+  //   z_effective: how the projectile's effective charge state is modelled
+  //                as it slows down. Heavy ions at <~ MeV/u are partially
+  //                stripped; different formulas give noticeably different
+  //                dE/dx. Allowed values (catima::z_eff_type names):
+  //                  "none"             - bare Z, no charge-state correction
+  //                  "pierce_blann"     - catima compiled default
+  //                  "anthony_landorf"
+  //                  "hubert"
+  //                  "winger"
+  //                  "schiwietz"
+  //                  "global"
+  //                  "atima14"          - matches what LISE++/ATIMA uses (our default)
+  //
+  //   low_energy:  low-velocity table used below the Bethe-Bloch regime.
+  //                Both are Ziegler-derived empirical curves; srim_95 is
+  //                the newer parameterisation.
+  //                  "srim_85"          - catima compiled default
+  //                  "srim_95"          - newer SRIM (our default)
+  if (auto v = tbl.at_path("physics.z_effective").value<std::string>()) {
+    int code = parseZeffName(*v);
+    if (code < 0) {
+      cerr << "musicsim ERROR: physics.z_effective='" << *v
+           << "' is not a recognised catima z_eff_type." << endl;
+      exit(EXIT_FAILURE);
+    }
+    catima::default_config.z_effective = static_cast<unsigned char>(code);
+  }
+  if (auto v = tbl.at_path("physics.low_energy").value<std::string>()) {
+    int code = parseLowEnergyName(*v);
+    if (code < 0) {
+      cerr << "musicsim ERROR: physics.low_energy='" << *v
+           << "' must be \"srim_85\" or \"srim_95\"." << endl;
+      exit(EXIT_FAILURE);
+    }
+    catima::default_config.low_energy = static_cast<unsigned char>(code);
+  }
 
   // ---- [[reaction.step]] ---------------------------------------------------
   if (auto steps = tbl.at_path("reaction.step"); steps.is_array()) {
