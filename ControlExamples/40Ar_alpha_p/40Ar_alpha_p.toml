@@ -15,8 +15,16 @@ strip_last = 4   # Last strip
 eres = 0.05      # Energy noise level (sigma) in each strip [MeV]
 
 [[reaction.step]]
-evap = { name = "1H", color = 2 }                   # Integer. See ROOT colors.
-res = { name = "43K", color = 4, dedx_scale = 1.0 } # Integer. See ROOT colors.
+[reaction.step.evap]
+# Integer. See ROOT colors.
+name = "1H"
+color = 2
+
+[reaction.step.res]
+# Integer. See ROOT colors.
+name = "43K"
+color = 4
+dedx_scale = 1.0
 
 [run]
 n_events = 100              # Number of events simulated

@@ -42,10 +42,17 @@ dedx_scale  = 1.0
 species  = "4He"
 compound = "41K"
 
-[windows]
-entrance = { material = "Ti",    thickness = 0.9 }   # mg/cm²
-exit     = { material = "Ti",    thickness = 1.3 }
-degrader = { material = "Mylar", length    = 6.0 }   # μm along beam axis
+[windows.entrance]                                   # mg/cm²
+material  = "Ti"
+thickness = 0.9
+
+[windows.exit]
+material  = "Ti"
+thickness = 1.3
+
+[windows.degrader]                                   # μm along beam axis
+material = "Mylar"
+length   = 6.0
 
 [detector]
 eloss_bins  = 555
@@ -54,9 +61,15 @@ strip_first = 3         # alternatively: strip = -1 for unreacted-beam runs
 strip_last  = 13
 eres        = 0.05      # MeV; -1 disables
 
-[[reaction.step]]                            # 1..MaxNumEvapPart steps allowed
-evap = { name = "4He",  color = 2, dedx_scale = 1.0 }
-res  = { name = "37Cl", color = 4, dedx_scale = 1.0 }
+[[reaction.step]]                            # add more [[reaction.step]] for decay chains
+[reaction.step.evap]
+name       = "4He"
+color      = 2
+dedx_scale = 1.0
+[reaction.step.res]
+name       = "37Cl"
+color      = 4
+dedx_scale = 1.0
 
 [run]
 n_events  = 10000

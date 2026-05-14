@@ -182,9 +182,16 @@ def to_toml(rows):
             if key in SEMANTIC_NOTES:
                 note = f"NOTE ({key}→{tkey}): {SEMANTIC_NOTES[key]}"
                 full_comment = f"{comment} -- {note}" if comment else note
-            sections.setdefault(section, []).append(
-                (tkey, toml_scalar(val, kind), full_comment)
-            )
+            bucket = sections.setdefault(section, [])
+            # If the .msc file specified the same key more than once (e.g.
+            # several FileName lines), keep only the last — TOML doesn't
+            # allow duplicate keys and the legacy parser silently took the
+            # last value anyway.
+            for i, (existing_k, _, _) in enumerate(bucket):
+                if existing_k == tkey:
+                    del bucket[i]
+                    break
+            bucket.append((tkey, toml_scalar(val, kind), full_comment))
             continue
 
         if key in WINDOW_MAP:
@@ -238,61 +245,69 @@ def to_toml(rows):
     out = []
     section_order = ["gas", "beam", "target", "windows", "detector", "reaction", "run"]
 
+    def dump_block(header, fields_order, raw_fields, comments=None):
+        """Emit a [section] block of `key = value  # comment` lines, padded.
+        `raw_fields` may be a list[(k,v,c)] or a dict[k -> v_str]."""
+        if isinstance(raw_fields, dict):
+            entries = [(k, raw_fields[k],
+                        (comments or {}).get(k, "")) for k in fields_order if k in raw_fields]
+        else:
+            present = {k for k, _, _ in raw_fields}
+            ordered = [k for k in fields_order if k in present] + \
+                      [k for k, _, _ in raw_fields if k not in fields_order]
+            row_map = {k: (v, c) for k, v, c in raw_fields}
+            entries = [(k, *row_map[k]) for k in ordered]
+        if not entries:
+            return
+        if out and out[-1] != "":
+            out.append("")
+        out.append(f"[{header}]")
+        keylen = max(len(k) for k, _, _ in entries)
+        for k, v, c in entries:
+            line = f"{k.ljust(keylen)} = {v}"
+            if c:
+                line += f"  # {c}"
+            out.append(line)
+
     for sec in section_order:
         if sec == "windows":
-            entries = [(s, window_subs[s]) for s in ("entrance", "exit", "degrader") if window_subs[s]]
-            if not entries:
-                continue
-            out.append(f"[{sec}]")
-            for name, fields in entries:
-                ordered_keys = ["material", "thickness", "length"]
-                pairs = []
-                for k in ordered_keys:
-                    if k in fields:
-                        pairs.append(f"{k} = {fields[k]}")
-                comment_bits = []
-                for k in ordered_keys:
-                    c = window_comments[name].get(k)
-                    if c:
-                        comment_bits.append(c)
-                trailing = f"  # {' / '.join(comment_bits)}" if comment_bits else ""
-                out.append(f"{name} = {{ {', '.join(pairs)} }}{trailing}")
-            out.append("")
+            for name in ("entrance", "exit", "degrader"):
+                if window_subs[name]:
+                    dump_block(f"windows.{name}",
+                               ["material", "thickness", "length"],
+                               window_subs[name],
+                               window_comments[name])
             continue
 
         if sec == "reaction":
-            if not reaction_steps:
-                continue
             for idx in sorted(reaction_steps):
                 step = reaction_steps[idx]
                 if not step["evap"] and not step["res"]:
                     continue
+                if out and out[-1] != "":
+                    out.append("")
                 out.append("[[reaction.step]]")
                 for side in ("evap", "res"):
                     fields = step[side]
                     if not fields:
                         continue
-                    pairs = []
-                    for k in ("name", "color", "dedx_scale"):
-                        if k in fields:
-                            pairs.append(f"{k} = {fields[k]}")
-                    cmt = step["c"].get(f"{side}.name") or step["c"].get(f"{side}.color")
-                    trailing = f"  # {cmt}" if cmt else ""
-                    out.append(f"{side} = {{ {', '.join(pairs)} }}{trailing}")
-                out.append("")
+                    side_comments = {
+                        k.split(".", 1)[1]: v
+                        for k, v in step["c"].items()
+                        if k.startswith(side + ".")
+                    }
+                    dump_block(f"reaction.step.{side}",
+                               ["name", "color", "dedx_scale"],
+                               fields,
+                               side_comments)
             continue
 
         rows_for_sec = sections.get(sec) or []
-        if not rows_for_sec:
-            continue
-        out.append(f"[{sec}]")
-        # Align: pad keys to longest in section
-        keylen = max(len(k) for k, _, _ in rows_for_sec)
-        for k, v, c in rows_for_sec:
-            line = f"{k.ljust(keylen)} = {v}"
-            if c:
-                line += f"  # {c}"
-            out.append(line)
+        if rows_for_sec:
+            # Preserve insertion order from the .msc file for these flat sections.
+            dump_block(sec, [k for k, _, _ in rows_for_sec], rows_for_sec)
+
+    if out and out[-1] != "":
         out.append("")
 
     if unknown:
