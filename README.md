@@ -10,7 +10,7 @@ Dependencies are managed by Nix.
 
 ```bash
 nix build
-./result/bin/musicsim Examples/37Cl_alpha_n/37Cl_alpha_n.msc
+./result/bin/musicsim ControlExamples/37Cl_alpha_n/37Cl_alpha_n_bulk.toml
 ```
 
 For iterative development:
@@ -18,74 +18,146 @@ For iterative development:
 ```bash
 nix develop
 make
-./musicsim Examples/37Cl_alpha_n/37Cl_alpha_n.msc
+./musicsim ControlExamples/37Cl_alpha_n/37Cl_alpha_n_bulk.toml
 ```
 
-## Control-file keys
+## Control file (TOML)
 
-Stopping-power inputs are now specified per-run rather than per-particle:
+Control files are TOML. Sections and keys are case-sensitive. Every section is
+optional — anything you don't write keeps its compiled-in default. An example:
 
-| Key                 | Meaning                                                          |
-| ---                 | ---                                                              |
-| `Gas`               | Fill gas: `4He`, `3He`, `Ar`, `CF4`, `CH4`, `P10`, `iC4H10`      |
-| `Pressure`          | Gas pressure in Torr                                             |
-| `Temperature`       | Gas temperature in K                                             |
-| `BeamEnergy`        | Beam KE in MeV at the accelerator (before the entrance window)   |
-| `KbFWHM`            | Beam energy FWHM in MeV at the accelerator                       |
-| `EntranceMaterial`  | Entrance window: `Ti` (default), `Havar`, `Kapton`, or `Mylar`   |
-| `EntranceThickness` | Entrance window areal density in mg/cm²                          |
-| `ExitMaterial`      | Exit window material (same vocabulary, plus `Al`/`Aluminum`)     |
-| `ExitThickness`     | Exit window areal density in mg/cm²                              |
-| `DegraderMaterial`  | Optional bulk degrader between the accelerator and the entrance window. Empty (default) = no degrader. |
-| `DegraderLength`    | Degrader length along the beam axis in μm                        |
+```toml
+[gas]
+species     = "4He"
+pressure    = 220.0     # Torr
+temperature = 293.0     # K
+
+[beam]
+species     = "37Cl"
+energy      = 92.0      # MeV at the accelerator (before windows)
+energy_fwhm = 0.90      # MeV FWHM
+dedx_scale  = 1.0
+
+[target]
+species  = "4He"
+compound = "41K"
+
+[windows]
+entrance = { material = "Ti",    thickness = 0.9 }   # mg/cm²
+exit     = { material = "Ti",    thickness = 1.3 }
+degrader = { material = "Mylar", length    = 6.0 }   # μm along beam axis
+
+[detector]
+eloss_bins  = 555
+max_eloss   = 10.0      # MeV
+strip_first = 3         # alternatively: strip = -1 for unreacted-beam runs
+strip_last  = 13
+eres        = 0.05      # MeV; -1 disables
+
+[[reaction.step]]                            # 1..MaxNumEvapPart steps allowed
+evap = { name = "4He",  color = 2, dedx_scale = 1.0 }
+res  = { name = "37Cl", color = 4, dedx_scale = 1.0 }
+
+[run]
+n_events  = 10000
+threads   = 8
+wait      = 0
+update    = 0
+max_time  = 2000.0      # ns
+sim_step  = 0.001       # cm
+method    = 0
+output    = "traces_37Cl_aa_bulk.root"
+file_opt  = "recreate"
+print_opt = 0
+```
 
 The per-event beam-energy chain is:
-`BeamEnergy ± KbFWHM` (accelerator) → degrader (if any) → entrance window →
-`Kbi` (gas surface). Energy straggling is sampled per event from catima's
-`sigma_E` at both the degrader and the entrance window — the accelerator
-spread (`KbFWHM`) and straggling add in quadrature naturally because each is
-applied as an independent Gaussian draw.
+`beam.energy ± beam.energy_fwhm` (accelerator) → degrader (if any) → entrance
+window → `Kbi` (gas surface). Energy straggling is sampled per event from
+catima's `sigma_E` at both the degrader and the entrance window — the
+accelerator spread and straggling add in quadrature naturally because each
+is applied as an independent Gaussian draw. These traversals are single,
+relatively thick steps where the Bohr Gaussian is a fine approximation
+(κ ≫ 1).
 
 Particles that exit the downstream face of the gas are propagated through the
 exit window before their energy is recorded as `Kbeam_exit` / `Kh_exit[]` /
 `Kl_exit[]` on the `MC` tree.
 
-The old `Kb` key (beam KE at the gas surface) is no longer accepted — use
-`BeamEnergy` (accelerator KE) and the entrance-window parameters instead.
+### Per-step gas straggling (Vavilov)
+
+Inside the active gas the propagator takes ~10 μm steps, which puts the
+per-step Vavilov parameter κ ≈ 0.05–0.5. In that band the symmetric Bohr
+Gaussian that catima exposes via `sigma_E` is the wrong distribution shape:
+the real per-step energy-loss spectrum is asymmetric, with a long high-loss
+tail from δ-electron knock-ons and no negative-loss left tail. Each step
+samples instead from the full Vavilov distribution Φ(λ_V; κ, β²) at the
+step's κ and β², standardised against catima's mean dE and σ_E so the first
+two moments still match catima exactly. Per-step samples are clamped to
+[0, Ki] (energy can only decrease via dE/dx, never increase).
+
+The sampler uses the convolution decomposition of Yi & Han[^vavmc] —
+Φ(λ_V; κ, β²) factors as Φ(λ_V; (1−β²)κ, 0) ⋆ Φ(λ_V; β²κ, 1), so a draw
+at any (κ, β²) is the sum of two independent draws from 1-D κ-indexed
+tables. The tables (`src/VavilovSampler.cpp`) are pre-filled once at startup
+from ROOT's `Math::VavilovAccurate` (~3 ms of one-time work) and looked up
+via bilinear interpolation in the hot path — no per-step VavilovAccurate
+construction. Outside the Vavilov band (κ < 10⁻³ or κ > 10) the sampler
+falls back to a Gaussian, matching the Landau and Bohr limits respectively.
+
+[^vavmc]: Chul-Young Yi, Hyon-Soo Han, *A Monte Carlo algorithm for the
+Vavilov distribution*, Nucl. Instr. and Meth. in Phys. Res. B **149**(3),
+263–271 (1999). [doi:10.1016/S0168-583X(98)00803-9](https://doi.org/10.1016/S0168-583X(98)00803-9).
+
+### Reaction strip selection
+
+Set **one** of: `detector.strip = N`, or both `detector.strip_first` and
+`detector.strip_last`. `strip = -1` runs unreacted-beam (no reaction vertex).
 
 ### Disabling layers
 
 Any of the four physical layers can be turned off independently — the
 simulator prints a warning at startup and skips both the mean dE/dx and the
-straggling for that layer. Other layers still apply normally.
+straggling for that layer.
 
-| Disable                         | How                                       |
-| ---                             | ---                                       |
-| Gas energy loss + straggling    | `Pressure 0` (or any non-positive value)  |
-| Entrance window                 | `EntranceThickness -1`                    |
-| Exit window                     | `ExitThickness -1`                        |
-| Degrader                        | Omit `DegraderMaterial`, or `DegraderLength -1` |
-
-Useful for sanity checks (e.g. "what is the beam energy at the gas surface
-with no degrader?") and for debugging specific contributions in isolation.
+| Disable                         | How                                                          |
+| ---                             | ---                                                          |
+| Gas energy loss + straggling    | `gas.pressure = 0` (or any non-positive value)              |
+| Entrance window                 | `windows.entrance.thickness = -1`                            |
+| Exit window                     | `windows.exit.thickness = -1`                                |
+| Degrader                        | Omit the `[windows].degrader` line, or set `length = -1`     |
 
 ### Multi-threading
 
-`Threads N` in the ctrl file fans the event loop out across `N` worker threads
-using `std::async`. Each worker is a separate `MUSIC_Simulator` instance with
-its own RNG seed and per-worker ROOT output; the master pre-warms catima's
+`run.threads = N` fans the event loop out across `N` worker threads using
+`std::async`. Each worker is a separate `MUSIC_Simulator` instance with its
+own RNG seed and per-worker ROOT output; the master pre-warms catima's
 internal cache and then merges the per-worker output files with `TFileMerger`
-into the configured `FileName` at the end of the run. Workers force
-`Update=0`/`Wait=0`, so visualization is only available in single-threaded
-mode (the default, `Threads 1`).
+into the configured `run.output` at the end of the run. Workers force
+`update=0`/`wait=0`, so visualization is only available in single-threaded
+mode (the default, `threads = 1`).
 
-Per-particle `SRIMbeam`, `SRIMres*`, `SRIMevap*`, `AnodeGeom`, and `SRIMdir` keys
-are ignored (with a warning) — catima computes dE/dx from the gas composition,
-and the anode geometry is no longer file-driven. The per-particle
-`dEdxScale*` knobs still apply, multiplying the catima energy loss.
+`reaction.step` is an array of tables — add more `[[reaction.step]]` blocks
+for multi-step decay chains; up to `MaxNumEvapPart` (10) are supported.
+`evap.dedx_scale` and `res.dedx_scale` are optional and default to `1.0`.
+Particle names use `AEl` notation (e.g. `37Cl`, `4He`, `1H`, `n`).
 
-Supported particle naming (`AEl`, e.g. `37Cl`) and the rest of the control-file
-schema are unchanged.
+### Bringing over upstream `.msc` files
+
+The pre-TOML `.msc` format used by the original ANL musicsim isn't accepted by
+this fork — convert it first:
+
+```bash
+tools/legacy_msc_to_toml.py path/to/upstream/file.msc
+# writes path/to/upstream/file.toml; per-key comments are preserved.
+```
+
+Glob-friendly: `tools/legacy_msc_to_toml.py /path/to/musicsim/Examples/**/*.msc`.
+
+`Kb` is mapped to `beam.energy` with an inline warning — the meaning shifted
+from "gas-surface KE" (upstream) to "accelerator KE before windows" (Remix),
+so adjust the value by hand if you want the windows modelled. SRIM-table keys
+and `AnodeGeom` are dropped (catima handles dE/dx; geometry is hardcoded).
 
 ## Output tree layout
 

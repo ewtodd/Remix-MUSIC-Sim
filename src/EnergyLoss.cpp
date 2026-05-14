@@ -1,5 +1,8 @@
 #include "EnergyLoss.hpp"
+#include "VavilovSampler.hpp"
+
 #include <TRandom.h>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -36,24 +39,72 @@ double EnergyLoss::GetFinalEnergy(double InitialEnergy, double PathLength, doubl
   return Efinal;
 }
 
-// Same as GetFinalEnergy but with per-step Gaussian energy straggling sampled
-// from catima's sigma_E. dEdxScale only scales the mean energy loss; the
-// straggling magnitude (Bohr/LSS) is physics-derived and left unscaled.
+// <Z/A> weighted by mass fraction of each constituent. Constant for a fixed
+// gas, so cached on first use.
+double EnergyLoss::GasZoverA() {
+  if (gas_ZoverA_ > 0.0) return gas_ZoverA_;
+  if (gas_ == nullptr) return 0.0;
+  double zoa = 0.0;
+  // Cast away constness — catima exposes ncomponents/get_element/weight_fraction
+  // as non-const accessors despite reading only. Local pointer keeps the
+  // member const-correct.
+  catima::Material* mat = const_cast<catima::Material*>(gas_);
+  for (int i = 0; i < mat->ncomponents(); ++i) {
+    catima::Target t = mat->get_element(i);
+    if (t.A > 0)
+      zoa += mat->weight_fraction(i) * (t.Z / t.A);
+  }
+  gas_ZoverA_ = zoa;
+  return gas_ZoverA_;
+}
+
+// Same as GetFinalEnergy but with per-step energy straggling. See header
+// comment for the physics rationale (Bohr Gaussian wrong shape for our κ;
+// switch to Vavilov via Yi & Han's convolution sampler).
 double EnergyLoss::GetFinalEnergyStraggled(double InitialEnergy, double PathLength, TRandom* rng) {
   if (PathLength <= 0.0 || InitialEnergy <= 0.0)
     return InitialEnergy;
   catima::Material layer = LayerWithThickness(PathLength);
   proj_.T = InitialEnergy / A_;
   catima::Result r = catima::calculate(proj_, layer);
-  double Eout = r.Eout * A_;
-  double sigma_E = r.sigma_E * A_;
+  const double Eout    = r.Eout    * A_;
+  const double sigma_E = r.sigma_E * A_;
   double Eloss = (InitialEnergy - Eout) * dEdxScale_;
-  if (sigma_E > 0.0 && rng)
-    Eloss += rng->Gaus(0.0, sigma_E);
-  double Efinal = InitialEnergy - Eloss;
-  if (Efinal < 0.0)
-    Efinal = 0.0;
-  return Efinal;
+
+  if (sigma_E > 0.0 && rng) {
+    // Compute κ and β² for Vavilov. Standard definitions (Yi & Han Eqs. 1–3):
+    //   ξ        = (K/2) · z² · <Z/A> · ρ·t / β²     (Landau scale, MeV)
+    //   ε_max    = 2 m_e c² β² γ² / (1 + 2γ m_e/M + (m_e/M)²)
+    //   κ        = ξ / ε_max
+    constexpr double K       = 0.307075;   // MeV cm²/g (Bethe-Bloch)
+    constexpr double me_MeV  = 0.510998950;
+    const double M     = (IonMass_ > 0.0) ? IonMass_ : (A_ * 931.49410242);
+    const double gamma = 1.0 + InitialEnergy / M;
+    const double beta2 = std::max(1e-9, 1.0 - 1.0 / (gamma * gamma));
+    const double rho   = (gas_ != nullptr) ? gas_->density() : 0.0;  // g/cm³
+    const double rho_t = rho * PathLength;                            // g/cm²
+    const double zoa   = GasZoverA();
+    double standardized;
+    if (rho_t <= 0.0 || zoa <= 0.0) {
+      standardized = rng->Gaus(0.0, 1.0);
+    } else {
+      const double meM   = me_MeV / M;
+      const double xi    = 0.5 * K * Z_ * Z_ * zoa * rho_t / beta2;
+      const double emax  = 2.0 * me_MeV * beta2 * gamma * gamma
+                           / (1.0 + 2.0 * gamma * meM + meM * meM);
+      const double kappa = (emax > 0.0) ? (xi / emax) : 0.0;
+      standardized = music::VavilovSampler::Instance()
+                       .SampleStandardized(kappa, beta2, rng);
+    }
+    Eloss += sigma_E * standardized;
+  }
+
+  // Clamp to physical loss range: 0 ≤ Eloss ≤ InitialEnergy. The lower clamp
+  // rejects the residual unphysical "energy gain" tail; the upper clamp
+  // handles cases where the sample would drive the particle through zero.
+  if (Eloss < 0.0) Eloss = 0.0;
+  if (Eloss > InitialEnergy) Eloss = InitialEnergy;
+  return InitialEnergy - Eloss;
 }
 
 // Inverse of GetFinalEnergy via bisection (energy_out is monotonic in InitialEnergy).

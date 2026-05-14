@@ -2,8 +2,8 @@ CXX = g++
 CATIMA_PREFIX ?= /usr/local
 VERSION ?= dev
 CFLAGS = $(shell root-config --cflags) -Isrc/ -I$(CATIMA_PREFIX)/include -DMUSICSIM_VERSION=\"$(VERSION)\"
-LIBS = $(shell root-config --glibs) -lGeom -lEve -lRGL -L$(CATIMA_PREFIX)/lib -lcatima
-OBJS = lib/main.o lib/MUSIC_Simulator.o lib/NuclideFinder.o lib/Particle.o lib/EnergyLoss.o lib/FourVector.o
+LIBS = $(shell root-config --glibs) -lGeom -lEve -lRGL -lMathMore -L$(CATIMA_PREFIX)/lib -lcatima
+OBJS = lib/main.o lib/MUSIC_Simulator.o lib/NuclideFinder.o lib/Particle.o lib/EnergyLoss.o lib/VavilovSampler.o lib/FourVector.o
 
 all: musicsim
 
@@ -25,8 +25,11 @@ lib/Particle.o: src/Particle.cpp src/Particle.hpp src/FourVector.hpp src/EnergyL
 lib/FourVector.o: src/FourVector.cpp src/FourVector.hpp | lib
 	$(CXX) -Isrc/ -c src/FourVector.cpp -o $@
 
-lib/EnergyLoss.o: src/EnergyLoss.cpp src/EnergyLoss.hpp | lib
+lib/EnergyLoss.o: src/EnergyLoss.cpp src/EnergyLoss.hpp src/VavilovSampler.hpp | lib
 	$(CXX) $(CFLAGS) -c src/EnergyLoss.cpp -o $@
+
+lib/VavilovSampler.o: src/VavilovSampler.cpp src/VavilovSampler.hpp | lib
+	$(CXX) $(CFLAGS) -c src/VavilovSampler.cpp -o $@
 
 lib/NuclideFinder.o: src/NuclideFinder.cpp src/NuclideFinder.hpp | lib
 	$(CXX) -Isrc/ -c src/NuclideFinder.cpp -o $@

@@ -13,10 +13,16 @@ public:
   ~EnergyLoss() = default;
 
   double GetFinalEnergy(double InitialEnergy, double PathLength, double StepSize = 0.0);
-  // Forward propagation through the gas with per-step Gaussian energy
-  // straggling sampled from catima's sigma_E. dEdxScale multiplies the mean
-  // energy loss only; the straggling magnitude is left at catima's value.
-  // Pass rng=nullptr to fall back to the mean-only result.
+  // Forward propagation through the gas with per-step energy straggling.
+  // catima gives mean dE and sigma_E (Bohr-Lindhard width). For our regime
+  // (κ ≈ 0.1) the symmetric Gaussian is the wrong shape: a per-step Bohr
+  // draw can produce a negative energy loss (Kf > Ki), which is unphysical.
+  // We sample from Vavilov instead via the music::VavilovSampler singleton
+  // (Yi & Han convolution decomposition), falling back to Gaussian outside
+  // the Vavilov band [1e-3, 10]. The final energy is clamped to [0, Ki] so
+  // negative-loss tails are rejected as zero-loss for that step. dEdxScale
+  // multiplies the mean energy loss only; the straggling magnitude is left
+  // at catima's value. Pass rng=nullptr for the mean-only result.
   double GetFinalEnergyStraggled(double InitialEnergy, double PathLength, TRandom* rng);
   double GetInitialEnergy(double FinalEnergy, double PathLength, double StepSize = 0.0);
   double GetEnergyLoss(double InitialEnergy, double PathLength);
@@ -34,6 +40,9 @@ public:
 private:
   catima::Material LayerWithThickness(double PathLength_cm) const;
 
+  // <Z/A> of the gas, weighted by mass fraction. Cached on first use.
+  double GasZoverA();
+
   catima::Projectile proj_;
   const catima::Material* gas_;
   int A_;
@@ -41,6 +50,8 @@ private:
   double IonMass_;
   double dEdxScale_;
   double TOF_;
+
+  double gas_ZoverA_ = -1.0;  // sentinel: <0 means uncached
 
   static constexpr double c_cm_ns = 29.9792458;
 };

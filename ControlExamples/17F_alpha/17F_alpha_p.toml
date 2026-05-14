@@ -1,0 +1,29 @@
+[beam]
+species = "17F"   # Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
+energy_fwhm = 0.4 # Beam energy FWHM [MeV]
+
+[target]
+species = "4He"
+compound = "21Na"
+
+[detector]
+eloss_bins = 300 # Number of bins for y axis
+max_eloss = 5.0  # Max y value [MeV]
+strip_first = 1  # Strip where reaction takes place. Use -1 for unreacted beam
+strip_last = 14  # Strip where reaction takes place. Use -1 for unreacted beam
+eres = 0.085     # Energy noise level in each strip [MeV]
+
+[[reaction.step]]
+evap = { name = "1H", color = 632 } # Integer see ROOT colors
+res = { name = "20Ne" }
+
+[run]
+n_events = 10000          # Number of events simulated
+wait = 0                  # Wait between simulated events? 1=yes, 0=no
+update = 0                # Update graphics between simulated events? 1=yes, 0=no
+max_time = 2000.0         # Maximum time for an event [ns]
+sim_step = 0.001          # Simulation step size [cm]
+method = 0
+output = "traces_ap.root"
+file_opt = "recreate"
+reac_class = 1

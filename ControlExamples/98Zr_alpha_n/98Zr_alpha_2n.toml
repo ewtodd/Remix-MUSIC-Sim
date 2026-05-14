@@ -1,0 +1,31 @@
+[beam]
+species = "98Zr" # Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
+
+[target]
+species = "4He"
+compound = "102Mo"
+
+[detector]
+eloss_bins = 300 # Number of bins for y axis
+max_eloss = 25.0 # Max y value [MeV]
+strip = 12       # Strip where reaction takes place. Use -1 for unreacted beam
+eres = 0.05      # Energy noise level in each strip [MeV]
+
+[[reaction.step]]
+evap = { name = "n", color = 632 } # Integer see ROOT colors
+res = { name = "101Mo" }
+
+[[reaction.step]]
+evap = { name = "n", color = 432 } # Integer see ROOT colors
+res = { name = "100Mo" }
+
+[run]
+n_events = 300                   # Number of events simulated
+wait = 0                         # Wait between simulated events? 1=yes, 0=no
+update = 0                       # Update graphics between simulated events? 1=yes, 0=no
+max_time = 2000.0                # Maximum time for an event [ns]
+sim_step = 0.001                 # Simulation step size [cm]
+method = 0
+output = "traces_a2n_stp12.root"
+file_opt = "recreate"
+print_opt = 0

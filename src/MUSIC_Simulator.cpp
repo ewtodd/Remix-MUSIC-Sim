@@ -2,6 +2,7 @@
 // See header file for class description and compilation instructions.
 
 #include "MUSIC_Simulator.hpp"
+#include "toml.hpp"
 
 using namespace std;
 
@@ -41,6 +42,12 @@ MUSIC_Simulator::MUSIC_Simulator(int workerId)
   Heavy = 0;
   DeDau1 = 0;
   DeDau2 = 0;
+  // Trace-background histograms are only allocated for the interactive
+  // visualizer (ctf.Update != 0). Workers must leave these null so they
+  // don't collide on gROOT's name registry.
+  HCT  = 0;
+  HCTB = 0;
+  HPT  = 0;
 
   // Evaporated particles and residues arrays
   maxEvaporations = 20;            // Currently only allowing 20 evaporated particles
@@ -62,8 +69,8 @@ MUSIC_Simulator::MUSIC_Simulator(int workerId)
   zfl = new float[maxEvaporations];
   minEx = new double[maxEvaporations];
   for (int er=0; er<maxEvaporations; er++) {
-    Kl[er] = 0;
-    Kh[er] = 0;
+    Kl[er] = -2.0f;  // N/A (no reaction step at this index)
+    Kh[er] = -2.0f;
     phi_CM[er] = -1;
     theta_CM[er] = -1;
     phi_l[er] = -1;
@@ -901,215 +908,145 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 
 
 ////////////////////////////////////////////////////////////////////////////////////
-// Method to load the parameters from the control file
-// Control file example below horizontal line (---), first two lines are skipped
-// and can be used for comments. Third column can be used for comments:
-// ------------------------------------------------------
-// Control file for DecayAnalyzer class, run005         | File description
-// Parameter      Value     Comment                     | Column description
-// colorScheme    1         Int 1,2,3                   | first data line
-// ...                                                  | 
+// Parse a TOML control file. Schema (every section optional; missing keys keep
+// the defaults set in InitCTF / controlFileParams):
+//
+//   [gas]      species, pressure (Torr), temperature (K)
+//   [beam]     species, energy (MeV), energy_fwhm (MeV), dedx_scale
+//   [target]   species, compound
+//   [windows]  entrance = {material, thickness}, exit = {...}, degrader = {material, length}
+//   [detector] eloss_bins, max_eloss, strip OR (strip_first, strip_last), eres
+//   [[reaction.step]]  evap = {name, color, dedx_scale}, res = {name, color, dedx_scale}
+//   [run]      n_events, threads, wait, update, max_time, sim_step, method,
+//              output, file_opt, print_opt, reac_class
 ////////////////////////////////////////////////////////////////////////////////////
 int MUSIC_Simulator::loadCtrlFile(char* fileName)
 {
-  int Status = 0;
   ctrlFilePath_ = fileName ? fileName : "";
-  ifstream Ctrl(fileName);
-  string aux, ParName, ParVal;
-  
-  if (Ctrl.is_open()) {
-    getline(Ctrl,aux);  // skipping first line
-    getline(Ctrl,aux);  // skipping second line
-    while (!Ctrl.eof()) {
-      Ctrl >> ParName >> ParVal;
-      getline(Ctrl,aux);
-      // Detector parameters
-      if (ParName=="AnodeGeom")
-	cout << "musicsim warning: 'AnodeGeom' ignored (geometry is hardcoded)." << endl;
-      else if (ParName=="SRIMdir")
-	cout << "musicsim warning: 'SRIMdir' ignored (catima computes dE/dx on the fly)." << endl;
-      else if (ParName=="Gas")
-	ctf.gas = ParVal;
-      else if (ParName=="Pressure" || ParName=="pressure")
-	ctf.pressure = atof(ParVal.c_str());
-      else if (ParName=="Temperature" || ParName=="temperature")
-	ctf.temperature = atof(ParVal.c_str());
-      else if (ParName=="ELossBins")
-	ctf.ELossBins = atoi(ParVal.c_str());
-      else if (ParName=="MaxELoss")
-	ctf.MaxELoss = atof(ParVal.c_str());
-      else if (ParName=="strip")
-	ctf.strip = atoi(ParVal.c_str());
-      else if (ParName=="stripFirst")
-	ctf.stripFirst = atoi(ParVal.c_str());
-      else if (ParName=="stripLast")
-	ctf.stripLast = atoi(ParVal.c_str());      
-      else if (ParName=="Eres")
-	ctf.Eres = atof(ParVal.c_str());
 
-      // Beam parameters
-      else if (ParName=="beam")
-	ctf.beamName = ParVal;
-      else if (ParName=="BeamEnergy")
-	ctf.BeamEnergy = atof(ParVal.c_str());
-      else if (ParName=="Kb" || ParName=="Ebeam")
-	cout << "musicsim warning: '" << ParName << "' ignored; use 'BeamEnergy' (accelerator KE before windows)." << endl;
-      else if (ParName=="BeamEnergyFWHM" || ParName=="KbFWHM" || ParName=="EbeamFWHM")
-	ctf.KbFWHM = atof(ParVal.c_str());
-      else if (ParName=="EntranceMaterial")
-	ctf.entranceMaterial = ParVal;
-      else if (ParName=="EntranceThickness")
-	ctf.entranceThickness = atof(ParVal.c_str());
-      else if (ParName=="ExitMaterial")
-	ctf.exitMaterial = ParVal;
-      else if (ParName=="ExitThickness")
-	ctf.exitThickness = atof(ParVal.c_str());
-      else if (ParName=="DegraderMaterial")
-	ctf.degraderMaterial = ParVal;
-      else if (ParName=="DegraderLength")
-	ctf.degraderLength = atof(ParVal.c_str());
-      else if (ParName=="SRIMbeam")
-	cout << "musicsim warning: 'SRIMbeam' ignored (catima)." << endl;
-      else if (ParName=="dEdxScaleBeam")
-	ctf.dEdxScaleBeam = atof(ParVal.c_str());
-  
-      // Target parameters
-      else if (ParName=="target")
-	ctf.target = ParVal;
-      
-      // Compound parameters
-      else if (ParName=="compound")
-	ctf.compound = ParVal;
-
-      // Number of evaporated particles (e.g. 1H, n)
-      else if (ParName=="NumEvapPart")
-      	ctf.NumEvapPart = atoi(ParVal.c_str());
-
-      // Particle 0
-      else if (ParName=="evap0Name")
-	ctf.evap[0] = ParVal;
-      else if (ParName=="evap0Color")
-	ctf.colorEvap[0] = atoi(ParVal.c_str());
-      else if (ParName=="SRIMevap0")
-	cout << "musicsim warning: 'SRIMevap0' ignored (catima)." << endl;
-      else if (ParName=="dEdxScaleEvap0")
-	ctf.dEdxScaleEvap[0] = atof(ParVal.c_str());
- 
-      // Evaporation residue 0
-      else if (ParName=="res0Name")
-	ctf.res[0] = ParVal;
-      else if (ParName=="res0Color")
-	ctf.colorRes[0] = atoi(ParVal.c_str());
-      else if (ParName=="SRIMres0")
-	cout << "musicsim warning: 'SRIMres0' ignored (catima)." << endl;
-      else if (ParName=="dEdxScaleRes0")
-	ctf.dEdxScaleRes[0] = atof(ParVal.c_str());
-      
-      // Particle 1
-      else if (ParName=="evap1Name")
-	ctf.evap[1] = ParVal;
-      else if (ParName=="evap1Color")
-	ctf.colorEvap[1] = atoi(ParVal.c_str());
-      else if (ParName=="SRIMevap1")
-	cout << "musicsim warning: 'SRIMevap1' ignored (catima)." << endl;
-       else if (ParName=="dEdxScaleEvap1")
-	ctf.dEdxScaleEvap[1] = atof(ParVal.c_str());
-     
-      // Evaporation residue 1
-      else if (ParName=="res1Name")
-	ctf.res[1] = ParVal;
-      else if (ParName=="res1Color")
-	ctf.colorRes[1] = atoi(ParVal.c_str());
-      else if (ParName=="SRIMres1")
-	cout << "musicsim warning: 'SRIMres1' ignored (catima)." << endl;
-      else if (ParName=="dEdxScaleRes1")
-	ctf.dEdxScaleRes[1] = atof(ParVal.c_str());
-
-      // Particle 2
-      else if (ParName=="evap2Name")
-	ctf.evap[2] = ParVal;
-      else if (ParName=="evap2Color")
-	ctf.colorEvap[2] = atoi(ParVal.c_str());
-      else if (ParName=="SRIMevap2")
-	cout << "musicsim warning: 'SRIMevap2' ignored (catima)." << endl;
-       else if (ParName=="dEdxScaleEvap2")
-	ctf.dEdxScaleEvap[2] = atof(ParVal.c_str());
-     
-      // Evaporation residue 2
-      else if (ParName=="res2Name")
-	ctf.res[2] = ParVal;
-      else if (ParName=="res2Color")
-	ctf.colorRes[2] = atoi(ParVal.c_str());
-      else if (ParName=="SRIMres2")
-	cout << "musicsim warning: 'SRIMres2' ignored (catima)." << endl;
-      else if (ParName=="dEdxScaleRes2")
-	ctf.dEdxScaleRes[2] = atof(ParVal.c_str());
-      
-      // Particle 3
-      else if (ParName=="evap3Name")
-	ctf.evap[3] = ParVal;
-      else if (ParName=="evap3Color")
-	ctf.colorEvap[3] = atoi(ParVal.c_str());
-      else if (ParName=="SRIMevap3")
-	cout << "musicsim warning: 'SRIMevap3' ignored (catima)." << endl;
-       else if (ParName=="dEdxScaleEvap3")
-	ctf.dEdxScaleEvap[3] = atof(ParVal.c_str());
-     
-      // Evaporation residue 3
-      else if (ParName=="res3Name")
-	ctf.res[3] = ParVal;
-      else if (ParName=="res3Color")
-	ctf.colorRes[3] = atoi(ParVal.c_str());
-      else if (ParName=="SRIMres3")
-	cout << "musicsim warning: 'SRIMres3' ignored (catima)." << endl;
-      else if (ParName=="dEdxScaleRes3")
-	ctf.dEdxScaleRes[3] = atof(ParVal.c_str());
-
-      // DSG - need to generalize the residue/particle lines above and
-      // make it go to MaxNumEvepPart. Maybe with sprintf().
-
-      // Simulation parameters
-      else if (ParName=="NEvents")
-	ctf.NEvents = atoi(ParVal.c_str()); 
-      else if (ParName=="Wait")
-	ctf.Wait = atoi(ParVal.c_str()); 
-      else if (ParName=="Update")
-	ctf.Update = atoi(ParVal.c_str());
-      else if (ParName=="MaxTime")
-	ctf.MaxTime = atof(ParVal.c_str());
-      else if (ParName=="SimStep")
-	ctf.SimStep = atof(ParVal.c_str());
-      else if (ParName=="Method")
-	ctf.Method = atoi(ParVal.c_str());
-      else if (ParName=="Threads")
-	ctf.Threads = atoi(ParVal.c_str());
-      else if (ParName=="FileName")
-      	ctf.FileName = ParVal;
-      else if (ParName=="FileOpt")
-      	ctf.FileOpt = ParVal;
-      else if (ParName=="CSVfile")
-      	cout << "musicsim warning: 'CSVfile' ignored (removed; use the ROOT output)." << endl;
-      else if (ParName=="PrintOpt")
-      	ctf.PrintOpt = atoi(ParVal.c_str());
-      else if (ParName=="reacClass")
-	ctf.reacClass = atoi(ParVal.c_str());
- 
-      else
-	cout << "musicsim warning: control file parameter \'" << ParName << "\' not recognized."
-	     << endl;
-
-      
-#if 0
-      else if (ParName=="str")
-      	ctf.var = ParVal;
-      else if (ParName=="int")
-      	ctf.var = atoi(ParVal.c_str());
-      else if (ParName=="float")
-      	ctf.var = atof(ParVal.c_str());
-#endif
-    }
-    Status = 1;
+  toml::table tbl;
+  try {
+    tbl = toml::parse_file(fileName);
+  } catch (const toml::parse_error& err) {
+    cerr << "musicsim ERROR: failed to parse TOML control file '" << fileName
+         << "': " << err.description() << " at "
+         << err.source().begin << endl;
+    return 0;
   }
+
+  // ---- helpers -------------------------------------------------------------
+  // toml++ .value<T>() returns std::optional<T> and silently coerces ints to
+  // floats where it makes sense, so a key written as `1` still reads back as
+  // 1.0 if the target is a double.
+  auto getString = [&](const char* section, const char* key, std::string& dest) {
+    if (auto v = tbl.at_path(std::string(section) + "." + key).value<std::string>())
+      dest = *v;
+  };
+  auto getDouble = [&](const char* section, const char* key, auto& dest) {
+    using T = std::remove_reference_t<decltype(dest)>;
+    if (auto v = tbl.at_path(std::string(section) + "." + key).value<double>())
+      dest = T(*v);
+  };
+  auto getInt = [&](const char* section, const char* key, int& dest) {
+    if (auto v = tbl.at_path(std::string(section) + "." + key).value<int64_t>())
+      dest = int(*v);
+  };
+  auto getInlineString = [&](toml::node_view<toml::node> tbl_node, const char* key, std::string& dest) {
+    if (auto v = tbl_node[key].value<std::string>()) dest = *v;
+  };
+  auto getInlineDouble = [&](toml::node_view<toml::node> tbl_node, const char* key, auto& dest) {
+    using T = std::remove_reference_t<decltype(dest)>;
+    if (auto v = tbl_node[key].value<double>()) dest = T(*v);
+  };
+  auto getInlineInt = [&](toml::node_view<toml::node> tbl_node, const char* key, int& dest) {
+    if (auto v = tbl_node[key].value<int64_t>()) dest = int(*v);
+  };
+
+  // ---- [gas] ---------------------------------------------------------------
+  getString("gas", "species", ctf.gas);
+  getDouble("gas", "pressure",    ctf.pressure);
+  getDouble("gas", "temperature", ctf.temperature);
+
+  // ---- [beam] --------------------------------------------------------------
+  getString("beam", "species",      ctf.beamName);
+  getDouble("beam", "energy",       ctf.BeamEnergy);
+  getDouble("beam", "energy_fwhm",  ctf.KbFWHM);
+  getDouble("beam", "dedx_scale",   ctf.dEdxScaleBeam);
+
+  // ---- [target] ------------------------------------------------------------
+  getString("target", "species",  ctf.target);
+  getString("target", "compound", ctf.compound);
+
+  // ---- [windows] -----------------------------------------------------------
+  if (auto w = tbl["windows"]; w.is_table()) {
+    auto entrance = w["entrance"];
+    if (entrance.is_table()) {
+      getInlineString(entrance, "material",  ctf.entranceMaterial);
+      getInlineDouble(entrance, "thickness", ctf.entranceThickness);
+    }
+    auto exitw = w["exit"];
+    if (exitw.is_table()) {
+      getInlineString(exitw, "material",  ctf.exitMaterial);
+      getInlineDouble(exitw, "thickness", ctf.exitThickness);
+    }
+    auto deg = w["degrader"];
+    if (deg.is_table()) {
+      getInlineString(deg, "material", ctf.degraderMaterial);
+      getInlineDouble(deg, "length",   ctf.degraderLength);
+    }
+  }
+
+  // ---- [detector] ----------------------------------------------------------
+  getInt   ("detector", "eloss_bins",  ctf.ELossBins);
+  getDouble("detector", "max_eloss",   ctf.MaxELoss);
+  getInt   ("detector", "strip",       ctf.strip);
+  getInt   ("detector", "strip_first", ctf.stripFirst);
+  getInt   ("detector", "strip_last",  ctf.stripLast);
+  getDouble("detector", "eres",        ctf.Eres);
+
+  // ---- [[reaction.step]] ---------------------------------------------------
+  if (auto steps = tbl.at_path("reaction.step"); steps.is_array()) {
+    int idx = 0;
+    for (auto& el : *steps.as_array()) {
+      if (idx >= controlFileParams::MaxNumEvapPart) {
+        cerr << "musicsim warning: more than " << controlFileParams::MaxNumEvapPart
+             << " reaction steps in TOML; truncating." << endl;
+        break;
+      }
+      auto step = toml::node_view<toml::node>(&el);
+      auto evap = step["evap"];
+      if (evap.is_table()) {
+        getInlineString(evap, "name",       ctf.evap[idx]);
+        getInlineInt   (evap, "color",      ctf.colorEvap[idx]);
+        getInlineDouble(evap, "dedx_scale", ctf.dEdxScaleEvap[idx]);
+      }
+      auto res = step["res"];
+      if (res.is_table()) {
+        getInlineString(res, "name",       ctf.res[idx]);
+        getInlineInt   (res, "color",      ctf.colorRes[idx]);
+        getInlineDouble(res, "dedx_scale", ctf.dEdxScaleRes[idx]);
+      }
+      ++idx;
+    }
+    ctf.NumEvapPart = idx;
+  } else {
+    ctf.NumEvapPart = 0;
+  }
+
+  // ---- [run] ---------------------------------------------------------------
+  getInt   ("run", "n_events",   ctf.NEvents);
+  getInt   ("run", "threads",    ctf.Threads);
+  getInt   ("run", "wait",       ctf.Wait);
+  getInt   ("run", "update",     ctf.Update);
+  getDouble("run", "max_time",   ctf.MaxTime);
+  getDouble("run", "sim_step",   ctf.SimStep);
+  getInt   ("run", "method",     ctf.Method);
+  getString("run", "output",     ctf.FileName);
+  getString("run", "file_opt",   ctf.FileOpt);
+  getInt   ("run", "print_opt",  ctf.PrintOpt);
+  getInt   ("run", "reac_class", ctf.reacClass);
+
+  int Status = 1;
 
   if (Status == 1) {
     // Resolve and validate the reaction-strip selection. Bail with a clear
@@ -1646,12 +1583,14 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     // (I'm using a relativistic formula, although it is unlikely for
     // us to use relativistic energies).
     p_mag = sqrt(2*m*Kf*(1+Kf/2/m));
-    // Reduce (or increase) the total energy by amount of energy
-    // deposited in the medium.
-    if (UserStep>0)
-      Ene -= fabs(Ki - Kf);
-    else
-      Ene += fabs(Ki - Kf);
+    // Track the total relativistic energy by the signed kinetic-energy step.
+    // Forward (UserStep > 0): straggling is Vavilov-sampled and clamped at
+    //   Ki, so Kf ≤ Ki and Ene decreases.
+    // Backward (UserStep ≤ 0): deterministic GetInitialEnergy returns Kf > Ki
+    //   (energy at an earlier point), and Ene increases.
+    // Unified signed update handles both: the sign of (Ki - Kf) carries the
+    // direction so we don't need a separate branch with fabs().
+    Ene -= (Ki - Kf);
     
     // Move the coordinates of the initial point to the ones of the
     // final point.
@@ -1722,8 +1661,10 @@ void MUSIC_Simulator::ResetBranches()
   DeadUS_dE = 0.0f;
   DeadDS_dE = 0.0f;
   for (int er=0; er<maxEvaporations; er++) {
-    Kl[er] = 0;
-    Kh[er] = 0;
+    // Match the Kl_exit/Kh_exit sentinel convention so unused slots and
+    // disallowed-step slots aren't confused with "outgoing particle has KE=0".
+    Kl[er] = -2.0f;  // N/A unless overwritten by SetReactionKinematics
+    Kh[er] = -2.0f;
     Kl_exit[er] = -2.0f;  // N/A unless an exit-energy is computed
     Kh_exit[er] = -2.0f;
     phi_CM[er] = -1;
@@ -2091,27 +2032,32 @@ int MUSIC_Simulator::SetAnode(short Trans, int ELossBins, float MaxELoss)
     
     // Trace canvases show the 18 readout strips only; dead-layer dE is on
     // the MC tree as DeadUS_dE / DeadDS_dE rather than in the trace.
-    const int NReadout = 18;
-    HCTB = new TH2F("HCTB","Beam", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
-    HCTB->GetXaxis()->SetTitle("Strip ID");
-    HCTB->GetXaxis()->CenterTitle();
-    HCTB->GetYaxis()->SetTitle("Energy loss [MeV]");
-    HCTB->GetYaxis()->CenterTitle();
-    HCTB->SetStats(0);
+    // Only allocated for the interactive visualizer — workers run with
+    // ctf.Update=0 and would otherwise collide on gROOT's name registry
+    // (TROOT::Append "Replacing existing TH1: HCTB ..." warnings).
+    if (ctf.Update) {
+      const int NReadout = 18;
+      HCTB = new TH2F("HCTB","Beam", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
+      HCTB->GetXaxis()->SetTitle("Strip ID");
+      HCTB->GetXaxis()->CenterTitle();
+      HCTB->GetYaxis()->SetTitle("Energy loss [MeV]");
+      HCTB->GetYaxis()->CenterTitle();
+      HCTB->SetStats(0);
 
-    HCT = new TH2F("HCT","Column traces", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
-    HCT->GetXaxis()->SetTitle("Strip ID");
-    HCT->GetXaxis()->CenterTitle();
-    HCT->GetYaxis()->SetTitle("Energy loss [MeV]");
-    HCT->GetYaxis()->CenterTitle();
-    HCT->SetStats(0);
+      HCT = new TH2F("HCT","Column traces", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
+      HCT->GetXaxis()->SetTitle("Strip ID");
+      HCT->GetXaxis()->CenterTitle();
+      HCT->GetYaxis()->SetTitle("Energy loss [MeV]");
+      HCT->GetYaxis()->CenterTitle();
+      HCT->SetStats(0);
 
-    HPT = new TH2F("HPT","Particle traces", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
-    HPT->GetXaxis()->SetTitle("Strip ID");
-    HPT->GetXaxis()->CenterTitle();
-    HPT->GetYaxis()->SetTitle("Energy loss [MeV]");
-    HPT->GetYaxis()->CenterTitle();
-    HPT->SetStats(0);
+      HPT = new TH2F("HPT","Particle traces", NReadout, -0.5, NReadout-0.5, ELossBins,0,MaxELoss);
+      HPT->GetXaxis()->SetTitle("Strip ID");
+      HPT->GetXaxis()->CenterTitle();
+      HPT->GetYaxis()->SetTitle("Energy loss [MeV]");
+      HPT->GetYaxis()->CenterTitle();
+      HPT->SetStats(0);
+    }
 
     // From: http://root.cern.ch/root/html/TGeoManager.html#TGeoManager:CloseGeometry
     // Closing geometry implies checking the geometry validity, fixing shapes
@@ -3001,14 +2947,11 @@ int MUSIC_Simulator::SetReactionKinematics(double Kbr/*MeV*/, double zr/*cm*/, d
   for (int er=0; er<numEvaporations; er++) {
     this->theta_CM[er] = theta_CM*180/pi;
     this->phi_CM[er] = phi_CM*180/pi;
-    if (!EvaR[er]->DoNotPropagate)
-      Kh[er] = EvaR[er]->GetKE();
-    else
-      Kh[er] = 0;
-    if (!EvaP[er]->DoNotPropagate)
-      Kl[er] = EvaP[er]->GetKE();
-    else
-      Kl[er] = 0;    
+    // -2 sentinel = "step not physically realised" (energetically disallowed,
+    // DoNotPropagate flag set). Matches Kl_exit/Kh_exit convention so
+    // analysis can mask both arrays the same way.
+    Kh[er] = EvaR[er]->DoNotPropagate ? -2.0f : (float)EvaR[er]->GetKE();
+    Kl[er] = EvaP[er]->DoNotPropagate ? -2.0f : (float)EvaP[er]->GetKE();
     theta_l[er] = (EvaP[er]->GetTheta())*180/pi;
     phi_l[er] = (EvaP[er]->GetPhi())*180/pi;
     theta_h[er] = (EvaR[er]->GetTheta())*180/pi;

@@ -1,0 +1,36 @@
+[gas]
+species     = "4He"  # Fill gas: 4He, 3He, Ar, CF4, CH4, P10, iC4H10
+pressure    = 500.0  # Torr
+temperature = 293.0  # K
+
+[beam]
+species = "17F"  # Use "AEl" notation
+energy  = 37.5  # Beam KE at the accelerator (before entrance window) [MeV]
+
+[target]
+species  = "4He"
+compound = "21Na"
+
+[windows]
+entrance = { material = "Ti", thickness = 0.9 }  # mg/cm^2 areal density
+exit = { material = "Ti", thickness = 0.9 }  # mg/cm^2 areal density
+
+[detector]
+eloss_bins = 300
+max_eloss  = 5.0  # MeV
+strip      = 5  # Strip where reaction takes place
+eres       = 0.001  # MeV (Gaussian sigma per strip)
+
+[[reaction.step]]
+evap = { name = "1H", color = 632 }
+res = { name = "20Ne" }
+
+[run]
+n_events = 100
+wait     = 1
+update   = 1
+max_time = 2000.0  # ns
+sim_step = 0.001  # cm
+method   = 0
+output   = "traces.root"
+file_opt = "recreate"

@@ -1,0 +1,29 @@
+[beam]
+species = "98Nb"  # Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
+energy_fwhm = 5.0 # Beam energy FWHM [MeV]
+dedx_scale = 1.04
+
+[target]
+species = "4He"
+compound = "102Tc"
+
+[detector]
+eloss_bins = 300 # Number of bins for y axis
+max_eloss = 25.0 # Max y value [MeV]
+strip = -1       # Strip where reaction takes place. Use -1 for unreacted beam
+eres = 0.45      # Energy noise level in each strip [MeV]
+
+[[reaction.step]]
+evap = { name = "4He", color = 432 } # Integer see ROOT colors
+res = { name = "98Nb" }
+
+[run]
+n_events = 3000                                        # Number of events simulated
+wait = 0                                               # Wait between simulated events? 1=yes, 0=no
+update = 0                                             # Update graphics between simulated events? 1=yes, 0=no
+max_time = 2000.0                                      # Maximum time for an event [ns]
+sim_step = 0.001                                       # Simulation step size [cm]
+method = 0
+output = "unreacted_98Nb_Kb352_FWHM05_Eres450keV.root"
+file_opt = "recreate"
+print_opt = 0

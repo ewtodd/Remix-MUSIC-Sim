@@ -1,0 +1,40 @@
+[gas]
+species = "4He"     # Fill gas: 4He, 3He, Ar, CF4, CH4, P10, iC4H10
+pressure = 220.0    # Torr
+temperature = 293.0 # K
+
+[beam]
+species = "37Cl"  # Use "AEl" notation
+energy = 92.0     # Beam KE at the accelerator (before entrance window) [MeV]
+energy_fwhm = 0.9 # Beam energy FWHM at accelerator [MeV]
+dedx_scale = 1.0  # Beam stopping power scale factor
+
+[target]
+species = "4He"
+compound = "41K"
+
+[windows]
+entrance = { material = "Ti", thickness = 0.9 } # mg/cm^2 areal density; -1 disables
+exit = { material = "Ti", thickness = 1.3 }     # mg/cm^2 areal density; -1 disables
+degrader = { material = "Mylar", length = 6.0 } # Bulk degrader upstream of entrance window (empty = none) / microns along beam axis; -1 disables
+
+[detector]
+eloss_bins = 555 # Number of bins for y axis
+max_eloss = 10.0 # Max y value [MeV]
+strip = -1
+eres = 0.05      # Ad-hoc post-physics electronic noise sigma per strip [MeV]; -1 disables
+
+[[reaction.step]]
+evap = { name = "4He", color = 2 }
+res = { name = "37Cl", color = 4, dedx_scale = 1.0 }
+
+[run]
+n_events = 20
+max_time = 2000.0                          # ns
+threads = 1
+sim_step = 0.001                           # cm
+wait = 1                                   # Pause between events; double-click canvas to advanceMethod           0
+update = 1                                 # Render EVE 3D view + trace canvas
+output = "traces_37Cl_aa_interactive.root"
+file_opt = "recreate"
+print_opt = 0

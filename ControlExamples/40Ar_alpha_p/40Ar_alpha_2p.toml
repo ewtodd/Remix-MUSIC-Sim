@@ -1,0 +1,34 @@
+[beam]
+species = "40Ar"  # Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
+energy_fwhm = 0.5 # Beam energy FWHM [MeV]
+dedx_scale = 1.0  # Beam stopping power scale factor
+
+[target]
+species = "4He"
+compound = "44Ca"
+
+[detector]
+eloss_bins = 500 # Number of bins for y axis
+max_eloss = 40.0 # Max y value [MeV]
+strip_first = 4  # First strip
+strip_last = 4   # Last strip
+eres = 0.05      # Energy noise level (sigma) in each strip [MeV]
+
+[[reaction.step]]
+evap = { name = "1H", color = 2 }                   # Integer. See ROOT colors.
+res = { name = "43K", color = 3, dedx_scale = 1.0 } # Integer. See ROOT colors.
+
+[[reaction.step]]
+evap = { name = "1H", color = 2 }                    # Integer. See ROOT colors.
+res = { name = "42Ar", color = 9, dedx_scale = 1.0 } # Integer. See ROOT colors.
+
+[run]
+n_events = 20                 # Number of events simulated
+wait = 0                      # Wait between simulated events? 1=yes, 0=no
+update = 0                    # Update graphics between simulated events? 1=yes, 0=no
+max_time = 2000.0             # Maximum time for an event [ns]
+sim_step = 0.001              # Simulation step size [cm]
+method = 0
+output = "traces_pptest.root"
+file_opt = "recreate"
+print_opt = 1

@@ -1,0 +1,38 @@
+[gas]
+species = "CH4"     # Fill gas: 4He, 3He, Ar, CF4, CH4, P10, iC4H10
+pressure = 400.0    # Torr
+temperature = 293.0 # K
+
+[beam]
+species = "16C"
+energy = 197.0     # Beam KE at accelerator (before degrader) [MeV]; gives Kbi ~ 58 MeV at gas surface
+energy_fwhm = 12.5 # Beam energy FWHM at accelerator [MeV]
+dedx_scale = 0.95  # Beam stopping power scale factor
+
+[target]
+species = "12C"
+compound = "28Mg"
+
+[windows]
+entrance = { material = "Ti", thickness = 0.9 } # mg/cm^2 areal density
+exit = { material = "Ti", thickness = 0.9 }     # mg/cm^2 areal density
+degrader = { material = "Al", length = 360.0 }  # Bulk degrader upstream of entrance window (empty = none) / microns Al along beam axis
+
+[detector]
+eloss_bins = 500
+max_eloss = 25.0 # MeV
+strip = -1       # -1 = unreacted beam (no reaction at any strip)
+eres = 0.05      # MeV (Gaussian sigma per strip)
+
+[run]
+n_events = 50000
+threads = 8
+wait = 0
+update = 0
+max_time = 2000.0                    # ns
+sim_step = 0.001                     # cm
+method = 0
+output = "16C12C_unreactedbeam.root"
+file_opt = "recreate"
+print_opt = 0
+reac_class = 0                       # Reaction label for event classification (0 = unreacted)

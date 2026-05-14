@@ -1,4 +1,0 @@
-# Ignore all root, log, and back-up files
-*.root
-*.log
-*~
