@@ -193,16 +193,15 @@ double Particle::GetEnergyLoss(int MediumID, double InitE/*MeV*/, double PathLen
 
 
 ///////////////////////////////////////////////////////////////////////////////////
-// Compute final energy from a given medium ID, initial energy, path length and 
-// step size. Wrapped method of EnergyLoss class.
+// Compute final energy from a given medium ID, initial energy and path length.
+// Wrapped method of EnergyLoss class.
 ///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetFinalEnergy(int MediumID, double InitE/*MeV*/, double PathLength/*cm*/,
-				double StepSize/*cm*/)
+double Particle::GetFinalEnergy(int MediumID, double InitE/*MeV*/, double PathLength/*cm*/)
 {
   double FinalE = InitE;
   int m = MediumID;
   if (m>=0 && m<NumMedia) {
-    FinalE = IonInMedium[m]->GetFinalEnergy(InitE, PathLength, StepSize);
+    FinalE = IonInMedium[m]->GetFinalEnergy(InitE, PathLength);
     if (FinalE<0)
       FinalE = 0;
   }
@@ -228,16 +227,15 @@ double Particle::GetFinalEnergyStraggled(int MediumID, double InitE/*MeV*/, doub
 
 
 ///////////////////////////////////////////////////////////////////////////////////
-// Compute initial energy from a given medium ID, final energy, path length and 
-// step size. Wrapped method of EnergyLoss class
+// Compute initial energy from a given medium ID, final energy and path length.
+// Wrapped method of EnergyLoss class
 ///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetInitialEnergy(int MediumID, double FinalE/*MeV*/, double PathLength/*cm*/,
-				  double StepSize/*cm*/)
+double Particle::GetInitialEnergy(int MediumID, double FinalE/*MeV*/, double PathLength/*cm*/)
 {
   double InitE = FinalE;
   int m = MediumID;
   if (m>=0 && m<NumMedia) {
-    InitE = IonInMedium[m]->GetInitialEnergy(FinalE, PathLength, StepSize);   
+    InitE = IonInMedium[m]->GetInitialEnergy(FinalE, PathLength);
     if (InitE<0)
       InitE = 0;
   }
@@ -405,13 +403,12 @@ double Particle::GetTimeOfFlight(int MediumID)
 // Calculate the particle's time of flight (in ns) based on the medium stopping 
 // power, initial energy and track lenght.
 ///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetTimeOfFlight(int MediumID, float InitialEnergy/*MeV*/, float PathLength/*cm*/,
-				 float StepSize/*cm*/)
+double Particle::GetTimeOfFlight(int MediumID, float InitialEnergy/*MeV*/, float PathLength/*cm*/)
 {
   double TOF = 0;
   int m = MediumID;
-  if (m>=0 && m<NumMedia) 
-    TOF = IonInMedium[m]->GetTimeOfFlight(InitialEnergy, PathLength, StepSize);
+  if (m>=0 && m<NumMedia)
+    TOF = IonInMedium[m]->GetTimeOfFlight(InitialEnergy, PathLength);
   return TOF;
 }
 

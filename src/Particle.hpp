@@ -45,9 +45,9 @@ public:
   double GetEexc();
   double GetEexc(int ExcState);
   double GetEnergyLoss(int MediumID, double InitE/*MeV*/, double PathLength/*cm*/);
-  double GetFinalEnergy(int MediumID, double InitE, double PathLength, double StepSize);
+  double GetFinalEnergy(int MediumID, double InitE, double PathLength);
   double GetFinalEnergyStraggled(int MediumID, double InitE, double PathLength, TRandom* rng);
-  double GetInitialEnergy(int MediumID, double FinalE, double PathLength, double StepSize);
+  double GetInitialEnergy(int MediumID, double FinalE, double PathLength);
   double GetKE();
   double GetOptimumStepSize(int MediumID, double Energy);
   FourVector GetP();
@@ -58,7 +58,7 @@ public:
   double GetTheta();
   double GetThetaX();
   double GetTimeOfFlight(int MediumID);
-  double GetTimeOfFlight(int MediumID, float InitialEnergy, float PathLength, float StepSize);
+  double GetTimeOfFlight(int MediumID, float InitialEnergy, float PathLength);
   void GetTrajectoryAtt(short& Color, short& Style, short& Width);
   void GetX(double& X0, double& X1, double& X2, double& X3);
   void Print(std::ostream& log=std::cout);

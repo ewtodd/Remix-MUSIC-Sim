@@ -223,7 +223,7 @@ if (verbose_) {
   cout << "  Ecom(initial) = " << CME_beg << " MeV" << endl;
 }
 // Now get the CM energy at the end of the segments.
-Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength, 0.001);
+Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength);
 CMEMin = CME_end = Kb_min*mt/(mt+mb);
 if (verbose_) {
   cout << "   Ecom(filan) = " << CME_end << " MeV" << endl;
@@ -240,7 +240,7 @@ if (verbose_) {
 
 for (int i=0; i<AnodeRows; i++) {
   double Kb_in = Kb;
-  Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0], 0.001);
+  Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0]);
   double Kb_out = Kb;
   CME_end = Kb*mt/(mt+mb);
   if (verbose_) {
@@ -302,7 +302,7 @@ void MUSIC_Simulator::CalculateExcEnergyRange()
   cout << "Full excitation energy range covered in " << TotalLength << "cm:\n Eexc(beg) = " 
        << Eexc_beg << " MeV";
   // Now get the energy of excitation at the end of the segments.
-  Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength, 0.001);
+  Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength);
   pb = sqrt(2*mb*Kb_min*(1 + Kb_min/(2*mb)));
   Eb = sqrt(mb*mb + pb*pb);
   Pb.SetCoords(Eb, 0, 0, pb);
@@ -311,7 +311,7 @@ void MUSIC_Simulator::CalculateExcEnergyRange()
   cout << "   Eexc(end) = " << Eexc_end << " MeV" << endl;
   cout << "Exc. energy range in each segment:" << endl;
   for (int i=0; i<AnodeRows; i++) {
-    Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0], 0.001);
+    Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0]);
     // Linear momentum and total energy of the beam particle in the lab with the current
     // value of the kinetic energy.
     pb = sqrt(2*mb*Kb*(1 + Kb/(2*mb)));
@@ -713,9 +713,9 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	if (AnodeStpID[stp][0]==AnodeStpID[stp_base][0])
 	  break;
       }
-      Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ, 1E-3/*step size in cm*/);
+      Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ);
       MinT = Beam->GetTimeOfFlight(0);
-      Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ, 1E-3/*step size in cm*/);
+      Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ);
       MaxT = Beam->GetTimeOfFlight(0);      
       if (PrintLevel>0) {
 	Log << "|---- Kinematic constraints for strip ";
@@ -768,8 +768,8 @@ void MUSIC_Simulator::GenerateTraceDatabase(string FileName,
 	  // at which the beam particle interacts with the target and
 	  // calculate the kinetic energy at the reaction point
 	  this->zr = Rdm->Uniform(MinZ, MaxZ);
-	  //double Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr, 1E-3/*cm*/);
-	  this->Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr, 1E-3/*cm*/);
+	  //double Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr);
+	  this->Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr);
 	  double TOF = Beam->GetTimeOfFlight(0);
 	  if (PrintLevel>0)
 	    Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
@@ -1645,7 +1645,7 @@ int MUSIC_Simulator::PropagateParticle(Particle* PO, int Event, double MaxTime, 
     } else {
       // Backward kinematic propagation (beam reconstructed back to entrance).
       // Inverse straggling is not well-defined; use the mean.
-      Kf = PO->GetInitialEnergy(0, Ki, dist, dist/10);
+      Kf = PO->GetInitialEnergy(0, Ki, dist);
     }
 
     // Exit the while loop if the particle has stopped.
@@ -3231,9 +3231,9 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
     if (AnodeStpID[stp][0]==StpID)
       break;
   }
-  Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ, 1E-3/*step size in cm*/);
+  Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ);
   MinT = Beam->GetTimeOfFlight(0);
-  Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ, 1E-3/*step size in cm*/);
+  Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ);
   MaxT = Beam->GetTimeOfFlight(0);
   if (PrintLevel>0) {
     Log << "|---- Kinematic constraints for strip ";
@@ -3327,7 +3327,7 @@ void MUSIC_Simulator::Simulate(int StpID, // set to -1 for unreacted beam
       // which the beam particle interacts with the target and calculate
       // the kinetic energy at the reaction point
       this->zr = Rdm->Uniform(MinZ, MaxZ);
-      this->Kbr = Beam->GetFinalEnergy(0, Ebeam, this->zr, 1E-3/*cm*/);
+      this->Kbr = Beam->GetFinalEnergy(0, Ebeam, this->zr);
       TOF = Beam->GetTimeOfFlight(0);
       if (PrintLevel>0)
 	Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;
@@ -3546,9 +3546,9 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
     if (AnodeStpID[stp][0]==StpID)
       break;
   }
-  Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ, 1E-3/*step size in cm*/);
+  Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ);
   MinT = Beam->GetTimeOfFlight(0);
-  Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ, 1E-3/*step size in cm*/);
+  Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ);
   MaxT = Beam->GetTimeOfFlight(0);
   if (PrintLevel>0) {
     Log << "|---- Kinematic constraints for strip ";
@@ -3600,8 +3600,8 @@ void MUSIC_Simulator::Simulate(int StpID, double ThCMMin, double ThCMMax, int Th
       // which the beam particle interacts with the target and calculate
       // the kinetic energy at the reaction point
       this->zr = Rdm->Uniform(MinZ, MaxZ);
-      //double Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr, 1E-3);
-      this->Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr, 1E-3);
+      //double Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr);
+      this->Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr);
       double TOF = Beam->GetTimeOfFlight(0);
       if (PrintLevel>0)
 	Log << "Kbr = " << this->Kbr << "  zr = " << this->zr << "  tof = " << TOF << endl;

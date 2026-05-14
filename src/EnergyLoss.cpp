@@ -79,7 +79,7 @@ double EnergyLoss::InterpAt(const std::vector<double>& vals, double Ki) const {
 
 // Kinetic energy (MeV total) after traversing PathLength of gas, mean only
 // (no straggling). Hot-path lookup in the pre-tabulated dE/dx.
-double EnergyLoss::GetFinalEnergy(double InitialEnergy, double PathLength, double /*StepSize*/) {
+double EnergyLoss::GetFinalEnergy(double InitialEnergy, double PathLength) {
   if (PathLength <= 0.0 || InitialEnergy <= 0.0)
     return InitialEnergy;
   double Eloss = InterpAt(eloss_per_cm_, InitialEnergy) * PathLength * dEdxScale_;
@@ -159,18 +159,18 @@ double EnergyLoss::GetFinalEnergyStraggled(double InitialEnergy, double PathLeng
 }
 
 // Inverse of GetFinalEnergy via bisection (energy_out is monotonic in InitialEnergy).
-double EnergyLoss::GetInitialEnergy(double FinalEnergy, double PathLength, double /*StepSize*/) {
+double EnergyLoss::GetInitialEnergy(double FinalEnergy, double PathLength) {
   if (PathLength <= 0.0)
     return FinalEnergy;
   double lo = FinalEnergy;
   double hi = FinalEnergy + 1.0;
-  while (GetFinalEnergy(hi, PathLength, 0.0) < FinalEnergy && hi < 1e6) {
+  while (GetFinalEnergy(hi, PathLength) < FinalEnergy && hi < 1e6) {
     lo = hi;
     hi *= 2.0;
   }
   for (int i = 0; i < 60; ++i) {
     double mid = 0.5 * (lo + hi);
-    double Ef = GetFinalEnergy(mid, PathLength, 0.0);
+    double Ef = GetFinalEnergy(mid, PathLength);
     if (Ef < FinalEnergy)
       lo = mid;
     else
@@ -182,7 +182,7 @@ double EnergyLoss::GetInitialEnergy(double FinalEnergy, double PathLength, doubl
 }
 
 double EnergyLoss::GetEnergyLoss(double InitialEnergy, double PathLength) {
-  return InitialEnergy - GetFinalEnergy(InitialEnergy, PathLength, 0.0);
+  return InitialEnergy - GetFinalEnergy(InitialEnergy, PathLength);
 }
 
 double EnergyLoss::GetOptimumStepSize(double Energy) {
@@ -207,7 +207,7 @@ double EnergyLoss::GetPathLength(double InitialEnergy, double FinalEnergy, doubl
   double L = 0.0;
   double tof_ns = 0.0;
   while (E > FinalEnergy && L < 1e5) {
-    double Enew = GetFinalEnergy(E, step, 0.0);
+    double Enew = GetFinalEnergy(E, step);
     if (Enew <= 0.0) {
       L += step;
       break;
@@ -229,17 +229,19 @@ double EnergyLoss::GetPathLength(double InitialEnergy, double FinalEnergy, doubl
 
 double EnergyLoss::GetTimeOfFlight() { return TOF_; }
 
-double EnergyLoss::GetTimeOfFlight(double InitialEnergy, double PathLength, double StepSize) {
+double EnergyLoss::GetTimeOfFlight(double InitialEnergy, double PathLength) {
   if (PathLength <= 0.0 || InitialEnergy <= 0.0)
     return 0.0;
-  if (StepSize <= 0.0)
-    StepSize = GetOptimumStepSize(InitialEnergy);
+  // Pick an integration step locally — GetOptimumStepSize keeps it small
+  // enough relative to dE/dx that dE per slice stays in the linear regime
+  // of the tabulated stopping power.
+  const double dxInt = GetOptimumStepSize(InitialEnergy);
   double E = InitialEnergy;
   double remaining = PathLength;
   double tof_ns = 0.0;
   while (remaining > 0.0 && E > 0.0) {
-    double dx = std::min(StepSize, remaining);
-    double Enew = GetFinalEnergy(E, dx, 0.0);
+    double dx = std::min(dxInt, remaining);
+    double Enew = GetFinalEnergy(E, dx);
     double Emid = 0.5 * (E + Enew);
     double beta = std::sqrt(1.0 - std::pow(IonMass_ / (Emid + IonMass_), 2));
     double v = beta * c_cm_ns;
