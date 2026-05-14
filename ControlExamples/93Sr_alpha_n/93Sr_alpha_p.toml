@@ -14,8 +14,16 @@ strip = 6        # Strip where reaction takes place. Use -1 for unreacted beam
 eres = 0.1       # Energy noise level (sigma) in each strip [MeV]
 
 [[reaction.step]]
-evap = { name = "1H", color = 4 }                   # Integer. See ROOT colors.
-res = { name = "96Y", color = 3, dedx_scale = 1.0 } # Integer. See ROOT colors.
+[reaction.step.evap]
+# Integer. See ROOT colors.
+name = "1H"
+color = 4
+
+[reaction.step.res]
+# Integer. See ROOT colors.
+name = "96Y"
+color = 3
+dedx_scale = 1.0
 
 [run]
 n_events = 1000                             # Number of events simulated

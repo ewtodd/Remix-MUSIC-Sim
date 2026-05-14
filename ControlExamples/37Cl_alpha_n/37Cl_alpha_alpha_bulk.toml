@@ -13,10 +13,20 @@ dedx_scale = 1.0  # Beam stopping power scale factor
 species = "4He"
 compound = "41K"
 
-[windows]
-entrance = { material = "Ti", thickness = 0.9 } # mg/cm^2 areal density; -1 disables
-exit = { material = "Ti", thickness = 1.3 }     # mg/cm^2 areal density; -1 disables
-degrader = { material = "Mylar", length = 6.0 } # Bulk degrader upstream of entrance window (empty = none) / microns along beam axis; -1 disables
+[windows.entrance]
+# mg/cm^2 areal density; -1 disables
+material = "Ti"
+thickness = 0.9
+
+[windows.exit]
+# mg/cm^2 areal density; -1 disables
+material = "Ti"
+thickness = 1.3
+
+[windows.degrader]
+# Bulk degrader upstream of entrance window (empty = none) / microns along beam axis; -1 disables
+material = "Mylar"
+length = 6.0
 
 [detector]
 eloss_bins = 555 # Number of bins for y axis
@@ -26,8 +36,14 @@ strip_last = 13
 eres = 0.05      # Ad-hoc post-physics electronic noise sigma per strip [MeV]; -1 disables
 
 [[reaction.step]]
-evap = { name = "4He", color = 2 }
-res = { name = "37Cl", color = 4, dedx_scale = 1.0 }
+[reaction.step.evap]
+name = "4He"
+color = 2
+
+[reaction.step.res]
+name = "37Cl"
+color = 4
+dedx_scale = 1.0
 
 [run]
 n_events = 10000

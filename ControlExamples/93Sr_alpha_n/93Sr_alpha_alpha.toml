@@ -14,8 +14,16 @@ strip = -1       # Strip where reaction takes place. Use -1 for unreacted beam
 eres = 0.1       # Energy noise level (sigma) in each strip [MeV]
 
 [[reaction.step]]
-evap = { name = "4He", color = 2 }                   # Integer. See ROOT colors.
-res = { name = "93Sr", color = 4, dedx_scale = 1.0 } # Integer. See ROOT colors.
+[reaction.step.evap]
+# Integer. See ROOT colors.
+name = "4He"
+color = 2
+
+[reaction.step.res]
+# Integer. See ROOT colors.
+name = "93Sr"
+color = 4
+dedx_scale = 1.0
 
 [run]
 n_events = 100000                           # Number of events simulated
@@ -24,7 +32,6 @@ update = 0                                  # Update graphics between simulated 
 max_time = 2000.0                           # Maximum time for an event [ns]
 sim_step = 0.001                            # Simulation step size [cm]
 method = 0
-output = "traces_aa_stp6_600Torr_lise.root"
 output = "unreacted_93Sr_600Torr_lise.root"
 file_opt = "recreate"
 print_opt = 1

@@ -15,8 +15,13 @@ strip_last = -1  # Strip where reaction takes place. Use -1 for unreacted beam
 eres = 0.085     # Energy noise level in each strip [MeV]
 
 [[reaction.step]]
-evap = { name = "4He", color = 632 } # Integer see ROOT colors
-res = { name = "17F" }
+[reaction.step.evap]
+# Integer see ROOT colors
+name = "4He"
+color = 632
+
+[reaction.step.res]
+name = "17F"
 
 [run]
 n_events = 1              # Number of events simulated
@@ -25,8 +30,6 @@ update = 0                # Update graphics between simulated events? 1=yes, 0=n
 max_time = 2000.0         # Maximum time for an event [ns]
 sim_step = 0.001          # Simulation step size [cm]
 method = 0
-output = "traces_aa.root"
-output = "unreacted.root"
 output = "test.root"
 file_opt = "recreate"
 reac_class = 0

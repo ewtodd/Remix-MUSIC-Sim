@@ -14,8 +14,16 @@ strip = 3        # Strip where reaction takes place. Use -1 for unreacted beam
 eres = 0.183     # Energy noise level (sigma) in each strip [MeV]
 
 [[reaction.step]]
-evap = { name = "n", color = 4 }                     # Evaporated particle in reaction 0
-res = { name = "91Zr", color = 3, dedx_scale = 1.0 } # Residual particle in reaction 0
+[reaction.step.evap]
+# Evaporated particle in reaction 0
+name = "n"
+color = 4
+
+[reaction.step.res]
+# Residual particle in reaction 0
+name = "91Zr"
+color = 3
+dedx_scale = 1.0
 
 [run]
 n_events = 30                                    # Number of events simulated
