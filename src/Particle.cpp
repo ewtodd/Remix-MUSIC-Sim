@@ -53,11 +53,10 @@ Particle::Particle(string Name, double M, int Q, bool SaveTrajectory)
   TrY = new float[MaxPoints];
   TrZ = new float[MaxPoints];
   TrK = new float[MaxPoints];
-  // Particle trajectories
+  // Particle trajectory (single TEveStraightLineSet, lazily populated by
+  // PropagateParticle for the interactive visualizer). The historical per-event
+  // AllTraj array (MaxEvents) is gone — it was always allocated, never used.
   Trajectory = new TEveStraightLineSet();
-  AllTraj = new TEveStraightLineSet*[MaxEvents];
-  for (int e=0; e<MaxEvents; e++) 
-    AllTraj[e] = new TEveStraightLineSet();
 }
 
 
@@ -315,19 +314,8 @@ double Particle::GetPathLength(int MediumID, double InitE/*MeV*/, double FinalE/
 ///////////////////////////////////////////////////////////////////////////////////
 double Particle::GetPhi()
 {
-  double pi = 3.14159265359;
-  double phi = 0;
-  double px = P.GetX1();
-  double py = P.GetX2();
-  if (px>=0 && py>0) 
-    phi = atan(py/px);
-  else if (px<0 && py>0)
-    phi = pi + atan(py/px);
-  else if (px<0 && py<0)
-    phi = pi + atan(py/px);
-  else if (px>0 && py<0)
-    phi = 2*pi + atan(py/px);
-
+  double phi = atan2(P.GetX2(), P.GetX1());
+  if (phi < 0) phi += 2*M_PI;
   return phi;
 }
 
@@ -336,19 +324,8 @@ double Particle::GetPhi()
 ///////////////////////////////////////////////////////////////////////////////////
 double Particle::GetPhiX()
 {
-  double pi = 3.14159265359;
-  double phi = 0;
-  double x = X.GetX1();
-  double y = X.GetX2();
-  if (x>=0 && y>0) 
-    phi = atan(y/x);
-  else if (x<0 && y>0)
-    phi = pi + atan(y/x);
-  else if (x<0 && y<0)
-    phi = pi + atan(y/x);
-  else if (x>0 && y<0)
-    phi = 2*pi + atan(y/x);
-
+  double phi = atan2(X.GetX2(), X.GetX1());
+  if (phi < 0) phi += 2*M_PI;
   return phi;
 }
 
@@ -358,15 +335,9 @@ double Particle::GetPhiX()
 ///////////////////////////////////////////////////////////////////////////////////
 double Particle::GetTheta()
 {
-  double pi = 3.14159265359;
-  double theta;
   double px = P.GetX1();
   double py = P.GetX2();
-  double pz = P.GetX3();
-  theta = atan(sqrt(px*px+py*py)/pz);
-  if (pz<0)
-    theta += pi;
-  return theta;
+  return atan2(sqrt(px*px + py*py), P.GetX3());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -374,15 +345,9 @@ double Particle::GetTheta()
 ///////////////////////////////////////////////////////////////////////////////////
 double Particle::GetThetaX()
 {
-  double pi = 3.14159265359;
-  double theta;
   double x = X.GetX1();
   double y = X.GetX2();
-  double z = X.GetX3();
-  theta = atan(sqrt(x*x+y*y)/z);
-  if (z<0)
-    theta += pi;
-  return theta;
+  return atan2(sqrt(x*x + y*y), X.GetX3());
 }
 
 
@@ -536,8 +501,12 @@ void Particle::SetExcEnergies(int N, double* Eexc, double* Prob)
   double Cumulative = 0;
   if (N>0 && Eexc!=0) {
     NEexc = N;
+    // Release any prior allocations (constructor allocates Eexc[1]; callers may
+    // also invoke SetExcEnergies more than once).
+    delete[] this->Eexc;
+    delete[] ProbExc;
+    delete PDF;
     this->Eexc = new double[N];
-    //    this->Prob = new double[N];
     ProbExc = new double[N+1];
     // Set the excitation energies and get the normalization factor
     // for ProbExc
