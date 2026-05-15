@@ -19,7 +19,7 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "26.5.14";
+        version = "26.5.15";
         catima = pkgs.stdenv.mkDerivation {
           pname = "catima";
           version = "75d22b2";

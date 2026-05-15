@@ -241,8 +241,8 @@ private:
 
   // TTree output. Layout mirrors the upstream EventBuilderNearestGrid format
   // but with MeV energies rather than ADC counts (hence the "_MeV" suffix).
-  // "event_MeV" carries detector-level branches; "MC" carries truth-only
-  // branches and is friended onto event_MeV (rows correspond 1:1).
+  // "events_MeV" carries detector-level branches; "MC" carries truth-only
+  // branches and is friended onto events_MeV (rows correspond 1:1).
   TTree *SimTree;
   TTree *MCTree;
   static const Int_t N_STRIPS = 18;

@@ -1,6 +1,6 @@
 #include "Simulator.hpp"
 
-// Initialize the "event_MeV" tree (detector-level output, layout matches the
+// Initialize the "events_MeV" tree (detector-level output, layout matches the
 // upstream EventBuilderNearestGrid) and the friended "MC" tree (truth-only).
 // Energies are Float_t in MeV (the upstream data file uses Int_t ADC counts);
 // analysis is expected to apply per-channel calibration to compare data
@@ -9,7 +9,7 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
   TTree *tree;
   const Bool_t update = (FileOpt == "update" || FileOpt == "UPDATE");
   if (ROOTfile && update) {
-    tree = (TTree *)ROOTfile->Get("event_MeV");
+    tree = (TTree *)ROOTfile->Get("events_MeV");
     tree->SetBranchAddress("LeftdE", LeftdE);
     tree->SetBranchAddress("RightdE", RightdE);
     tree->SetBranchAddress("TotaldE", TotaldE);
@@ -42,7 +42,7 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     MCTree->SetBranchAddress("zfe", &zfe);
     MCTree->SetBranchAddress("resID", &resID);
   } else {
-    tree = new TTree("event_MeV", "Simulated MUSIC events (energies in MeV)");
+    tree = new TTree("events_MeV", "Simulated MUSIC events (energies in MeV)");
     tree->Branch("LeftdE", LeftdE, Form("LeftdE[%d]/F", N_STRIPS));
     tree->Branch("RightdE", RightdE, Form("RightdE[%d]/F", N_STRIPS));
     tree->Branch("TotaldE", TotaldE, Form("TotaldE[%d]/F", N_STRIPS));
@@ -76,7 +76,7 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     MCTree->Branch("yfe", &yfe, "yfe/F");
     MCTree->Branch("zfe", &zfe, "zfe/F");
     MCTree->Branch("resID", &resID, "resID/I");
-    // Friended so users can `event_MeV->Draw("Kbr:Cathode")` without manually
+    // Friended so users can `events_MeV->Draw("Kbr:Cathode")` without manually
     // loading MCTree.
     tree->AddFriend(MCTree);
   }

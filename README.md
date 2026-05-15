@@ -220,13 +220,13 @@ and `AnodeGeom` are dropped (catima handles dE/dx; geometry is hardcoded).
 Each run produces one ROOT file with two trees, mirroring the format produced by
 the upstream `EventBuilderNearestGrid` analysis used [here](https://github.com/ewtodd/MUSIC/tree/main/ProductionMode_37Cl/macros):
 <!---->
-- **`event_MeV`** — detector-level branches.
+- **`events_MeV`** — detector-level branches.
 `LeftdE[18]`, `RightdE[18]`, and
   `TotaldE[18]` (Float, MeV).
   Energies are MeV truth (hence the `_MeV` suffix
   vs the upstream ADC-valued `event` tree), so analysis macros should
   calibrate data to MeV rather than rescaling sim to ADC.
-- **`MC`** — truth-only branches, friended to `event_MeV`: reaction strip, beam
+- **`MC`** — truth-only branches, friended to `events_MeV`: reaction strip, beam
   kinematics (`BeamEnergyAccel` at the accelerator, `Kbi` at the gas surface,
   `Kbr` at the reaction point, `Kbeam_exit` after the exit window),
   light/heavy four-vector components, vertex and exit positions, per-evap
