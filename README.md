@@ -61,7 +61,23 @@ eloss_bins  = 555
 max_eloss   = 10.0      # MeV
 strip_first = 3         # alternatively: strip = -1 for unreacted-beam runs
 strip_last  = 13
-eres        = 0.05      # MeV; -1 disables
+eres        = 0.05      # MeV; scalar broadcasts to all 34 anode electrodes.
+                        # -1 disables. Does NOT set cathode noise — use the
+                        # [detector.eres] table form for that.
+ignore_short_strips = false  # true zeroes the 4 cm half-strip electrodes
+                             # (odd s -> R, even s -> L) on the anode L/R
+                             # branches. Cathode still receives their dE.
+# Per-channel form (mutually exclusive with the scalar `eres` above — pick
+# one). Keys: Cathode, S0, S17, L1..L16, R1..R16 (35 channels total). Any
+# missing key keeps its default of -1 (no noise on that channel).
+# [detector.eres]
+# Cathode = 0.05
+# S0      = 0.04
+# L1      = 0.06
+# R1      = 0.05
+# ...
+# R16     = 0.05
+# S17     = 0.04
 #
 [[reaction.step]]                            # add more [[reaction.step]] for decay chains
 [reaction.step.evap]

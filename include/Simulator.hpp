@@ -2,6 +2,7 @@
 #define SIMULATOR_HPP
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <future>
@@ -79,7 +80,6 @@ public:
   void SetLightParticle(TString Name, Int_t Color);
   void SetPrintLevel(Int_t PrintLevel);
   void SetROOTSystemPointer(TSystem *gSystem);
-  void SetStripEnergyResolution(Float_t Sigma /*MeV*/);
   void SetTargetParticle(TString Name);
   void Simulate(Int_t StpID, Int_t NEvents, Double_t MaxTime, Double_t UserStep,
                 Int_t UpdateVis = 0, Int_t Wait = 0, TFile *ROOTfile = 0);
@@ -156,8 +156,19 @@ private:
   Int_t maxEvaporations;
   Int_t numEvaporations;
   Double_t Kb_after_window;
-  Double_t EneSigma;
   Double_t *minEx;
+
+  // Map (stpid, col) to flat index in ctf.Eres / per-electrode arrays.
+  // User-facing order: S0, L1, R1, L2, R2, ..., L16, R16, S17 (34 entries).
+  // In code: col 0 = beam right, col 1 = beam left.
+  static constexpr Int_t kNumElectrodes = 34;
+  static Int_t ElectrodeIndex(Int_t stpid, Int_t col) {
+    if (stpid == 0)
+      return 0;
+    if (stpid == 17)
+      return 33;
+    return 2 * stpid - 1 + (col == 0 ? 1 : 0);
+  }
 
   // Per-strip energy deposits.
   Double_t **DeltaEB_ave;
@@ -337,7 +348,16 @@ private:
     Int_t strip = kStripUnset;
     Int_t stripFirst = kStripUnset;
     Int_t stripLast = kStripUnset;
-    Double_t Eres = -1; // MeV — ad-hoc post-physics noise σ per strip
+    // Per-electrode anode noise sigma (MeV). 34 entries indexed by
+    // ElectrodeIndex(stpid, col). -1 means "no noise on this electrode".
+    // Scalar TOML eres = X broadcasts X to all 34 entries (anodes only).
+    std::array<Double_t, kNumElectrodes> Eres;
+    // Independent cathode-readout noise σ (MeV). Set via the `Cathode` key
+    // inside the [detector.eres] table (scalar broadcast does not touch it).
+    Double_t EresCathode = -1;
+    // If true, drop the 4 cm "short" half-strip electrodes from the anode
+    // readout (their dE still contributes to the cathode — one big plate).
+    Bool_t IgnoreShortStrips = false;
     Int_t NEvents;
     Int_t Wait;       // 1: canvas waits for user click; 0: no wait
     Int_t Update;     // 1: update visuals per event; 0: don't

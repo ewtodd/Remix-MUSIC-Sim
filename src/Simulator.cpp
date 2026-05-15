@@ -138,8 +138,6 @@ void Simulator::SetROOTSystemPointer(TSystem *gSystem) {
   CheckMemoryUsage(1);
 }
 
-void Simulator::SetStripEnergyResolution(Float_t Sigma) { EneSigma = Sigma; }
-
 // Populate catima's global DataPoint cache for every (projectile, material)
 // the workers will see. catima's cache is a process-wide ring buffer;
 // concurrent writes race, but read-only lookups (cspline_special, our default
@@ -216,7 +214,15 @@ Int_t Simulator::run() {
     LabelKine = 0;
   }
 
-  SetStripEnergyResolution(ctf.Eres);
+  if (ctf.IgnoreShortStrips) {
+    Log << "\tIgnoring short (4 cm) half-strip electrodes on the anode readout."
+        << " They still contribute to the cathode sum." << std::endl;
+    if (verbose_)
+      std::cerr << "musicsim WARNING: ignore_short_strips=true — short (4 cm) "
+                   "half-strip dE is zeroed on Left/Right anode branches, but "
+                   "still summed into Cathode."
+                << std::endl;
+  }
   BuildGasMaterial();
   Log << "\tGas material configured (" << ctf.gas << ", " << ctf.pressure
       << " Torr, " << ctf.temperature << " K, density " << gas_.density()

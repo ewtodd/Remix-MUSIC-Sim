@@ -8,7 +8,10 @@
 //   [target]   species, compound
 //   [windows.entrance], [windows.exit], [windows.degrader]
 //                 material, and exactly one of thickness_mg_cm2 / thickness_um
-//   [detector] eloss_bins, max_eloss, strip OR (strip_first, strip_last), eres
+//   [detector] eloss_bins, max_eloss, strip OR (strip_first, strip_last),
+//              eres (scalar broadcast to anodes only, or [detector.eres]
+//              table keyed by channel name: Cathode, S0, S17, L1..L16,
+//              R1..R16), ignore_short_strips
 //   [[reaction.step]]  evap = {name, color, dedx_scale},
 //                      res  = {name, color, dedx_scale}
 //   [physics]  z_effective, low_energy   (catima Config knobs)
@@ -162,7 +165,64 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
   getInt("detector", "strip", ctf.strip);
   getInt("detector", "strip_first", ctf.stripFirst);
   getInt("detector", "strip_last", ctf.stripLast);
-  getDouble("detector", "eres", ctf.Eres);
+  // eres accepts either a scalar (broadcast to all 34 anode electrodes) or
+  // a TOML table keyed by channel name: Cathode, S0, S17, L{s} / R{s} for
+  // s = 1..16. Missing keys keep their default (-1 = no noise). Scalar
+  // broadcast does NOT touch the cathode — that's a separate physical
+  // channel; set it explicitly via the Cathode key in the table form.
+  if (auto eresNode = tbl.at_path("detector.eres")) {
+    if (auto v = eresNode.value<Double_t>()) {
+      ctf.Eres.fill(*v);
+    } else if (auto *sub = eresNode.as_table()) {
+      auto setChannel = [&](const std::string &key, Double_t v) {
+        if (key == "Cathode") {
+          ctf.EresCathode = v;
+          return;
+        }
+        Int_t stpid = -1, col = -1;
+        if (key == "S0") {
+          stpid = 0;
+          col = 0;
+        } else if (key == "S17") {
+          stpid = 17;
+          col = 0;
+        } else if (key.size() >= 2 && (key[0] == 'L' || key[0] == 'R')) {
+          try {
+            Int_t s = std::stoi(key.substr(1));
+            if (s >= 1 && s <= 16) {
+              stpid = s;
+              col = (key[0] == 'R') ? 0 : 1;
+            }
+          } catch (...) {
+          }
+        }
+        if (stpid < 0) {
+          std::cerr << "musicsim ERROR: detector.eres key '" << key
+                    << "' is not a valid channel name (expected Cathode, S0, "
+                       "S17, or L1..L16 / R1..R16)."
+                    << std::endl;
+          std::exit(EXIT_FAILURE);
+        }
+        ctf.Eres[Simulator::ElectrodeIndex(stpid, col)] = v;
+      };
+      for (const auto &[k, node] : *sub) {
+        if (auto v = node.value<Double_t>())
+          setChannel(std::string(k.str()), *v);
+        else {
+          std::cerr << "musicsim ERROR: detector.eres." << k.str()
+                    << " is not a number." << std::endl;
+          std::exit(EXIT_FAILURE);
+        }
+      }
+    } else {
+      std::cerr << "musicsim ERROR: detector.eres must be a number "
+                   "(broadcast) or a table keyed by channel name."
+                << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+  }
+  if (auto v = tbl.at_path("detector.ignore_short_strips").value<bool>())
+    ctf.IgnoreShortStrips = *v;
 
   // [physics] — catima Config knobs. These mutate the process-wide
   // default_config, so the values picked here affect every dE/dx and
@@ -306,7 +366,9 @@ void Simulator::InitCTF() {
   ctf.strip = controlFileParams::kStripUnset;
   ctf.stripFirst = controlFileParams::kStripUnset;
   ctf.stripLast = controlFileParams::kStripUnset;
-  ctf.Eres = -1.0;
+  ctf.Eres.fill(-1.0);
+  ctf.EresCathode = -1.0;
+  ctf.IgnoreShortStrips = false;
   ctf.NEvents = 10;
   ctf.Wait = 1;
   ctf.Update = 1;
