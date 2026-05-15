@@ -93,7 +93,7 @@ void Simulator::ResetBranches() {
   for (Int_t s = 0; s < N_STRIPS; ++s) {
     LeftdE[s] = RightdE[s] = TotaldE[s] = 0;
   }
-
+  Cathode = 0;
   reacStp = -1;
   Kbi = Kbr = 0;
   Kbeam_exit = -2.0f; // N/A unless overwritten on unreacted-beam events
