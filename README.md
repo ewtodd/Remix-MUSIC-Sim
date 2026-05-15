@@ -221,11 +221,8 @@ Each run produces one ROOT file with two trees, mirroring the format produced by
 the upstream `EventBuilderNearestGrid` analysis used [here](https://github.com/ewtodd/MUSIC/tree/main/ProductionMode_37Cl/macros):
 <!---->
 - **`event_MeV`** — detector-level branches.
-`LeftdE[18]`, `RightdE[18]`,
-  `TotaldE[18]` (Float, MeV); `AllTimestamps[36]` (ULong64), `AllFlags[36]`
-  (UInt, always 0 in sim), `Hits[36]` (Int, 0/1 above noise threshold);
-  `Cathode`, `Grid` (Float, MeV); `IsComplete` (Bool, same heuristic as the
-  upstream event builder).
+`LeftdE[18]`, `RightdE[18]`, and
+  `TotaldE[18]` (Float, MeV).
   Energies are MeV truth (hence the `_MeV` suffix
   vs the upstream ADC-valued `event` tree), so analysis macros should
   calibrate data to MeV rather than rescaling sim to ADC.
