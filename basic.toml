@@ -1,10 +1,10 @@
 [gas]
-species     = "4He"  # Fill gas: 4He, 3He, Ar, CF4, CH4, P10, iC4H10
-pressure    = 500.0  # Torr
-temperature = 293.0  # K
+species     = "4He" # Fill gas: 4He, 3He, Ar, CF4, CH4, P10, iC4H10
+pressure    = 500.0 # Torr
+temperature = 293.0 # K
 
 [beam]
-species = "17F"  # Use "AEl" notation
+species = "17F" # Use "AEl" notation
 energy  = 37.5  # Beam KE at the accelerator (before entrance window) [MeV]
 
 [target]
@@ -13,23 +13,28 @@ compound = "21Na"
 
 [windows.entrance]
 # mg/cm^2 areal density
-material = "Ti"
+material         = "Ti"
 thickness_mg_cm2 = 0.9
 
 [windows.exit]
 # mg/cm^2 areal density
-material = "Ti"
+material         = "Ti"
 thickness_mg_cm2 = 0.9
 
 [detector]
 eloss_bins = 300
-max_eloss  = 5.0  # MeV
-strip      = 5  # Strip where reaction takes place
-eres       = 0.001  # MeV (Gaussian sigma per strip)
+max_eloss  = 5.0   # MeV
+strip      = 5     # Strip where reaction takes place
+eres       = 0.001 # MeV; scalar broadcasts to all 34 anode electrodes.
+# For per-channel sigma (including the cathode) use a
+# [detector.eres] table with keys Cathode, S0, S17,
+# L1..L16, R1..R16 instead.
+ignore_short_strips = false # true zeroes the 4 cm half-strip electrodes on
+# the anode L/R branches (cathode unaffected).
 
 [[reaction.step]]
 [reaction.step.evap]
-name = "1H"
+name  = "1H"
 color = 632
 
 [reaction.step.res]
@@ -39,8 +44,8 @@ name = "20Ne"
 n_events = 100
 wait     = 1
 update   = 1
-max_time = 2000.0  # ns
-sim_step = 0.001  # cm
+max_time = 2000.0        # ns
+sim_step = 0.001         # cm
 method   = 0
 output   = "traces.root"
 file_opt = "recreate"

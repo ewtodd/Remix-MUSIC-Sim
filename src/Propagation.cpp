@@ -208,50 +208,81 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
     this->reacStp = reacStp;
 
   for (Int_t row = 0; row < AnodeRows; row++) {
-    Double_t DeltaE = 0;
+    // Strip ID for this row. AnodeStpID[row][1] is unset (-1) for the
+    // single-column rows (S0, S17, dead layers); col 0 carries the real id.
+    Int_t rowStpid = AnodeStpID[row][0];
+
+    // First pass: assemble noiseless dE per column from all particles, and
+    // draw per-electrode noise for real anode electrodes (col 0..AnodeCols-1
+    // on readout-strip rows). Dead layers get no noise — we have no
+    // experimental info to anchor a sigma. The col == AnodeCols sum column
+    // is a derived view used only for trace visualization, not a real
+    // electrode, so it carries no independent noise either.
+    Double_t baseDE[3] = {0, 0, 0};
+    Double_t noisedDE[3] = {0, 0, 0};
     for (Int_t col = 0; col < AnodeCols + 1; col++) {
-      DeltaE = DeltaEB[row][col];
+      Double_t DeltaE = DeltaEB[row][col];
       for (Int_t er = 0; er < numEvaporations; er++) {
         DeltaE += DeltaE_EvaP[er][row][col];
         DeltaE += DeltaE_EvaR[er][row][col];
       }
+      baseDE[col] = DeltaE;
+      noisedDE[col] = DeltaE;
+      if (col < AnodeCols && rowStpid >= 0 && rowStpid <= 17) {
+        Double_t sigma = ctf.Eres[ElectrodeIndex(rowStpid, col)];
+        if (sigma > 0.0)
+          noisedDE[col] += Rdm->Gaus(0.0, sigma);
+      }
+    }
 
-      // Add per-strip electronic noise on top of catima's straggling.
-      if (ctf.Eres > 0.0)
-        DeltaE += Rdm->Gaus(0.0, ctf.Eres);
-
-      // Per-strip accumulation into the event-tree layout. stpid -1/-2 are
-      // the upstream / downstream dead layers; 0..17 are readout strips
-      // (0 and 17 single-column, 1..16 split L/R).
-      if (SimTree != 0 && col < AnodeCols) {
-        Int_t stpid = AnodeStpID[row][col];
-        if (stpid == -1) {
-          DeadUS_dE += DeltaE;
-        } else if (stpid == -2) {
-          DeadDS_dE += DeltaE;
-        } else if (stpid >= 0 && stpid <= 17) {
-          Cathode += DeltaE;
-          if (stpid == 0) {
-            TotaldE[0] += DeltaE;
-          } else if (stpid == 17) {
-            TotaldE[17] += DeltaE;
+    // Output-tree accumulation. Dead-layer rows go to their own scalars
+    // (noiseless). Readout-strip rows split into per-electrode L/R, plus a
+    // physically-summed Cathode contribution that ignores the short-strip
+    // mask (the cathode is one big plate).
+    if (SimTree != 0) {
+      if (rowStpid == -1) {
+        DeadUS_dE += baseDE[0];
+      } else if (rowStpid == -2) {
+        DeadDS_dE += baseDE[0];
+      } else if (rowStpid >= 0 && rowStpid <= 17) {
+        for (Int_t col = 0; col < AnodeCols; col++) {
+          // Skip the unused col=1 slot on full-width rows (S0, S17).
+          if (AnodeStpID[row][col] != rowStpid)
+            continue;
+          // Cathode sees ions regardless of which anode finger sits above;
+          // it gets the noiseless dE summed across electrodes, and a single
+          // independent Gaussian is added after the row loop.
+          Cathode += baseDE[col];
+          Bool_t isShort = (AnodeDX[row][col] < 4.5);
+          if (ctf.IgnoreShortStrips && isShort)
+            continue;
+          if (rowStpid == 0) {
+            TotaldE[0] += noisedDE[col];
+          } else if (rowStpid == 17) {
+            TotaldE[17] += noisedDE[col];
           } else {
             if (col == 0)
-              RightdE[stpid] += DeltaE;
+              RightdE[rowStpid] += noisedDE[col];
             else
-              LeftdE[stpid] += DeltaE;
+              LeftdE[rowStpid] += noisedDE[col];
           }
         }
       }
-      // Trace TGraphs (interactive visualization only): one point per readout
-      // strip, indexed by stpid on the x-axis. Dead-layer rows are skipped.
-      if (tracesCreated) {
-        Int_t stpid = AnodeStpID[row][0];
-        if (stpid >= 0 && stpid <= 17)
-          Trace[col]->SetPoint(stpid, stpid, DeltaE);
-      }
+    }
+
+    // Trace TGraphs (interactive visualization only): one point per readout
+    // strip, indexed by stpid on the x-axis. Dead-layer rows are skipped.
+    if (tracesCreated && rowStpid >= 0 && rowStpid <= 17) {
+      for (Int_t col = 0; col < AnodeCols + 1; col++)
+        Trace[col]->SetPoint(rowStpid, rowStpid, noisedDE[col]);
     }
   }
+
+  // Single independent Gaussian for the cathode readout channel (one plate,
+  // one electronics chain). Applied after the row loop so the per-electrode
+  // anode noise does not leak in.
+  if (SimTree != 0 && ctf.EresCathode > 0.0)
+    Cathode += Rdm->Gaus(0.0, ctf.EresCathode);
 
   if (tracesCreated) {
     for (Int_t col = 0; col < AnodeCols + 1; col++) {
