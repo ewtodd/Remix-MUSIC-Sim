@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Reformat staged C/C++ files with clang-format and staged TOML files with
+# taplo, then re-stage them. Style for TOML comes from .taplo.toml. If a
+# formatter is not on PATH the hook warns and skips that pass — enter
+# `nix develop` to get both tools.
+set -e
+
+STYLE='{BasedOnStyle: LLVM, BreakStringLiterals: false}'
+
+cpp_files=$(git diff --cached --name-only --diff-filter=ACMR \
+            | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' || true)
+toml_files=$(git diff --cached --name-only --diff-filter=ACMR \
+             | grep -E '\.toml$' || true)
+
+if [ -n "$cpp_files" ]; then
+    if command -v clang-format >/dev/null; then
+        for f in $cpp_files; do
+            clang-format -i --style="$STYLE" "$f"
+            git add "$f"
+        done
+    else
+        echo "pre-commit: clang-format not found, skipping C/C++ format pass." >&2
+    fi
+fi
+
+if [ -n "$toml_files" ]; then
+    if command -v taplo >/dev/null; then
+        for f in $toml_files; do
+            taplo fmt "$f"
+            git add "$f"
+        done
+    else
+        echo "pre-commit: taplo not found, skipping TOML format pass." >&2
+    fi
+fi

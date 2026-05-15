@@ -54,13 +54,18 @@
         packages.default = musicsim;
         devShells.default = pkgs.mkShell {
           inputsFrom = [ musicsim ];
-          nativeBuildInputs = with pkgs; [ clang-tools ];
+          nativeBuildInputs = with pkgs; [
+            clang-tools
+            taplo
+          ];
           shellHook = ''
             export CATIMA_PREFIX=${catima}
             export MUSICSIM_VERSION=${version}
             export CPLUS_INCLUDE_PATH="$PWD/include''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
             export ROOT_INCLUDE_PATH="$PWD/include:${pkgs.root}/include"
             export LD_LIBRARY_PATH="$PWD/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            # Use .githooks/ for pre-commit formatting (clang-format + taplo).
+            git config --local core.hooksPath .githooks 2>/dev/null || true
           '';
         };
       }
