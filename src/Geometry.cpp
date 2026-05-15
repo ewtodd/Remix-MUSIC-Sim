@@ -41,12 +41,13 @@ void Simulator::LoadHardcodedAnodeGeometry() {
   put(0, 0, -1, "DeadUS", 9, 10, 3.590, 920);
   // Strip 0 (full width).
   put(1, 0, 0, "S0", 9, 10, 1.578, 416);
-  // Strips 1..16 split L/R: right (col 0) alternates 4 / 5 cm; left = 10 −
-  // right.
+  // Strips 1..16 split L/R. Halves sum to 9 cm (not 10). Short half
+  // alternates: odd s → R is short (4 cm), L is long (5 cm); even s →
+  // L is short (4 cm), R is long (5 cm).
   for (Int_t s = 1; s <= 16; ++s) {
     Int_t row = 1 + s;
     Double_t dxR = (s % 2 == 1) ? 4 : 5;
-    Double_t dxL = 10 - dxR;
+    Double_t dxL = 9 - dxR;
     char nameR[16], nameL[16];
     std::snprintf(nameR, sizeof(nameR), "S%dC0", s);
     std::snprintf(nameL, sizeof(nameL), "S%dC1", s);
