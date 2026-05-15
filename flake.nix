@@ -38,6 +38,7 @@
           buildInputs = with pkgs; [
             root
             catima
+            tomlplusplus
           ];
           buildPhase = ''
             make CATIMA_PREFIX=${catima} VERSION=${version}
@@ -57,6 +58,9 @@
           shellHook = ''
             export CATIMA_PREFIX=${catima}
             export MUSICSIM_VERSION=${version}
+            export CPLUS_INCLUDE_PATH="$PWD/include''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
+            export ROOT_INCLUDE_PATH="$PWD/include:${pkgs.root}/include"
+            export LD_LIBRARY_PATH="$PWD/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           '';
         };
       }

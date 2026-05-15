@@ -1,84 +1,52 @@
-// Methods for the Particle class. See header file for class description.
-// Compile with: 
-// On linux
-//  g++ -shared -fPIC Particle.cpp `root-config --cflags --glibs` -o Particle.so
-// On MacOS (work in progress)
-// g++ -shared -fPIC Particle.cpp FourVector.so EnergyLoss.so `root-config --cflags --glibs` -lEve -o Particle.so
-// By Daniel Santiago-Gonzalez
-// 2014
-
 #include "Particle.hpp"
-#include <cmath>
 
-using namespace std;
-
-///////////////////////////////////////////////////////////////////////////////////
-// Constructor
-///////////////////////////////////////////////////////////////////////////////////
-Particle::Particle(string Name, double M, int Q, bool SaveTrajectory)
-{
+Particle::Particle(TString Name, Double_t M, Int_t Q, Bool_t SaveTrajectory) {
   this->Name = Name;
   this->Q = Q;
   Mass = M;
-  A = 0;  // Not used at this moment.
+  A = 0;
   Z = Q;
   NEexc = 1;
   this->SaveTrajectory = SaveTrajectory;
   DoNotPropagate = false;
-  
-  // Variables
+
   AttColor = 1;
   AttStyle = 1;
   AttWidth = 2;
   CurrentExcState = 0;
   NumMedia = 0;
-  P.SetName("P_"+Name);
-  P.SetCoords(M,0,0,0);
+  P.SetName("P_" + Name);
+  P.SetCoords(M, 0, 0, 0);
   RI = 0;
   TrPts = 0;
-  X.SetName("X_"+Name);
-  X.SetCoords(0,0,0,0);
-  // Pointers
-  Eexc = new double[NEexc];
+  X.SetName("X_" + Name);
+  X.SetCoords(0, 0, 0, 0);
+
+  Eexc = new Double_t[NEexc];
   Eexc[0] = 0.0;
   PDF = 0;
   ProbExc = 0;
-  IonInMedium = new EnergyLoss*[MaxMedia];
-  for (int m=0; m<MaxMedia; m++)
+  IonInMedium = new EnergyLoss *[MaxMedia];
+  for (Int_t m = 0; m < MaxMedia; m++)
     IonInMedium[m] = 0;
   gas_ = nullptr;
   dEdxScale_ = 1.0;
-  TrT = new float[MaxPoints];
-  TrX = new float[MaxPoints];
-  TrY = new float[MaxPoints];
-  TrZ = new float[MaxPoints];
-  TrK = new float[MaxPoints];
-  // Particle trajectory (single TEveStraightLineSet, lazily populated by
-  // PropagateParticle for the interactive visualizer). The historical per-event
-  // AllTraj array (MaxEvents) is gone — it was always allocated, never used.
+  TrT = new Float_t[MaxPoints];
+  TrX = new Float_t[MaxPoints];
+  TrY = new Float_t[MaxPoints];
+  TrZ = new Float_t[MaxPoints];
+  TrK = new Float_t[MaxPoints];
   Trajectory = new TEveStraightLineSet();
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Lorentz boost for the position and momentum four-vectors.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::Boost(double BetaX, double BetaY, double BetaZ)
-{
+void Particle::Boost(Double_t BetaX, Double_t BetaY, Double_t BetaZ) {
   X.Boost(BetaX, BetaY, BetaZ);
   P.Boost(BetaX, BetaY, BetaZ);
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Copy members of another Particle object.  It does not modify Name. Needs to be
-// updated.
-///////////////////////////////////////////////////////////////////////////////////
-//Particle& Particle::operator=(const Particle& rhs) {
-void Particle::Copy(Particle* rhs) {
+// Note: does NOT modify Name.
+void Particle::Copy(Particle *rhs) {
   if (this != rhs) {
-    // Do the assignment operation.
     A = rhs->A;
     SetExcEnergies(rhs->NEexc, rhs->Eexc);
     Mass = rhs->Mass;
@@ -86,21 +54,17 @@ void Particle::Copy(Particle* rhs) {
     Z = rhs->Z;
     X = rhs->X;
     P = rhs->P;
-    if (rhs->gas_) SetMedium(rhs->gas_, rhs->dEdxScale_);
+    if (rhs->gas_)
+      SetMedium(rhs->gas_, rhs->dEdxScale_);
   }
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Copy the trace information to individual arrays.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::CopyTrace(int& NumPts, float* t, float* x, float* y, float* z, float* K)
-{
-  int TotPoints = TrPts;
-  if (TrPts>MaxPoints)
+void Particle::CopyTrace(Int_t &NumPts, Float_t *t, Float_t *x, Float_t *y,
+                         Float_t *z, Float_t *K) {
+  Int_t TotPoints = TrPts;
+  if (TrPts > MaxPoints)
     TotPoints = MaxPoints;
-  for (int p=0; p<TotPoints; p++) {
+  for (Int_t p = 0; p < TotPoints; p++) {
     t[p] = TrT[p];
     x[p] = TrX[p];
     y[p] = TrY[p];
@@ -108,349 +72,197 @@ void Particle::CopyTrace(int& NumPts, float* t, float* x, float* y, float* z, fl
     K[p] = TrK[p];
   }
   NumPts = TotPoints;
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Get the cartesian components of the velocity in units of c.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::GetBeta(double& BetaX, double& BetaY, double& BetaZ)
-{
-  double E = P.GetX0();
-  double px = P.GetX1();
-  double py = P.GetX2();
-  double pz = P.GetX3();
-  BetaX = px/E;
-  BetaY = py/E;
-  BetaZ = pz/E;
-  return;
+void Particle::GetBeta(Double_t &BetaX, Double_t &BetaY, Double_t &BetaZ) {
+  Double_t E = P.GetX0();
+  BetaX = P.GetX1() / E;
+  BetaY = P.GetX2() / E;
+  BetaZ = P.GetX3() / E;
 }
 
+Int_t Particle::GetCurrentExcState() { return CurrentExcState; }
 
-///////////////////////////////////////////////////////////////////////////////////
-// Used only in ANASEN Simulator and HELIOS Simulator.
-///////////////////////////////////////////////////////////////////////////////////
-int Particle::GetCurrentExcState()
-{
-  return CurrentExcState;
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////
-// Get an excitation energy based on the probaility distribution, ExcProb, which
-// was specified by the user in SetExcEnergies().
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetEexc()
-{
-  double Eexc = 0;
-  if (NEexc==1)
+Double_t Particle::GetEexc() {
+  Double_t Eexc = 0;
+  if (NEexc == 1) {
     Eexc = this->Eexc[0];
-  else if (PDF!=0 && ProbExc!=0 && this->Eexc!=0) {
-    double Rdm = PDF->Uniform();
-    for (int ne=0; ne<NEexc; ne++) {
-      if (Rdm>=ProbExc[ne] && Rdm<ProbExc[ne+1]) {
-	CurrentExcState = ne;
-	Eexc = this->Eexc[ne];
-	break;
+  } else if (PDF != 0 && ProbExc != 0 && this->Eexc != 0) {
+    Double_t Rdm = PDF->Uniform();
+    for (Int_t ne = 0; ne < NEexc; ne++) {
+      if (Rdm >= ProbExc[ne] && Rdm < ProbExc[ne + 1]) {
+        CurrentExcState = ne;
+        Eexc = this->Eexc[ne];
+        break;
       }
     }
   }
-  // Working to make this part of the method obsolete and change to
-  // use ExcProb only.
-  // if (this->Eexc!=0 && CurrentExcState>=0 && CurrentExcState<NEexc)
-  //   Eexc = this->Eexc[CurrentExcState];
   return Eexc;
 }
 
-double Particle::GetEexc(int ExcState)
-{
-  double Eexc = 0;
-  if (this->Eexc!=0 && ExcState>=0 && ExcState<NEexc)
-    Eexc = this->Eexc[ExcState];
-  return Eexc;
+Double_t Particle::GetEexc(Int_t ExcState) {
+  if (this->Eexc != 0 && ExcState >= 0 && ExcState < NEexc)
+    return this->Eexc[ExcState];
+  return 0;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// OBSOLETE!! 
-// Returns the energy loss for a given medium (MediumID) and initial energy (InitE) 
-// over a small (differential) path length.
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetEnergyLoss(int MediumID, double InitE/*MeV*/, double PathLength/*cm*/)
-{
-  double DE = 0;
-  //  int m = MediumID;
-  // if (m>=0 && m<NumMedia) {
-  //   DE = IonInMedium[m]->GetEnergyLoss(InitE, PathLength);   
-  //   if (DE<0)
-  //     DE = 0;
-  // }
-  return DE;
+// OBSOLETE — body retained as a no-op for legacy callers.
+Double_t Particle::GetEnergyLoss(Int_t /*MediumID*/, Double_t /*InitE*/,
+                                 Double_t /*PathLength*/) {
+  return 0;
 }
 
-
-
-///////////////////////////////////////////////////////////////////////////////////
-// Compute final energy from a given medium ID, initial energy and path length.
-// Wrapped method of EnergyLoss class.
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetFinalEnergy(int MediumID, double InitE/*MeV*/, double PathLength/*cm*/)
-{
-  double FinalE = InitE;
-  int m = MediumID;
-  if (m>=0 && m<NumMedia) {
-    FinalE = IonInMedium[m]->GetFinalEnergy(InitE, PathLength);
-    if (FinalE<0)
-      FinalE = 0;
-  }
-  return FinalE;
-}
-
-///////////////////////////////////////////////////////////////////////////////////
-// Same as GetFinalEnergy but with per-step Gaussian straggling sampled from
-// catima's sigma_E. Pass rng=nullptr to fall back to the mean.
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetFinalEnergyStraggled(int MediumID, double InitE/*MeV*/, double PathLength/*cm*/,
-                                         TRandom* rng)
-{
-  double FinalE = InitE;
-  int m = MediumID;
-  if (m>=0 && m<NumMedia) {
-    FinalE = IonInMedium[m]->GetFinalEnergyStraggled(InitE, PathLength, rng);
-    if (FinalE<0)
-      FinalE = 0;
-  }
-  return FinalE;
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////
-// Compute initial energy from a given medium ID, final energy and path length.
-// Wrapped method of EnergyLoss class
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetInitialEnergy(int MediumID, double FinalE/*MeV*/, double PathLength/*cm*/)
-{
-  double InitE = FinalE;
-  int m = MediumID;
-  if (m>=0 && m<NumMedia) {
-    InitE = IonInMedium[m]->GetInitialEnergy(FinalE, PathLength);
-    if (InitE<0)
-      InitE = 0;
+Double_t Particle::GetFinalEnergy(Int_t MediumID, Double_t InitE,
+                                  Double_t PathLength) {
+  if (MediumID >= 0 && MediumID < NumMedia) {
+    Double_t FinalE = IonInMedium[MediumID]->GetFinalEnergy(InitE, PathLength);
+    return (FinalE < 0) ? 0 : FinalE;
   }
   return InitE;
 }
 
+Double_t Particle::GetFinalEnergyStraggled(Int_t MediumID, Double_t InitE,
+                                           Double_t PathLength, TRandom *rng) {
+  if (MediumID >= 0 && MediumID < NumMedia) {
+    Double_t FinalE =
+        IonInMedium[MediumID]->GetFinalEnergyStraggled(InitE, PathLength, rng);
+    return (FinalE < 0) ? 0 : FinalE;
+  }
+  return InitE;
+}
 
-///////////////////////////////////////////////////////////////////////////////////
-// Return the kinetic energy (total energy minus mass minus excitation energy).
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetKE()
-{
-  double KE = P.GetX0() - Mass - GetEexc();
-  if (KE<0.0) {
+Double_t Particle::GetInitialEnergy(Int_t MediumID, Double_t FinalE,
+                                    Double_t PathLength) {
+  if (MediumID >= 0 && MediumID < NumMedia) {
+    Double_t InitE =
+        IonInMedium[MediumID]->GetInitialEnergy(FinalE, PathLength);
+    return (InitE < 0) ? 0 : InitE;
+  }
+  return FinalE;
+}
+
+Double_t Particle::GetKE() {
+  Double_t KE = P.GetX0() - Mass - GetEexc();
+  if (KE < 0.0) {
     KE = 0.0;
-    cout << "Warning(" << Name << "): unrealistic negative kinetic energy (KE) -> KE set equal to 0."
-	 << endl;
+    std::cout << "Warning(" << Name << "): unrealistic negative KE -> set to 0."
+              << std::endl;
   }
   return KE;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// For a given incident energy, this method returns the optimum step size (in cm).
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetOptimumStepSize(int MediumID, double Energy/*MeV*/)
-{
-  double StepSize = 0.1;
-  int m = MediumID;
-  if (m>=0 && m<NumMedia) 
-    StepSize = 0.01*(IonInMedium[m]->GetOptimumStepSize(Energy));
-  return StepSize;
+Double_t Particle::GetOptimumStepSize(Int_t MediumID, Double_t Energy) {
+  if (MediumID >= 0 && MediumID < NumMedia)
+    return 0.01 * IonInMedium[MediumID]->GetOptimumStepSize(Energy);
+  return 0.1;
 }
 
+FourVector Particle::GetP() { return P; }
 
-
-
-///////////////////////////////////////////////////////////////////////////////////
-// Return four momentum objects.
-///////////////////////////////////////////////////////////////////////////////////
-FourVector Particle::GetP()
-{
-  FourVector P = this->P;
-  return P;
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////
-// Return coordinates of four momentum.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::GetP(double& P0, double& P1, double& P2, double& P3)
-{
+void Particle::GetP(Double_t &P0, Double_t &P1, Double_t &P2, Double_t &P3) {
   P0 = P.GetX0();
   P1 = P.GetX1();
   P2 = P.GetX2();
   P3 = P.GetX3();
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// 
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetPathLength(int MediumID, double InitE/*MeV*/, double FinalE/*MeV*/,
-			       double DeltaT/*ns*/)
-{
-  double PL = 0;
-  int m = MediumID;
-  if (m>=0 && m<NumMedia) 
-    PL = IonInMedium[m]->GetPathLength((float)InitE, (float)FinalE, (float)DeltaT);
-  return PL;
+Double_t Particle::GetPathLength(Int_t MediumID, Double_t InitE,
+                                 Double_t FinalE, Double_t DeltaT) {
+  if (MediumID >= 0 && MediumID < NumMedia)
+    return IonInMedium[MediumID]->GetPathLength(InitE, FinalE, DeltaT);
+  return 0;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Get the azimuthal angle of the momentum vector in radians (from 0 to 2*pi).
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetPhi()
-{
-  double phi = atan2(P.GetX2(), P.GetX1());
-  if (phi < 0) phi += 2*M_PI;
+Double_t Particle::GetPhi() {
+  Double_t phi = std::atan2(P.GetX2(), P.GetX1());
+  if (phi < 0)
+    phi += 2 * M_PI;
   return phi;
 }
 
-///////////////////////////////////////////////////////////////////////////////////
-// Get the azimuthal angle of the position vector in radians (from 0 to 2*pi).
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetPhiX()
-{
-  double phi = atan2(X.GetX2(), X.GetX1());
-  if (phi < 0) phi += 2*M_PI;
+Double_t Particle::GetPhiX() {
+  Double_t phi = std::atan2(X.GetX2(), X.GetX1());
+  if (phi < 0)
+    phi += 2 * M_PI;
   return phi;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Get the polar angle of the momentum vector in radians.
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetTheta()
-{
-  double px = P.GetX1();
-  double py = P.GetX2();
-  return atan2(sqrt(px*px + py*py), P.GetX3());
+Double_t Particle::GetTheta() {
+  Double_t px = P.GetX1();
+  Double_t py = P.GetX2();
+  return std::atan2(std::sqrt(px * px + py * py), P.GetX3());
 }
 
-///////////////////////////////////////////////////////////////////////////////////
-// Get the polar angle of the position vector in radians.
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetThetaX()
-{
-  double x = X.GetX1();
-  double y = X.GetX2();
-  return atan2(sqrt(x*x + y*y), X.GetX3());
+Double_t Particle::GetThetaX() {
+  Double_t x = X.GetX1();
+  Double_t y = X.GetX2();
+  return std::atan2(std::sqrt(x * x + y * y), X.GetX3());
 }
 
-
-
-///////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetTimeOfFlight(int MediumID)
-{
-  double TOF = 0;
-  int m = MediumID;
-  if (m>=0 && m<NumMedia) 
-    TOF = IonInMedium[m]->GetTimeOfFlight();
-  return TOF;
+Double_t Particle::GetTimeOfFlight(Int_t MediumID) {
+  if (MediumID >= 0 && MediumID < NumMedia)
+    return IonInMedium[MediumID]->GetTimeOfFlight();
+  return 0;
 }
 
-///////////////////////////////////////////////////////////////////////////////////
-// Calculate the particle's time of flight (in ns) based on the medium stopping 
-// power, initial energy and track lenght.
-///////////////////////////////////////////////////////////////////////////////////
-double Particle::GetTimeOfFlight(int MediumID, float InitialEnergy/*MeV*/, float PathLength/*cm*/)
-{
-  double TOF = 0;
-  int m = MediumID;
-  if (m>=0 && m<NumMedia)
-    TOF = IonInMedium[m]->GetTimeOfFlight(InitialEnergy, PathLength);
-  return TOF;
+Double_t Particle::GetTimeOfFlight(Int_t MediumID, Float_t InitialEnergy,
+                                   Float_t PathLength) {
+  if (MediumID >= 0 && MediumID < NumMedia)
+    return IonInMedium[MediumID]->GetTimeOfFlight(InitialEnergy, PathLength);
+  return 0;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Return the trajectory attributes.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::GetTrajectoryAtt(short& Color, short& Style, short& Width)
-{
+void Particle::GetTrajectoryAtt(Short_t &Color, Short_t &Style,
+                                Short_t &Width) {
   Color = AttColor;
   Style = AttStyle;
   Width = AttWidth;
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Return coordinates of position four vector.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::GetX(double& X0, double& X1, double& X2, double& X3)
-{
+void Particle::GetX(Double_t &X0, Double_t &X1, Double_t &X2, Double_t &X3) {
   X0 = X.GetX0();
   X1 = X.GetX1();
   X2 = X.GetX2();
   X3 = X.GetX3();
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// Simple function that prints some variables of this class.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::Print(ostream& log)
-{
-  log << "|== Particle " << Name << " =================================|"<< endl;
+void Particle::Print(std::ostream &log) {
+  log << "|== Particle " << Name << " =================================|"
+      << std::endl;
   log << "| mass = " << Mass << " MeV/c^2   Z = " << Q << " e\n"
       << "| Eexc = ";
-  if (NEexc>0) {
-    for (int n=0; n<NEexc; n++) {
+  if (NEexc > 0) {
+    for (Int_t n = 0; n < NEexc; n++) {
       log << Eexc[n];
-      if (n<NEexc-1)
-	log << ", ";
-      else
-	log << "\n";
+      log << ((n < NEexc - 1) ? ", " : "\n");
     }
+  } else {
+    log << " 0 MeV" << std::endl;
   }
-  else
-    log << " 0 MeV" << endl;
-  log << "| KE = " << GetKE() << " Mev" << endl;
+  log << "| KE = " << GetKE() << " MeV" << std::endl;
   log << "| ";
   X.Print(log);
   log << "| ";
   P.Print(log);
   if (SaveTrajectory) {
-    log << "| Trajectory: " << Trajectory  << " C=" << Trajectory->GetLineColor() 
-	<< " W=" << Trajectory->GetLineWidth() << " S=" << Trajectory->GetLineStyle() << endl;
-  } 
-  else 
-    log << "| Trajectory object not saved." << endl;
-  if (NumMedia>0 && gas_) {
-    log << "| Stopping-power via catima; gas density = "
-        << gas_->density() << " g/cm³, dE/dx scale = " << dEdxScale_ << endl;
+    log << "| Trajectory: " << Trajectory << " C=" << Trajectory->GetLineColor()
+        << " W=" << Trajectory->GetLineWidth()
+        << " S=" << Trajectory->GetLineStyle() << std::endl;
+  } else {
+    log << "| Trajectory object not saved." << std::endl;
   }
-  log << "|==================================================|"<< endl;
-  return;
+  if (NumMedia > 0 && gas_) {
+    log << "| Stopping-power via catima; gas density = " << gas_->density()
+        << " g/cm³, dE/dx scale = " << dEdxScale_ << std::endl;
+  }
+  log << "|==================================================|" << std::endl;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::ResetTrace()
-{
-  int TotPoints = TrPts;
-  if (TrPts==0)
+void Particle::ResetTrace() {
+  Int_t TotPoints = TrPts;
+  if (TrPts == 0)
     TotPoints = MaxPoints;
-  for (int p=0; p<TotPoints; p++) {
+  for (Int_t p = 0; p < TotPoints; p++) {
     TrT[p] = -1000;
     TrX[p] = 0;
     TrY[p] = 0;
@@ -458,197 +270,111 @@ void Particle::ResetTrace()
     TrK[p] = 0;
   }
   TrPts = 0;
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::ResetKinematics()
-{
-  P.SetCoords(Mass,0,0,0);
-  X.SetCoords(0,0,0,0);
+void Particle::ResetKinematics() {
+  P.SetCoords(Mass, 0, 0, 0);
+  X.SetCoords(0, 0, 0, 0);
   Eexc[0] = 0.0;
-  return;
 }
 
-
-
-///////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetCurrentExcState(int ExcState)
-{
+void Particle::SetCurrentExcState(Int_t ExcState) {
   CurrentExcState = ExcState;
-  return;
 }
 
+// If Prob is provided, it's the (un-normalised) selection weight per state;
+// the cumulative probability ProbExc is built and normalised. If Prob=0, all
+// excited states are equally likely.
+void Particle::SetExcEnergies(Int_t N, Double_t *Eexc, Double_t *Prob) {
+  if (N <= 0 || Eexc == 0)
+    return;
+  NEexc = N;
+  delete[] this->Eexc;
+  delete[] ProbExc;
+  delete PDF;
+  this->Eexc = new Double_t[N];
+  ProbExc = new Double_t[N + 1];
 
-///////////////////////////////////////////////////////////////////////////////////
-// Set the number of excited states for this particle and obtain their values from 
-// the array Eexc[]. The user has the option to provide the probability for each
-// excitation energy to be selected. This can be specified in the Prob array. If
-// not specified (i.e. Prob=0, default value), all excited states will have the 
-// same probability to be selected when calling the GetEexc() method.
-// Prob example: if Prob[3] = {1.5, 3.5, 2.5}, the cumulative probability is given 
-// by, ProbExc[4] = {0, 1.5, 5.0, 7.5}. Then, the final normalized array is
-// ProbExc[4] = {0, 0.2, 0.666, 1}
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetExcEnergies(int N, double* Eexc, double* Prob)
-{
-  double Norm = 0;
-  double Cumulative = 0;
-  if (N>0 && Eexc!=0) {
-    NEexc = N;
-    // Release any prior allocations (constructor allocates Eexc[1]; callers may
-    // also invoke SetExcEnergies more than once).
-    delete[] this->Eexc;
-    delete[] ProbExc;
-    delete PDF;
-    this->Eexc = new double[N];
-    ProbExc = new double[N+1];
-    // Set the excitation energies and get the normalization factor
-    // for ProbExc
-    for (int n=0; n<N; n++) {
-      this->Eexc[n] = Eexc[n];
-      if (Prob!=0)
-	Norm += Prob[n];
-      else
-	Norm += 1.0/N;
-    }
-    // Get the cumulative probability
-    ProbExc[0] = 0.0;
-    for (int n=0; n<N; n++) {
-      if (Prob!=0)
-	Cumulative += Prob[n];
-      else
-	Cumulative += 1.0/N;
-      ProbExc[n+1] = Cumulative;
-    }
-    // Normalize ProbExc
-    for (int n=0; n<N+1; n++) 
-      ProbExc[n] = ProbExc[n]/Norm;
-
-    // Pseudo-random number generator
-    PDF = new TRandom3();
-    PDF->SetSeed();
+  Double_t Norm = 0;
+  for (Int_t n = 0; n < N; n++) {
+    this->Eexc[n] = Eexc[n];
+    Norm += (Prob != 0) ? Prob[n] : 1.0 / N;
   }
-  return;
+  ProbExc[0] = 0.0;
+  Double_t Cumulative = 0;
+  for (Int_t n = 0; n < N; n++) {
+    Cumulative += (Prob != 0) ? Prob[n] : 1.0 / N;
+    ProbExc[n + 1] = Cumulative;
+  }
+  for (Int_t n = 0; n < N + 1; n++)
+    ProbExc[n] /= Norm;
+
+  PDF = new TRandom3();
+  PDF->SetSeed();
 }
 
+void Particle::SetExcEnergy(Double_t Ex) { Eexc[0] = Ex; }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// This method is used when the user wants to specify a single excitation energy.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetExcEnergy(double Ex) {
-  Eexc[0] = Ex;
-  return;
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////
-// Configure energy loss in the (single) gas medium using catima.
-// A is derived from Mass (MeV/c²) / atomic mass unit; Z is the particle's Z.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetMedium(const catima::Material* gas, float dEdxScale)
-{
-  if (gas == nullptr) return;
+// Mass number A is derived from Mass (MeV/c²) / atomic mass unit.
+void Particle::SetMedium(const catima::Material *gas, Float_t dEdxScale) {
+  if (gas == nullptr)
+    return;
   if (Z <= 0) {
-    // Expected for neutral particles (e.g. neutrons); skip silently. They
-    // are propagated by ExitWindow / kinematics-only paths, not catima.
+    // Neutral particles (e.g. neutrons) propagate via ExitWindow / kinematics
+    // paths, not catima. Skip silently.
     return;
   }
-  const double amu_MeV = 931.49410242;
-  int A_derived = (Mass > 0.0) ? int(std::round(Mass / amu_MeV)) : 0;
+  const Double_t amu_MeV = 931.49410242;
+  Int_t A_derived = (Mass > 0.0) ? Int_t(std::round(Mass / amu_MeV)) : 0;
   if (A_derived <= 0) {
-    cout << Name << ": cannot derive mass number from Mass=" << Mass << " MeV/c²" << endl;
+    std::cout << Name << ": cannot derive mass number from Mass=" << Mass
+              << " MeV/c²" << std::endl;
     return;
   }
-  if (A == 0) A = A_derived;
+  if (A == 0)
+    A = A_derived;
   NumMedia = 1;
   gas_ = gas;
   dEdxScale_ = dEdxScale;
-  if (IonInMedium[0]) delete IonInMedium[0];
+  if (IonInMedium[0])
+    delete IonInMedium[0];
   IonInMedium[0] = new EnergyLoss(A_derived, Z, Mass, gas, dEdxScale);
-  return;
 }
 
-///////////////////////////////////////////////////////////////////////////////////
-// Copy just the coordinates of the four vector V to the class member P.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetP(FourVector V) 
-{
-  double P0, P1, P2, P3;
-  P0 = V.GetX0();
-  P1 = V.GetX1();
-  P2 = V.GetX2();
-  P3 = V.GetX3();
+void Particle::SetP(FourVector V) {
+  P.SetCoords(V.GetX0(), V.GetX1(), V.GetX2(), V.GetX3());
+}
+
+void Particle::SetP(Double_t P0, Double_t P1, Double_t P2, Double_t P3) {
   P.SetCoords(P0, P1, P2, P3);
-  return;
 }
 
+void Particle::SetReactionIndex(Int_t RI) { this->RI = RI; }
 
-///////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetP(double P0, double P1, double P2, double P3) 
-{
-  P.SetCoords(P0, P1, P2, P3);
-  return;
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetReactionIndex(int RI)
-{
-  this->RI = RI;
-  return;
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetTracePoint(float t, float x, float y, float z, float K)
-{
-  int p = TrPts;
-  if (p<MaxPoints) {
+void Particle::SetTracePoint(Float_t t, Float_t x, Float_t y, Float_t z,
+                             Float_t K) {
+  Int_t p = TrPts;
+  if (p < MaxPoints) {
     TrT[p] = t;
     TrX[p] = x;
     TrY[p] = y;
     TrZ[p] = z;
     TrK[p] = K;
+  } else {
+    std::cout << "Warning: " << Name
+              << " reached maximum number of trace points." << std::endl;
   }
-  else 
-    cout << "Warning: " << Name << " reached maximum number of trace points." << endl;
   TrPts++;
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-// This method is needed because the attributes of TEveStraightLineSet elements
-// cannot be set until lines have been added to it (via the AddLine method). 
-// Otheriwse, it gives a 'segmentation violation' error.
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetTrajectoryAtt(short Color, short Style, short Width)
-{
+// TEveStraightLineSet attributes can only be set after lines have been added
+// (otherwise segfaults), so cache them here and apply later.
+void Particle::SetTrajectoryAtt(Short_t Color, Short_t Style, Short_t Width) {
   AttColor = Color;
   AttStyle = Style;
   AttWidth = Width;
-  return;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////
-void Particle::SetX(double X0, double X1, double X2, double X3) 
-{
+void Particle::SetX(Double_t X0, Double_t X1, Double_t X2, Double_t X3) {
   X.SetCoords(X0, X1, X2, X3);
-  return;
 }
