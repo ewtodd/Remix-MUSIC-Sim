@@ -237,8 +237,7 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
 
     // Output-tree accumulation. Dead-layer rows go to their own scalars
     // (noiseless). Readout-strip rows split into per-electrode L/R, plus a
-    // physically-summed Cathode contribution that ignores the short-strip
-    // mask (the cathode is one big plate).
+    // physically-summed Cathode contribution (one big plate).
     if (SimTree != 0) {
       if (rowStpid == -1) {
         DeadUS_dE += baseDE[0];
@@ -253,9 +252,6 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
           // it gets the noiseless dE summed across electrodes, and a single
           // independent Gaussian is added after the row loop.
           Cathode += baseDE[col];
-          Bool_t isShort = (AnodeDX[row][col] < 4.5);
-          if (ctf.IgnoreShortStrips && isShort)
-            continue;
           if (rowStpid == 0) {
             TotaldE[0] += noisedDE[col];
           } else if (rowStpid == 17) {

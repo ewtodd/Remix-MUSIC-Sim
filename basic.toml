@@ -29,8 +29,6 @@ eres       = 0.001 # MeV; scalar broadcasts to all 34 anode electrodes.
 # For per-channel sigma (including the cathode) use a
 # [detector.eres] table with keys Cathode, S0, S17,
 # L1..L16, R1..R16 instead.
-ignore_short_strips = false # true zeroes the 4 cm half-strip electrodes on
-# the anode L/R branches (cathode unaffected).
 
 [[reaction.step]]
 [reaction.step.evap]

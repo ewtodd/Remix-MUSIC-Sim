@@ -355,9 +355,6 @@ private:
     // Independent cathode-readout noise σ (MeV). Set via the `Cathode` key
     // inside the [detector.eres] table (scalar broadcast does not touch it).
     Double_t EresCathode = -1;
-    // If true, drop the 4 cm "short" half-strip electrodes from the anode
-    // readout (their dE still contributes to the cathode — one big plate).
-    Bool_t IgnoreShortStrips = false;
     Int_t NEvents;
     Int_t Wait;       // 1: canvas waits for user click; 0: no wait
     Int_t Update;     // 1: update visuals per event; 0: don't

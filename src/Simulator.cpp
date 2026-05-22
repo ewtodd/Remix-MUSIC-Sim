@@ -214,15 +214,6 @@ Int_t Simulator::run() {
     LabelKine = 0;
   }
 
-  if (ctf.IgnoreShortStrips) {
-    Log << "\tIgnoring short (4 cm) half-strip electrodes on the anode readout."
-        << " They still contribute to the cathode sum." << std::endl;
-    if (verbose_)
-      std::cerr << "musicsim WARNING: ignore_short_strips=true — short (4 cm) "
-                   "half-strip dE is zeroed on Left/Right anode branches, but "
-                   "still summed into Cathode."
-                << std::endl;
-  }
   BuildGasMaterial();
   Log << "\tGas material configured (" << ctf.gas << ", " << ctf.pressure
       << " Torr, " << ctf.temperature << " K, density " << gas_.density()

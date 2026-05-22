@@ -11,7 +11,7 @@
 //   [detector] eloss_bins, max_eloss, strip OR (strip_first, strip_last),
 //              eres (scalar broadcast to anodes only, or [detector.eres]
 //              table keyed by channel name: Cathode, S0, S17, L1..L16,
-//              R1..R16), ignore_short_strips
+//              R1..R16)
 //   [[reaction.step]]  evap = {name, color, dedx_scale},
 //                      res  = {name, color, dedx_scale}
 //   [physics]  z_effective, low_energy   (catima Config knobs)
@@ -221,9 +221,6 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
       std::exit(EXIT_FAILURE);
     }
   }
-  if (auto v = tbl.at_path("detector.ignore_short_strips").value<bool>())
-    ctf.IgnoreShortStrips = *v;
-
   // [physics] — catima Config knobs. These mutate the process-wide
   // default_config, so the values picked here affect every dE/dx and
   // straggling call.
@@ -368,7 +365,6 @@ void Simulator::InitCTF() {
   ctf.stripLast = controlFileParams::kStripUnset;
   ctf.Eres.fill(-1.0);
   ctf.EresCathode = -1.0;
-  ctf.IgnoreShortStrips = false;
   ctf.NEvents = 10;
   ctf.Wait = 1;
   ctf.Update = 1;
