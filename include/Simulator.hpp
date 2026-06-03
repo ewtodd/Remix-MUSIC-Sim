@@ -257,9 +257,12 @@ private:
   TTree *SimTree;
   TTree *MCTree;
   static const Int_t N_STRIPS = 18;
-  Float_t LeftdE[N_STRIPS];
+  // Mirrors the experimental "events" tree: Left_0_17_dE[s] holds the left end
+  // of strips 1..16 plus the full energy of the single-ended guard strips 0/17
+  // (RightdE is 0 there). The strip total is L+R everywhere; no TotaldE branch,
+  // matching the data tree.
+  Float_t Left_0_17_dE[N_STRIPS];
   Float_t RightdE[N_STRIPS];
-  Float_t TotaldE[N_STRIPS];
   Float_t Cathode;
 
   // MC truth branches (live on MCTree). Exit-energy sentinels:

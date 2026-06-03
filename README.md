@@ -230,15 +230,23 @@ and `AnodeGeom` are dropped (catima handles dE/dx; geometry is hardcoded).
 <!---->
 ## Output tree layout
 <!---->
-Each run produces one ROOT file with two trees, mirroring the format produced by
-the upstream `EventBuilderNearestGrid` analysis used [here](https://github.com/ewtodd/MUSIC/tree/main/ProductionMode_37Cl/macros):
+Each run produces one ROOT file with two trees, mirroring the branch layout of
+the experimental `events` tree produced by the
+[MUSIC](https://github.com/ewtodd/MUSIC) `EventBuilder`:
 <!---->
-- **`events_MeV`** — detector-level branches.
-`LeftdE[18]`, `RightdE[18]`, and
-  `TotaldE[18]` (Float, MeV).
-  Energies are MeV truth (hence the `_MeV` suffix
-  vs the upstream ADC-valued `event` tree), so analysis macros should
-  calibrate data to MeV rather than rescaling sim to ADC.
+- **`events_MeV`** — detector-level branches `Left_0_17_dE[18]` and
+  `RightdE[18]` (Float, MeV), plus a scalar `Cathode`.
+  `Left_0_17_dE[s]` holds
+  the left end of strips 1–16; the single-ended guard strips 0 and 17 carry
+  their full energy in `Left_0_17_dE[0]` / `Left_0_17_dE[17]` with `RightdE`
+  zero there, so the strip total is `Left_0_17_dE[s] + RightdE[s]` everywhere
+  (no separate `TotaldE` branch, matching the data tree).
+  Energies are MeV
+  truth (hence the `_MeV` suffix vs the experimental ADC-valued `events`
+  tree), so analysis macros should calibrate data to MeV rather than rescaling
+  sim to ADC.
+  The DAQ-only `Hits` / `Grid` / `FlagsOR` branches of the
+  experimental tree have no truth analog and are not emitted.
 - **`MC`** — truth-only branches, friended to `events_MeV`: reaction strip, beam
   kinematics (`BeamEnergyAccel` at the accelerator, `Kbi` at the gas surface,
   `Kbr` at the reaction point, `Kbeam_exit` after the exit window),

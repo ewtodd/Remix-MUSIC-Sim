@@ -78,7 +78,7 @@ Simulator::Simulator(Int_t workerId) {
   SimTree = 0;
   MCTree = 0;
   for (Int_t s = 0; s < N_STRIPS; ++s) {
-    LeftdE[s] = RightdE[s] = TotaldE[s] = 0;
+    Left_0_17_dE[s] = RightdE[s] = 0;
   }
   Cathode = 0;
 

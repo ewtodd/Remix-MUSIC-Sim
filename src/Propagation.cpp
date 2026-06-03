@@ -252,15 +252,15 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
           // it gets the noiseless dE summed across electrodes, and a single
           // independent Gaussian is added after the row loop.
           Cathode += baseDE[col];
-          if (rowStpid == 0) {
-            TotaldE[0] += noisedDE[col];
-          } else if (rowStpid == 17) {
-            TotaldE[17] += noisedDE[col];
+          if (rowStpid == 0 || rowStpid == 17) {
+            // Single-ended guard strips: full energy in the left slot, RightdE
+            // stays 0 (matches the experimental Left_0_17_dE convention).
+            Left_0_17_dE[rowStpid] += noisedDE[col];
           } else {
             if (col == 0)
               RightdE[rowStpid] += noisedDE[col];
             else
-              LeftdE[rowStpid] += noisedDE[col];
+              Left_0_17_dE[rowStpid] += noisedDE[col];
           }
         }
       }
@@ -337,9 +337,4 @@ void Simulator::ComputeExitEnergies() {
   }
 }
 
-void Simulator::FinalizeEvent(Int_t eventIndex) {
-  ComputeExitEnergies();
-
-  for (Int_t s = 1; s <= 16; ++s)
-    TotaldE[s] = LeftdE[s] + RightdE[s];
-}
+void Simulator::FinalizeEvent(Int_t eventIndex) { ComputeExitEnergies(); }
