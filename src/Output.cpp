@@ -1,8 +1,9 @@
 #include "Simulator.hpp"
 
-// Initialize the "events_MeV" tree (detector-level output, layout matches the
-// upstream EventBuilderNearestGrid) and the friended "MC" tree (truth-only).
-// Energies are Float_t in MeV (the upstream data file uses Int_t ADC counts);
+// Initialize the "events_MeV" tree (detector-level output; branch layout
+// mirrors the experimental "events" tree from the MUSIC EventBuilder) and the
+// friended "MC" tree (truth-only).
+// Energies are Float_t in MeV (the experimental data file uses ADC counts);
 // analysis is expected to apply per-channel calibration to compare data
 // against sim in MeV.
 TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
@@ -10,9 +11,8 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
   const Bool_t update = (FileOpt == "update" || FileOpt == "UPDATE");
   if (ROOTfile && update) {
     tree = (TTree *)ROOTfile->Get("events_MeV");
-    tree->SetBranchAddress("LeftdE", LeftdE);
+    tree->SetBranchAddress("Left_0_17_dE", Left_0_17_dE);
     tree->SetBranchAddress("RightdE", RightdE);
-    tree->SetBranchAddress("TotaldE", TotaldE);
     tree->SetBranchAddress("Cathode", &Cathode);
     MCTree = (TTree *)ROOTfile->Get("MC");
     MCTree->SetBranchAddress("reacStp", &reacStp);
@@ -43,9 +43,9 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     MCTree->SetBranchAddress("resID", &resID);
   } else {
     tree = new TTree("events_MeV", "Simulated MUSIC events (energies in MeV)");
-    tree->Branch("LeftdE", LeftdE, Form("LeftdE[%d]/F", N_STRIPS));
+    tree->Branch("Left_0_17_dE", Left_0_17_dE,
+                 Form("Left_0_17_dE[%d]/F", N_STRIPS));
     tree->Branch("RightdE", RightdE, Form("RightdE[%d]/F", N_STRIPS));
-    tree->Branch("TotaldE", TotaldE, Form("TotaldE[%d]/F", N_STRIPS));
     tree->Branch("Cathode", &Cathode, "Cathode/F");
 
     MCTree = new TTree("MC", "Truth-level MUSIC simulation");
@@ -91,7 +91,7 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
 
 void Simulator::ResetBranches() {
   for (Int_t s = 0; s < N_STRIPS; ++s) {
-    LeftdE[s] = RightdE[s] = TotaldE[s] = 0;
+    Left_0_17_dE[s] = RightdE[s] = 0;
   }
   Cathode = 0;
   reacStp = -1;
