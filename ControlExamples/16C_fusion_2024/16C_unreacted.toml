@@ -5,9 +5,9 @@ temperature = 293.0 # K
 
 [beam]
 species     = "16C"
-energy      = 197.0 # Beam KE at accelerator (before degrader) [MeV]; gives Kbi ~ 58 MeV at gas surface
+energy      = 220   # Beam KE at accelerator (before degrader) [MeV]; gives Kbi ~ 58 MeV at gas surface
 energy_fwhm = 12.5  # Beam energy FWHM at accelerator [MeV]
-dedx_scale  = 0.95  # Beam stopping power scale factor
+dedx_scale  = 1.0   # Beam stopping power scale factor
 
 [target]
 species  = "12C"
@@ -16,12 +16,12 @@ compound = "28Mg"
 [windows.entrance]
 # mg/cm^2 areal density
 material         = "Ti"
-thickness_mg_cm2 = 0.9
+thickness_mg_cm2 = 22.1
 
 [windows.exit]
 # mg/cm^2 areal density
 material         = "Ti"
-thickness_mg_cm2 = 0.9
+thickness_mg_cm2 = 22.1
 
 [windows.degrader]
 # Bulk degrader upstream of entrance window (empty = none) / microns Al along beam axis
@@ -36,7 +36,7 @@ eres       = 0.05 # MeV (Gaussian sigma per strip)
 
 [run]
 n_events   = 50000
-threads    = 8
+threads    = 32
 wait       = 0
 update     = 0
 max_time   = 2000.0                      # ns
