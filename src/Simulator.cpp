@@ -152,14 +152,23 @@ void Simulator::PreWarmCatima() {
   auto warmIon = [&](Int_t A, Int_t Z) {
     if (A <= 0 || Z <= 0)
       return;
-    if (gasEnabled_)
-      EnergyOutOfMaterial(A, Z, 100.0, gas_);
-    if (entranceWindowEnabled_)
-      EnergyOutOfMaterial(A, Z, 100.0, entranceWindow_);
-    if (exitWindowEnabled_)
-      EnergyOutOfMaterial(A, Z, 100.0, exitWindow_);
-    if (hasDegrader_)
-      EnergyOutOfMaterial(A, Z, 100.0, degrader_);
+    // Warm both the mean (default, atima14) config and the straggling config:
+    // EnergyLoss::BuildTables and EnergyThroughWithStraggling now query catima
+    // under each. DataPoint keys on Config, so the two land in distinct cache
+    // slots — without warming the straggling slot too, the first concurrent
+    // worker calls would race to fill it and crash.
+    catima::Projectile proj{Double_t(A), Double_t(Z)};
+    proj.T = 100.0 / A;
+    auto warm = [&](Bool_t enabled, const catima::Material &mat) {
+      if (!enabled)
+        return;
+      catima::calculate(proj, mat);
+      catima::calculate(proj, mat, music::gStragglingConfig);
+    };
+    warm(gasEnabled_, gas_);
+    warm(entranceWindowEnabled_, entranceWindow_);
+    warm(exitWindowEnabled_, exitWindow_);
+    warm(hasDegrader_, degrader_);
   };
   auto warmName = [&](const TString &name) {
     if (name.IsNull() || name == "unassigned beam" ||

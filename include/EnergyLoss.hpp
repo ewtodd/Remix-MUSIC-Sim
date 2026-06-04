@@ -12,6 +12,18 @@
 #include "VavilovSampler.hpp"
 #include "catima/catima.h"
 
+namespace music {
+// catima's atima14 z_effective model — used for the mean dE/dx because it
+// matches LISE++ — returns sigma_E = 0: that code path never populates the
+// energy-loss straggling variance. So the straggling magnitude (for the gas,
+// windows, and degrader alike) is read from this separate Config, whose
+// z_effective is a straggling-capable model (pierce_blann by default,
+// overridable via the [physics] straggling_z_effective key). sigma_E is only
+// weakly model-dependent, so pairing it with the atima14 mean is well-behaved.
+// Set in Simulator::loadCtrlFile.
+extern catima::Config gStragglingConfig;
+} // namespace music
+
 class EnergyLoss {
 public:
   EnergyLoss(Int_t A, Int_t Z, Double_t IonMass_MeV_per_c2,

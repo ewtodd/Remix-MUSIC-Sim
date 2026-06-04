@@ -1,5 +1,12 @@
 #include "EnergyLoss.hpp"
 
+namespace music {
+// Defaults to catima's compiled default config; Simulator::loadCtrlFile
+// overwrites it (inheriting low_energy from the main config, forcing a
+// straggling-capable z_effective) once a control file is parsed.
+catima::Config gStragglingConfig;
+} // namespace music
+
 EnergyLoss::EnergyLoss(Int_t A, Int_t Z, Double_t IonMass_MeV_per_c2,
                        const catima::Material *gas, Float_t dEdxScale)
     : GoodELossFile(true), proj_(Double_t(A), Double_t(Z)), gas_(gas), A_(A),
@@ -43,9 +50,13 @@ void EnergyLoss::BuildTables() {
     log_ki_grid_[i] = logKi;
     const Double_t Ki = std::exp(logKi);
     proj_.T = Ki / A_;
-    catima::Result r = catima::calculate(proj_, layer);
-    const Double_t Eout = r.Eout * A_;
-    const Double_t sigma_E = r.sigma_E * A_;
+    // Mean energy loss from the default (atima14) config; straggling variance
+    // from the straggling config, since atima14 returns sigma_E = 0.
+    catima::Result rMean = catima::calculate(proj_, layer);
+    catima::Result rStr =
+        catima::calculate(proj_, layer, music::gStragglingConfig);
+    const Double_t Eout = rMean.Eout * A_;
+    const Double_t sigma_E = rStr.sigma_E * A_;
     eloss_per_cm_[i] = std::max(0.0, (Ki - Eout) / dx_ref);
     sigma2_per_cm_[i] = std::max(0.0, sigma_E * sigma_E / dx_ref);
   }
