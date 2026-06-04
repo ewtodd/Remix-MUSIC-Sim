@@ -156,8 +156,9 @@ an optional `[physics]` section:
 <!---->
 ```toml
 [physics]
-z_effective = "atima14"   # default
-low_energy  = "srim_95"   # default
+z_effective            = "atima14"       # default
+low_energy             = "srim_95"       # default
+straggling_z_effective = "pierce_blann"  # default
 ```
 <!---->
 - `z_effective` controls the projectile-charge-state model.
@@ -170,6 +171,16 @@ Valid:
   (where 37Cl in Ti sits at ~0.3 MeV/u, for instance). Valid: `srim_85`
   (catima's compiled default) or `srim_95` (newer SRIM/Ziegler curves;
   default here).
+- `straggling_z_effective` controls the charge-state model used **only** to
+  obtain the energy-loss straggling σ_E (for the gas, windows, and degrader
+  alike). It is decoupled from `z_effective` because catima's `atima14`
+  model returns σ_E = 0 — that code path computes the mean dE/dx but never
+  populates the straggling variance, so leaving straggling on `atima14` would
+  silently zero *all* energy-loss fluctuations (the per-step gas Vavilov width
+  and the window/degrader Gaussians are both scaled by catima's σ_E). σ_E is
+  only weakly charge-model-dependent, so pairing the `atima14` mean with a
+  `pierce_blann` σ_E is well-behaved. Accepts any `z_effective` value except
+  `atima14` (rejected at load with an error).
 <!---->
 ### Disabling layers
 <!---->

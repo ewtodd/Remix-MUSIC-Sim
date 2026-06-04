@@ -14,7 +14,8 @@
 //              R1..R16)
 //   [[reaction.step]]  evap = {name, color, dedx_scale},
 //                      res  = {name, color, dedx_scale}
-//   [physics]  z_effective, low_energy   (catima Config knobs)
+//   [physics]  z_effective, low_energy, straggling_z_effective
+//              (catima Config knobs)
 //   [run]      n_events, threads, wait, update, max_time, sim_step, method,
 //              output, file_opt, print_opt, reac_class
 
@@ -250,6 +251,34 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
       std::exit(EXIT_FAILURE);
     }
     catima::default_config.low_energy = static_cast<UChar_t>(code);
+  }
+
+  //   straggling_z_effective: z_effective model used *only* to obtain the
+  //     energy-loss straggling sigma_E (gas, windows, degrader). The atima14
+  //     model used for the mean dE/dx returns sigma_E = 0 in catima, which
+  //     would silently disable all straggling, so it is read from this
+  //     separate model instead. sigma_E is only weakly model-dependent.
+  //         pierce_blann (default) or any z_eff_type except atima14.
+  // Inherit low_energy / corrections from the main config, then force a
+  // straggling-capable charge model.
+  music::gStragglingConfig = catima::default_config;
+  music::gStragglingConfig.z_effective = catima::z_eff_type::pierce_blann;
+  if (auto v =
+          tbl.at_path("physics.straggling_z_effective").value<std::string>()) {
+    Int_t code = parseZeffName(*v);
+    if (code < 0) {
+      std::cerr << "musicsim ERROR: physics.straggling_z_effective='" << *v
+                << "' is not a recognised catima z_eff_type." << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    if (code == catima::z_eff_type::atima14) {
+      std::cerr << "musicsim ERROR: physics.straggling_z_effective='atima14' "
+                   "returns sigma_E = 0 in catima (no straggling). Choose a "
+                   "different model (e.g. pierce_blann)."
+                << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    music::gStragglingConfig.z_effective = static_cast<UChar_t>(code);
   }
 
   // [[reaction.step]]
