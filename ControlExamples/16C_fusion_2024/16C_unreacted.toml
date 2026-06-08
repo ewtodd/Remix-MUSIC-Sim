@@ -6,7 +6,7 @@ temperature = 293.0 # K
 [beam]
 species     = "16C"
 energy      = 220   # Beam KE at accelerator (before degrader) [MeV]; gives Kbi ~ 58 MeV at gas surface
-energy_fwhm = 12.5  # Beam energy FWHM at accelerator [MeV]
+energy_fwhm = 1.0   # Beam energy FWHM at accelerator [MeV]
 dedx_scale  = 1.0   # Beam stopping power scale factor
 
 [target]
