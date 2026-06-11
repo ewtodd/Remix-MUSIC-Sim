@@ -61,17 +61,18 @@ eloss_bins  = 555
 max_eloss   = 10.0      # MeV
 strip_first = 3         # alternatively: strip = -1 for unreacted-beam runs
 strip_last  = 13
-eres        = 0.05      # MeV; scalar broadcasts to all 34 anode electrodes.
-                        # -1 disables. Does NOT set cathode noise — use the
-                        # [detector.eres] table form for that.
+eres        = 5.0       # % FWHM of the channel's deposit; scalar broadcasts
+                        # to all 34 anode electrodes. -1 disables. Does NOT
+                        # set cathode noise — use the [detector.eres] table
+                        # form for that.
 # Per-channel form (mutually exclusive with the scalar `eres` above — pick
 # one). Keys: Cathode, S0, S17, L1..L16, R1..R16 (35 channels total). Any
 # missing key keeps its default of -1 (no noise on that channel).
 # [detector.eres]
-# Cathode = 0.05
-# S0      = 0.04
-# L1      = 0.06
-# R1      = 0.05
+# Cathode = 5.0
+# S0      = 4.0
+# L1      = 6.0
+# R1      = 5.0
 # ...
 # R16     = 0.05
 # S17     = 0.04
@@ -159,6 +160,7 @@ an optional `[physics]` section:
 z_effective            = "atima14"       # default
 low_energy             = "srim_95"       # default
 straggling_z_effective = "pierce_blann"  # default
+straggling             = true            # default
 ```
 <!---->
 - `z_effective` controls the projectile-charge-state model.
@@ -181,6 +183,11 @@ Valid:
   only weakly charge-model-dependent, so pairing the `atima14` mean with a
   `pierce_blann` σ_E is well-behaved. Accepts any `z_effective` value except
   `atima14` (rejected at load with an error).
+- `straggling` is the master switch. `false` disables energy-loss straggling
+  everywhere — the per-step Vavilov sampling in the gas and the Gaussian
+  window/degrader smearing — so every energy loss is the catima mean. Useful
+  when `[detector.eres]` carries measured peak widths that already include
+  the physical fluctuations. Detector noise (`eres`) is unaffected.
 <!---->
 ### Disabling layers
 <!---->
@@ -270,9 +277,6 @@ the experimental `events` tree produced by the
   (e.g. `Kbeam_exit` on a reacted event).
   A literal `0` means the particle
   reached the exit window but stopped inside it.
-<!---->
-`Hits[k]` triggers when the corresponding channel energy exceeds
-`max(0.02 MeV, 3·Eres)` so that pure-noise cells are not counted.
 <!---->
 ## A note on AI-assisted development
 <!---->

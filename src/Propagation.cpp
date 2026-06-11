@@ -1,5 +1,9 @@
 #include "Simulator.hpp"
 
+// FWHM = kFwhmPerSigma * sigma for a Gaussian; converts the % FWHM noise
+// figures in [detector.eres] to the sigma fed to the random draw.
+static const Double_t kFwhmPerSigma = 2.0 * std::sqrt(2.0 * std::log(2.0));
+
 // Transport a particle step-by-step through the gas, accumulating per-strip
 // energy deposits in DE. Stops when MaxTime is hit, the particle stops, the
 // particle leaves the active volume, or it crosses endZ (when > 0). The last
@@ -229,9 +233,13 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
       baseDE[col] = DeltaE;
       noisedDE[col] = DeltaE;
       if (col < AnodeCols && rowStpid >= 0 && rowStpid <= 17) {
-        Double_t sigma = ctf.Eres[ElectrodeIndex(rowStpid, col)];
-        if (sigma > 0.0)
+        // Eres is a relative resolution in % FWHM of the deposit, so the
+        // Gaussian sigma scales with this event's energy on the electrode.
+        Double_t fwhmPct = ctf.Eres[ElectrodeIndex(rowStpid, col)];
+        if (fwhmPct > 0.0 && DeltaE > 0.0) {
+          Double_t sigma = fwhmPct / 100.0 * DeltaE / kFwhmPerSigma;
           noisedDE[col] += Rdm->Gaus(0.0, sigma);
+        }
       }
     }
 
@@ -276,9 +284,10 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
 
   // Single independent Gaussian for the cathode readout channel (one plate,
   // one electronics chain). Applied after the row loop so the per-electrode
-  // anode noise does not leak in.
-  if (SimTree != 0 && ctf.EresCathode > 0.0)
-    Cathode += Rdm->Gaus(0.0, ctf.EresCathode);
+  // anode noise does not leak in. EresCathode is % FWHM of the summed
+  // cathode energy, same convention as the anode Eres entries.
+  if (SimTree != 0 && ctf.EresCathode > 0.0 && Cathode > 0.0)
+    Cathode += Rdm->Gaus(0.0, ctf.EresCathode / 100.0 * Cathode / kFwhmPerSigma);
 
   if (tracesCreated) {
     for (Int_t col = 0; col < AnodeCols + 1; col++) {

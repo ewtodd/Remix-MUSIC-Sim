@@ -185,9 +185,11 @@ Double_t Simulator::EnergyThroughWithStraggling(Int_t A, Int_t Z,
   // the straggling config, since atima14 returns sigma_E = 0.
   catima::Result r = catima::calculate(proj, mat);
   Double_t Eout = r.Eout * A; // catima reports MeV/u
-  Double_t sigma_E =
-      catima::calculate(proj, mat, music::gStragglingConfig).sigma_E * A;
-  if (sigma_E > 0)
-    Eout += Rdm->Gaus(0.0, sigma_E);
+  if (music::gStragglingEnabled) {
+    Double_t sigma_E =
+        catima::calculate(proj, mat, music::gStragglingConfig).sigma_E * A;
+    if (sigma_E > 0)
+      Eout += Rdm->Gaus(0.0, sigma_E);
+  }
   return std::max(0.0, Eout);
 }

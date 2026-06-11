@@ -351,12 +351,14 @@ private:
     Int_t strip = kStripUnset;
     Int_t stripFirst = kStripUnset;
     Int_t stripLast = kStripUnset;
-    // Per-electrode anode noise sigma (MeV). 34 entries indexed by
+    // Per-electrode anode noise as relative resolution in % FWHM of the
+    // electrode's energy deposit. 34 entries indexed by
     // ElectrodeIndex(stpid, col). -1 means "no noise on this electrode".
     // Scalar TOML eres = X broadcasts X to all 34 entries (anodes only).
     std::array<Double_t, kNumElectrodes> Eres;
-    // Independent cathode-readout noise σ (MeV). Set via the `Cathode` key
-    // inside the [detector.eres] table (scalar broadcast does not touch it).
+    // Independent cathode-readout noise (% FWHM of the summed cathode
+    // energy). Set via the `Cathode` key inside the [detector.eres] table
+    // (scalar broadcast does not touch it).
     Double_t EresCathode = -1;
     Int_t NEvents;
     Int_t Wait;       // 1: canvas waits for user click; 0: no wait
