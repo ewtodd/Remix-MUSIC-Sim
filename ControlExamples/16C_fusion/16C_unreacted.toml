@@ -32,7 +32,7 @@ thickness_um = 360.0
 eloss_bins = 500
 max_eloss  = 25.0 # MeV
 strip      = -1   # -1 = unreacted beam (no reaction at any strip)
-eres       = 0.05 # MeV (Gaussian sigma per strip)
+eres       = 0.05 # % FWHM of the deposit; scalar broadcasts to all 34 anode electrodes
 
 [run]
 n_events   = 50000

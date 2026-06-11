@@ -5,6 +5,7 @@ namespace music {
 // overwrites it (inheriting low_energy from the main config, forcing a
 // straggling-capable z_effective) once a control file is parsed.
 catima::Config gStragglingConfig;
+Bool_t gStragglingEnabled = kTRUE;
 } // namespace music
 
 EnergyLoss::EnergyLoss(Int_t A, Int_t Z, Double_t IonMass_MeV_per_c2,
@@ -124,7 +125,7 @@ Double_t EnergyLoss::GetFinalEnergyStraggled(Double_t InitialEnergy,
   const Double_t sigma_E = std::sqrt(std::max(0.0, sigma2_per_cm * PathLength));
   Double_t Eloss = dedx_per_cm * PathLength * dEdxScale_;
 
-  if (sigma_E > 0.0 && rng) {
+  if (music::gStragglingEnabled && sigma_E > 0.0 && rng) {
     // κ and β² for Vavilov (Yi & Han Eqs. 1–3):
     //   ξ    = (K/2) · z² · <Z/A> · ρ·t / β²     (Landau scale, MeV)
     //   εmax = 2 mₑc² β² γ² / (1 + 2γ mₑ/M + (mₑ/M)²)

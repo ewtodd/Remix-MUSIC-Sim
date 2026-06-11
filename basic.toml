@@ -25,8 +25,9 @@ thickness_mg_cm2 = 0.9
 eloss_bins = 300
 max_eloss  = 5.0   # MeV
 strip      = 5     # Strip where reaction takes place
-eres       = 0.001 # MeV; scalar broadcasts to all 34 anode electrodes.
-# For per-channel sigma (including the cathode) use a
+eres       = 0.1   # % FWHM of the deposit; scalar broadcasts to all 34
+                   # anode electrodes.
+# For per-channel resolution (including the cathode) use a
 # [detector.eres] table with keys Cathode, S0, S17,
 # L1..L16, R1..R16 instead.
 

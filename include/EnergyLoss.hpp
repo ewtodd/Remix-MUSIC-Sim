@@ -22,6 +22,10 @@ namespace music {
 // weakly model-dependent, so pairing it with the atima14 mean is well-behaved.
 // Set in Simulator::loadCtrlFile.
 extern catima::Config gStragglingConfig;
+// Master switch for energy-loss straggling (gas Vavilov sampling and the
+// Gaussian window/degrader smearing alike). Set from the [physics] straggling
+// key; default on. Off means every energy loss is the catima mean.
+extern Bool_t gStragglingEnabled;
 } // namespace music
 
 class EnergyLoss {

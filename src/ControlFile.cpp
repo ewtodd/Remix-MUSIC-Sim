@@ -9,13 +9,13 @@
 //   [windows.entrance], [windows.exit], [windows.degrader]
 //                 material, and exactly one of thickness_mg_cm2 / thickness_um
 //   [detector] eloss_bins, max_eloss, strip OR (strip_first, strip_last),
-//              eres (scalar broadcast to anodes only, or [detector.eres]
-//              table keyed by channel name: Cathode, S0, S17, L1..L16,
-//              R1..R16)
+//              eres in % FWHM of the deposit (scalar broadcast to anodes
+//              only, or [detector.eres] table keyed by channel name:
+//              Cathode, S0, S17, L1..L16, R1..R16)
 //   [[reaction.step]]  evap = {name, color, dedx_scale},
 //                      res  = {name, color, dedx_scale}
 //   [physics]  z_effective, low_energy, straggling_z_effective
-//              (catima Config knobs)
+//              (catima Config knobs), straggling (bool master switch)
 //   [run]      n_events, threads, wait, update, max_time, sim_step, method,
 //              output, file_opt, print_opt, reac_class
 
@@ -166,9 +166,10 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
   getInt("detector", "strip", ctf.strip);
   getInt("detector", "strip_first", ctf.stripFirst);
   getInt("detector", "strip_last", ctf.stripLast);
-  // eres accepts either a scalar (broadcast to all 34 anode electrodes) or
-  // a TOML table keyed by channel name: Cathode, S0, S17, L{s} / R{s} for
-  // s = 1..16. Missing keys keep their default (-1 = no noise). Scalar
+  // eres values are relative resolutions in % FWHM of the channel's energy
+  // deposit. Accepts either a scalar (broadcast to all 34 anode electrodes)
+  // or a TOML table keyed by channel name: Cathode, S0, S17, L{s} / R{s}
+  // for s = 1..16. Missing keys keep their default (-1 = no noise). Scalar
   // broadcast does NOT touch the cathode — that's a separate physical
   // channel; set it explicitly via the Cathode key in the table form.
   if (auto eresNode = tbl.at_path("detector.eres")) {
@@ -280,6 +281,14 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
     }
     music::gStragglingConfig.z_effective = static_cast<UChar_t>(code);
   }
+
+  //   straggling: master switch (default true). false disables energy-loss
+  //     straggling everywhere — the per-step Vavilov sampling in the gas and
+  //     the Gaussian window/degrader smearing — so every energy loss is the
+  //     catima mean. Detector noise ([detector] eres) is unaffected.
+  music::gStragglingEnabled = kTRUE;
+  if (auto v = tbl.at_path("physics.straggling").value<bool>())
+    music::gStragglingEnabled = *v;
 
   // [[reaction.step]]
   if (auto steps = tbl.at_path("reaction.step"); steps.is_array()) {

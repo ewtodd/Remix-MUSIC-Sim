@@ -5,9 +5,9 @@ temperature = 293.0 # K
 
 [beam]
 species     = "16C"
-energy      = 197.0 # Beam KE at accelerator (before degrader) [MeV]; gives Kbi ~ 58 MeV at gas surface
-energy_fwhm = 12.8  # Beam energy FWHM at accelerator [MeV]
-dedx_scale  = 0.95  # Beam stopping power scale factor
+energy      = 220   # Beam KE at accelerator (before degrader) [MeV]; gives Kbi ~ 58 MeV at gas surface
+energy_fwhm = 2     # Beam energy FWHM at accelerator [MeV]
+dedx_scale  = 1     # Beam stopping power scale factor
 
 [target]
 species  = "12C"
@@ -16,12 +16,12 @@ compound = "28Mg"
 [windows.entrance]
 # mg/cm^2 areal density
 material         = "Ti"
-thickness_mg_cm2 = 0.9
+thickness_mg_cm2 = 22.1
 
 [windows.exit]
 # mg/cm^2 areal density
 material         = "Ti"
-thickness_mg_cm2 = 0.9
+thickness_mg_cm2 = 22.1
 
 [windows.degrader]
 # Bulk degrader upstream of entrance window (empty = none) / microns Al along beam axis
@@ -33,7 +33,7 @@ eloss_bins  = 500
 max_eloss   = 25.0 # MeV
 strip_first = 3
 strip_last  = 3
-eres        = 0.05 # MeV (Gaussian sigma per strip)
+eres        = 0.05 # % FWHM of the deposit; scalar broadcasts to all 34 anode electrodes
 
 [[reaction.step]]
 [reaction.step.evap]
@@ -43,7 +43,7 @@ color = 2
 [reaction.step.res]
 name       = "27Mg"
 color      = 3
-dedx_scale = 0.95
+dedx_scale = 1
 
 [[reaction.step]]
 [reaction.step.evap]
@@ -53,11 +53,11 @@ color = 4
 [reaction.step.res]
 name       = "26Mg"
 color      = 5
-dedx_scale = 0.95
+dedx_scale = 1
 
 [run]
 n_events   = 10000
-threads    = 8
+threads    = 32
 wait       = 0
 update     = 0
 max_time   = 2000.0                              # ns
