@@ -15,32 +15,40 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     tree->SetBranchAddress("RightdE", RightdE);
     tree->SetBranchAddress("Cathode", &Cathode);
     MCTree = (TTree *)ROOTfile->Get("MC");
-    MCTree->SetBranchAddress("reacStp", &reacStp);
-    MCTree->SetBranchAddress("BeamEnergyAccel", &BeamEnergyAccel);
-    MCTree->SetBranchAddress("Kbi", &Kbi);
-    MCTree->SetBranchAddress("Kbr", &Kbr);
-    MCTree->SetBranchAddress("Kbeam_exit", &Kbeam_exit);
+    MCTree->SetBranchAddress("n_steps", &n_steps);
+    MCTree->SetBranchAddress("reaction_strip", &reaction_strip);
+    MCTree->SetBranchAddress("beam_energy_accel", &beam_energy_accel);
+    MCTree->SetBranchAddress("beam_energy_gas", &beam_energy_gas);
+    MCTree->SetBranchAddress("beam_energy_reaction", &beam_energy_reaction);
+    MCTree->SetBranchAddress("beam_energy_exit", &beam_energy_exit);
+    MCTree->SetBranchAddress("beam_stop_x", &beam_stop_x);
+    MCTree->SetBranchAddress("beam_stop_y", &beam_stop_y);
+    MCTree->SetBranchAddress("beam_stop_z", &beam_stop_z);
+    MCTree->SetBranchAddress("beam_stop_strip", &beam_stop_strip);
+    MCTree->SetBranchAddress("vertex_x", &vertex_x);
+    MCTree->SetBranchAddress("vertex_y", &vertex_y);
+    MCTree->SetBranchAddress("vertex_z", &vertex_z);
     MCTree->SetBranchAddress("DeadUS_dE", &DeadUS_dE);
     MCTree->SetBranchAddress("DeadDS_dE", &DeadDS_dE);
-    MCTree->SetBranchAddress("Kl", Kl);
-    MCTree->SetBranchAddress("Kh", Kh);
-    MCTree->SetBranchAddress("Kl_exit", Kl_exit);
-    MCTree->SetBranchAddress("Kh_exit", Kh_exit);
-    MCTree->SetBranchAddress("theta_CM", theta_CM);
-    MCTree->SetBranchAddress("theta_l", theta_l);
-    MCTree->SetBranchAddress("theta_h", theta_h);
-    MCTree->SetBranchAddress("phi_l", phi_l);
-    MCTree->SetBranchAddress("phi_h", phi_h);
-    MCTree->SetBranchAddress("xfl", xfl);
-    MCTree->SetBranchAddress("yfl", yfl);
-    MCTree->SetBranchAddress("zfl", zfl);
-    MCTree->SetBranchAddress("xr", &xr);
-    MCTree->SetBranchAddress("yr", &yr);
-    MCTree->SetBranchAddress("zr", &zr);
-    MCTree->SetBranchAddress("xfe", &xfe);
-    MCTree->SetBranchAddress("yfe", &yfe);
-    MCTree->SetBranchAddress("zfe", &zfe);
-    MCTree->SetBranchAddress("resID", &resID);
+    MCTree->SetBranchAddress("evap_energy", evap_energy);
+    MCTree->SetBranchAddress("residue_energy", residue_energy);
+    MCTree->SetBranchAddress("evap_energy_exit", evap_energy_exit);
+    MCTree->SetBranchAddress("residue_energy_exit", residue_energy_exit);
+    MCTree->SetBranchAddress("theta_cm", theta_cm);
+    MCTree->SetBranchAddress("phi_cm", phi_cm);
+    MCTree->SetBranchAddress("evap_theta", evap_theta);
+    MCTree->SetBranchAddress("evap_phi", evap_phi);
+    MCTree->SetBranchAddress("residue_theta", residue_theta);
+    MCTree->SetBranchAddress("residue_phi", residue_phi);
+    MCTree->SetBranchAddress("evap_stop_x", evap_stop_x);
+    MCTree->SetBranchAddress("evap_stop_y", evap_stop_y);
+    MCTree->SetBranchAddress("evap_stop_z", evap_stop_z);
+    MCTree->SetBranchAddress("evap_stop_strip", evap_stop_strip);
+    MCTree->SetBranchAddress("residue_stop_x", &residue_stop_x);
+    MCTree->SetBranchAddress("residue_stop_y", &residue_stop_y);
+    MCTree->SetBranchAddress("residue_stop_z", &residue_stop_z);
+    MCTree->SetBranchAddress("residue_stop_strip", &residue_stop_strip);
+    MCTree->SetBranchAddress("residue_step", &residue_step);
   } else {
     tree = new TTree("events_MeV", "Simulated MUSIC events (energies in MeV)");
     tree->Branch("Left_0_17_dE", Left_0_17_dE,
@@ -49,35 +57,52 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     tree->Branch("Cathode", &Cathode, "Cathode/F");
 
     MCTree = new TTree("MC", "Truth-level MUSIC simulation");
-    MCTree->Branch("reacStp", &reacStp, "reacStp/I");
-    MCTree->Branch("BeamEnergyAccel", &BeamEnergyAccel, "BeamEnergyAccel/F");
-    MCTree->Branch("Kbi", &Kbi, "Kbi/F");
-    MCTree->Branch("Kbr", &Kbr, "Kbr/F");
-    MCTree->Branch("Kbeam_exit", &Kbeam_exit, "Kbeam_exit/F");
+    // n_steps is the on-disk length of the per-step arrays, so its branch
+    // must be defined before any of them.
+    MCTree->Branch("n_steps", &n_steps, "n_steps/I");
+    MCTree->Branch("reaction_strip", &reaction_strip, "reaction_strip/I");
+    MCTree->Branch("beam_energy_accel", &beam_energy_accel,
+                   "beam_energy_accel/F");
+    MCTree->Branch("beam_energy_gas", &beam_energy_gas, "beam_energy_gas/F");
+    MCTree->Branch("beam_energy_reaction", &beam_energy_reaction,
+                   "beam_energy_reaction/F");
+    MCTree->Branch("beam_energy_exit", &beam_energy_exit,
+                   "beam_energy_exit/F");
+    MCTree->Branch("beam_stop_x", &beam_stop_x, "beam_stop_x/F");
+    MCTree->Branch("beam_stop_y", &beam_stop_y, "beam_stop_y/F");
+    MCTree->Branch("beam_stop_z", &beam_stop_z, "beam_stop_z/F");
+    MCTree->Branch("beam_stop_strip", &beam_stop_strip, "beam_stop_strip/I");
+    MCTree->Branch("vertex_x", &vertex_x, "vertex_x/F");
+    MCTree->Branch("vertex_y", &vertex_y, "vertex_y/F");
+    MCTree->Branch("vertex_z", &vertex_z, "vertex_z/F");
     MCTree->Branch("DeadUS_dE", &DeadUS_dE, "DeadUS_dE/F");
     MCTree->Branch("DeadDS_dE", &DeadDS_dE, "DeadDS_dE/F");
-    MCTree->Branch("Kl", Kl, Form("Kl[%d]/F", maxEvaporations));
-    MCTree->Branch("Kh", Kh, Form("Kh[%d]/F", maxEvaporations));
-    MCTree->Branch("Kl_exit", Kl_exit, Form("Kl_exit[%d]/F", maxEvaporations));
-    MCTree->Branch("Kh_exit", Kh_exit, Form("Kh_exit[%d]/F", maxEvaporations));
-    MCTree->Branch("theta_CM", theta_CM,
-                   Form("theta_CM[%d]/F", maxEvaporations));
-    MCTree->Branch("theta_l", theta_l, Form("theta_l[%d]/F", maxEvaporations));
-    MCTree->Branch("theta_h", theta_h, Form("theta_h[%d]/F", maxEvaporations));
-    MCTree->Branch("phi_l", phi_l, Form("phi_l[%d]/F", maxEvaporations));
-    MCTree->Branch("phi_h", phi_h, Form("phi_h[%d]/F", maxEvaporations));
-    MCTree->Branch("xfl", xfl, Form("xfl[%d]/F", maxEvaporations));
-    MCTree->Branch("yfl", yfl, Form("yfl[%d]/F", maxEvaporations));
-    MCTree->Branch("zfl", zfl, Form("zfl[%d]/F", maxEvaporations));
-    MCTree->Branch("xr", &xr, "xr/F");
-    MCTree->Branch("yr", &yr, "yr/F");
-    MCTree->Branch("zr", &zr, "zr/F");
-    MCTree->Branch("xfe", &xfe, "xfe/F");
-    MCTree->Branch("yfe", &yfe, "yfe/F");
-    MCTree->Branch("zfe", &zfe, "zfe/F");
-    MCTree->Branch("resID", &resID, "resID/I");
-    // Friended so users can `events_MeV->Draw("Kbr:Cathode")` without manually
-    // loading MCTree.
+    MCTree->Branch("evap_energy", evap_energy, "evap_energy[n_steps]/F");
+    MCTree->Branch("residue_energy", residue_energy,
+                   "residue_energy[n_steps]/F");
+    MCTree->Branch("evap_energy_exit", evap_energy_exit,
+                   "evap_energy_exit[n_steps]/F");
+    MCTree->Branch("residue_energy_exit", residue_energy_exit,
+                   "residue_energy_exit[n_steps]/F");
+    MCTree->Branch("theta_cm", theta_cm, "theta_cm[n_steps]/F");
+    MCTree->Branch("phi_cm", phi_cm, "phi_cm[n_steps]/F");
+    MCTree->Branch("evap_theta", evap_theta, "evap_theta[n_steps]/F");
+    MCTree->Branch("evap_phi", evap_phi, "evap_phi[n_steps]/F");
+    MCTree->Branch("residue_theta", residue_theta, "residue_theta[n_steps]/F");
+    MCTree->Branch("residue_phi", residue_phi, "residue_phi[n_steps]/F");
+    MCTree->Branch("evap_stop_x", evap_stop_x, "evap_stop_x[n_steps]/F");
+    MCTree->Branch("evap_stop_y", evap_stop_y, "evap_stop_y[n_steps]/F");
+    MCTree->Branch("evap_stop_z", evap_stop_z, "evap_stop_z[n_steps]/F");
+    MCTree->Branch("evap_stop_strip", evap_stop_strip,
+                   "evap_stop_strip[n_steps]/I");
+    MCTree->Branch("residue_stop_x", &residue_stop_x, "residue_stop_x/F");
+    MCTree->Branch("residue_stop_y", &residue_stop_y, "residue_stop_y/F");
+    MCTree->Branch("residue_stop_z", &residue_stop_z, "residue_stop_z/F");
+    MCTree->Branch("residue_stop_strip", &residue_stop_strip,
+                   "residue_stop_strip/I");
+    MCTree->Branch("residue_step", &residue_step, "residue_step/I");
+    // Friended so users can `events_MeV->Draw("beam_energy_reaction:Cathode")`
+    // without manually loading MCTree.
     tree->AddFriend(MCTree);
   }
   ResetBranches();
@@ -94,26 +119,32 @@ void Simulator::ResetBranches() {
     Left_0_17_dE[s] = RightdE[s] = 0;
   }
   Cathode = 0;
-  reacStp = -1;
-  Kbi = Kbr = 0;
-  Kbeam_exit = -2.0f; // N/A unless overwritten on unreacted-beam events
+  n_steps = numEvaporations;
+  reaction_strip = -1;
+  beam_energy_gas = beam_energy_reaction = 0;
+  beam_energy_exit = -2.0f; // N/A unless overwritten on unreacted-beam events
+  beam_stop_x = beam_stop_y = 0;
+  beam_stop_z = -1000;
+  beam_stop_strip = -2;
+  vertex_x = vertex_y = 0;
+  vertex_z = -1000;
   DeadUS_dE = DeadDS_dE = 0.0f;
   for (Int_t er = 0; er < maxEvaporations; er++) {
-    // Same -2 = N/A sentinel as Kl_exit/Kh_exit, so unused slots and
-    // disallowed-step slots aren't confused with "outgoing particle has KE=0".
-    Kl[er] = Kh[er] = -2.0f;
-    Kl_exit[er] = Kh_exit[er] = -2.0f;
-    phi_CM[er] = theta_CM[er] = -1;
-    phi_l[er] = theta_l[er] = -1;
-    phi_h[er] = theta_h[er] = -1;
-    xfl[er] = yfl[er] = 0;
-    zfl[er] = -1000;
+    // Same -2 = N/A sentinel on creation and exit energies, so unused slots
+    // and disallowed-step slots aren't confused with "particle has KE=0".
+    evap_energy[er] = residue_energy[er] = -2.0f;
+    evap_energy_exit[er] = residue_energy_exit[er] = -2.0f;
+    theta_cm[er] = phi_cm[er] = -1;
+    evap_theta[er] = evap_phi[er] = -1;
+    residue_theta[er] = residue_phi[er] = -1;
+    evap_stop_x[er] = evap_stop_y[er] = 0;
+    evap_stop_z[er] = -1000;
+    evap_stop_strip[er] = -2;
   }
-  xr = yr = 0;
-  zr = -1000;
-  xfe = yfe = 0;
-  zfe = -1000;
-  resID = -1;
+  residue_stop_x = residue_stop_y = 0;
+  residue_stop_z = -1000;
+  residue_stop_strip = -2;
+  residue_step = -1;
 }
 
 void Simulator::CreateTracesAndTrajectories() {

@@ -6,7 +6,7 @@ temperature = 293.0 # K
 [beam]
 species     = "16C"
 energy      = 220   # Beam KE at accelerator (before degrader) [MeV]; gives Kbi ~ 58 MeV at gas surface
-energy_fwhm = 1.0   # Beam energy FWHM at accelerator [MeV]
+energy_fwhm = 2.0   # Beam energy FWHM at accelerator [MeV]
 dedx_scale  = 1.0   # Beam stopping power scale factor
 
 [target]
@@ -26,7 +26,7 @@ thickness_mg_cm2 = 22.1
 [windows.degrader]
 # Bulk degrader upstream of entrance window (empty = none) / microns Al along beam axis
 material     = "Al"
-thickness_um = 360.0
+thickness_um = 400.0
 
 [detector]
 eloss_bins = 500

@@ -154,24 +154,25 @@ void Simulator::Simulate(Int_t StpID, Int_t NEvents, Double_t MaxTime,
         Ebeam = EnergyThroughWithStraggling(A_beam, Beam->Z, Ebeam,
                                             entranceWindow_);
     }
-    this->Kbi = Ebeam;
+    beam_energy_gas = Ebeam;
     SetInitialKinematics(Ebeam);
 
     Int_t ReacAllowed = 0;
-    this->Kbr = 0;
+    beam_energy_reaction = 0;
     Double_t TOF = 0;
     if (StpID > -1) {
       // Pick the vertex uniformly inside the chosen strip; forward-propagate
-      // the beam to z=zr with per-step straggling so Kbr / TOF inherit the
-      // sampled fluctuations (the reaction kinematics see the actually-
-      // sampled energy at the vertex, not the deterministic mean).
-      this->zr = Rdm->Uniform(MinZ, MaxZ);
+      // the beam to the vertex with per-step straggling so the reaction
+      // energy / TOF inherit the sampled fluctuations (the reaction
+      // kinematics see the actually-sampled energy at the vertex, not the
+      // deterministic mean).
+      vertex_z = Rdm->Uniform(MinZ, MaxZ);
       Beam->GetX(ti, xi, yi, zi); // entrance origin (kept for visualization)
       PropagateParticle(Beam, evt, MaxTime, UserStep, DeltaEB,
-                        /*endZ=*/this->zr);
+                        /*endZ=*/vertex_z);
       Double_t t_at_vertex, x_at_vertex, y_at_vertex, z_at_vertex;
       Beam->GetX(t_at_vertex, x_at_vertex, y_at_vertex, z_at_vertex);
-      this->Kbr = (Float_t)Beam->GetKE();
+      beam_energy_reaction = (Float_t)Beam->GetKE();
       TOF = t_at_vertex;
       if (tracesCreated)
         for (Int_t stp = 0; stp < AnodeRows; stp++)
@@ -183,13 +184,13 @@ void Simulator::Simulate(Int_t StpID, Int_t NEvents, Double_t MaxTime,
                              z_at_vertex - zi);
       }
       if (PrintLevel > 0)
-        Log << "Kbr = " << this->Kbr << "  zr = " << this->zr
+        Log << "Kbr = " << beam_energy_reaction << "  zr = " << vertex_z
             << "  tof = " << TOF << std::endl;
 
       // SetReactionKinematics overwrites Beam->X / Beam->P to put the beam
       // at (TOF, 0, 0, zr) with KE=Kbr; the propagated state we already
       // captured into DeltaEB / TrackBeam is preserved.
-      ReacAllowed = SetReactionKinematics(this->Kbr, this->zr, TOF);
+      ReacAllowed = SetReactionKinematics(beam_energy_reaction, vertex_z, TOF);
       if (PrintLevel > 0) {
         Log << "Conservation of 4-momentum at reaction point (zr)" << std::endl;
         FourVector Pi("initial 4-momentum (lab)", 0, 0, 0, 0);
@@ -227,9 +228,6 @@ void Simulator::Simulate(Int_t StpID, Int_t NEvents, Double_t MaxTime,
           TrackEvaP[er]->SetOrigin(xi, yi, zi);
           TrackEvaP[er]->SetVector(xf - xi, yf - yi, zf - zi);
         }
-        xfl[er] = xf;
-        yfl[er] = yf;
-        zfl[er] = zf;
 
         EvaR[er]->GetX(ti, xi, yi, zi);
         PropagateParticle(EvaR[er], evt, MaxTime, UserStep, DeltaE_EvaR[er]);
@@ -238,12 +236,6 @@ void Simulator::Simulate(Int_t StpID, Int_t NEvents, Double_t MaxTime,
             for (Int_t col = 0; col < AnodeCols + 1; col++)
               TraceER[er][col]->SetPoint(stp, stp, DeltaE_EvaR[er][stp][col]);
         EvaR[er]->GetX(tf, xf, yf, zf);
-        if (!EvaR[er]->DoNotPropagate) {
-          xfe = xf;
-          yfe = yf;
-          zfe = zf;
-          resID = er;
-        }
         if (UpdateVis) {
           TrackEvaR[er]->SetOrigin(xi, yi, zi);
           TrackEvaR[er]->SetVector(xf - xi, yf - yi, zf - zi);
@@ -272,9 +264,10 @@ void Simulator::Simulate(Int_t StpID, Int_t NEvents, Double_t MaxTime,
             TraceB[col]->SetPoint(stp, stp, DeltaEB[stp][col]);
       if (StpID > -1) {
         std::cout << "Warning: reaction energetically not allowed for event "
-                  << evt << " (Kbr= " << this->Kbr << " MeV)." << std::endl;
+                  << evt << " (Kbr= " << beam_energy_reaction << " MeV)."
+                  << std::endl;
         Log << "Warning: reaction energetically not allowed for event " << evt
-            << " (Kbr= " << this->Kbr << " MeV)." << std::endl;
+            << " (Kbr= " << beam_energy_reaction << " MeV)." << std::endl;
       }
     }
 
@@ -287,7 +280,7 @@ void Simulator::Simulate(Int_t StpID, Int_t NEvents, Double_t MaxTime,
         MCTree->Fill();
     }
     if (UpdateVis)
-      UpdateVisuals(evt, this->Kbr, this->zr, TOF, Wait);
+      UpdateVisuals(evt, beam_energy_reaction, vertex_z, TOF, Wait);
 
     if (NEvents > 99 && (LongDouble_t)(evt) >= Frac[FIndex] * NEvents) {
       if (verbose_)
@@ -415,18 +408,19 @@ void Simulator::Simulate(Int_t StpID, Double_t ThCMMin, Double_t ThCMMax,
 
       SetInitialKinematics(Kb_at_gas);
 
-      this->zr = Rdm->Uniform(MinZ, MaxZ);
-      this->Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr);
+      vertex_z = Rdm->Uniform(MinZ, MaxZ);
+      beam_energy_reaction = Beam->GetFinalEnergy(0, Kb_at_gas, vertex_z);
       Double_t TOF = Beam->GetTimeOfFlight(0);
       if (PrintLevel > 0)
-        Log << "Kbr = " << this->Kbr << "  zr = " << this->zr
+        Log << "Kbr = " << beam_energy_reaction << "  zr = " << vertex_z
             << "  tof = " << TOF << std::endl;
 
       Int_t ReacAllowed =
-          SetReactionKinematics(this->Kbr, this->zr, TOF, theta, phi);
+          SetReactionKinematics(beam_energy_reaction, vertex_z, TOF, theta, phi);
       if (ReacAllowed == 0) {
         std::cout << "Warning: reaction energetically not allowed for event "
-                  << evt << " (Kbr= " << this->Kbr << " MeV)." << std::endl;
+                  << evt << " (Kbr= " << beam_energy_reaction << " MeV)."
+                  << std::endl;
         continue;
       }
 
@@ -441,7 +435,7 @@ void Simulator::Simulate(Int_t StpID, Double_t ThCMMin, Double_t ThCMMax,
       if (MCTree)
         MCTree->Fill();
 
-      UpdateVisuals(evt, this->Kbr, this->zr, TOF, Wait);
+      UpdateVisuals(evt, beam_energy_reaction, vertex_z, TOF, Wait);
 
       NTraces++;
       evt++;
@@ -587,15 +581,15 @@ void Simulator::GenerateTraceDatabase(TString FileName, Double_t ThCMMin,
 
         SetInitialKinematics(Kb_at_gas);
 
-        this->zr = Rdm->Uniform(MinZ, MaxZ);
-        this->Kbr = Beam->GetFinalEnergy(0, Kb_at_gas, this->zr);
+        vertex_z = Rdm->Uniform(MinZ, MaxZ);
+        beam_energy_reaction = Beam->GetFinalEnergy(0, Kb_at_gas, vertex_z);
         Double_t TOF = Beam->GetTimeOfFlight(0);
         if (PrintLevel > 0)
-          Log << "Kbr = " << this->Kbr << "  zr = " << this->zr
+          Log << "Kbr = " << beam_energy_reaction << "  zr = " << vertex_z
               << "  tof = " << TOF << std::endl;
 
-        Int_t ReacAllowed =
-            SetReactionKinematics(this->Kbr, this->zr, TOF, theta, phi);
+        Int_t ReacAllowed = SetReactionKinematics(beam_energy_reaction,
+                                                  vertex_z, TOF, theta, phi);
         if (PrintLevel > 0) {
           Log << "Conservation of 4-momentum at reaction point (zr)"
               << std::endl;
@@ -632,12 +626,6 @@ void Simulator::GenerateTraceDatabase(TString FileName, Double_t ThCMMin,
             PropagateParticle(EvaR[er], evt, MaxTime, UserStep,
                               DeltaE_EvaR[er]);
             EvaR[er]->GetX(tf, xf, yf, zf);
-            if (!EvaR[er]->DoNotPropagate) {
-              xfe = xf;
-              yfe = yf;
-              zfe = zf;
-              resID = er;
-            }
             TrackEvaR[er]->SetOrigin(xi, yi, zi);
             TrackEvaR[er]->SetVector(xf - xi, yf - yi, zf - zi);
           }
@@ -645,7 +633,8 @@ void Simulator::GenerateTraceDatabase(TString FileName, Double_t ThCMMin,
           Beam->Copy(BeamInit);
           PropagateParticle(Beam, evt, MaxTime, UserStep, DeltaEB);
           std::cout << "Warning: reaction energetically not allowed for event "
-                    << evt << " (Kbr= " << this->Kbr << " MeV)." << std::endl;
+                    << evt << " (Kbr= " << beam_energy_reaction << " MeV)."
+                    << std::endl;
         }
 
         ComputeDetectorResponse(evt, stp_base, UpdateVis);
@@ -656,7 +645,7 @@ void Simulator::GenerateTraceDatabase(TString FileName, Double_t ThCMMin,
             MCTree->Fill();
         }
         if (UpdateVis)
-          UpdateVisuals(evt, this->Kbr, this->zr, TOF, Wait);
+          UpdateVisuals(evt, beam_energy_reaction, vertex_z, TOF, Wait);
 
         EvtsProcessed++;
         if (NEvents > 99 &&

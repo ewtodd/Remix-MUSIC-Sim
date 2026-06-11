@@ -182,8 +182,8 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
       // secondary decay's "reaction" is just a decay of this residue).
       Ptot = EvaR[er]->GetP();
 
-      theta_l[er] = (EvaP[er]->GetTheta()) * 180 / pi;
-      phi_l[er] = (EvaP[er]->GetPhi()) * 180 / pi;
+      evap_theta[er] = (EvaP[er]->GetTheta()) * 180 / pi;
+      evap_phi[er] = (EvaP[er]->GetPhi()) * 180 / pi;
 
       // Light particle starts at the vertex; it will be propagated.
       EvaP[er]->SetX(tof, 0, 0, zr);
@@ -191,8 +191,8 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
       // (decided in the next loop iteration).
       EvaR[er]->SetX(tof, 0, 0, zr);
 
-      theta_h[er] = (EvaR[er]->GetTheta()) * 180 / pi;
-      phi_h[er] = (EvaR[er]->GetPhi()) * 180 / pi;
+      residue_theta[er] = (EvaR[er]->GetTheta()) * 180 / pi;
+      residue_phi[er] = (EvaR[er]->GetPhi()) * 180 / pi;
 
       if (PrintLevel > 0) {
         Log << ")))))))))) After lorentz boost ((((((((((" << std::endl;
@@ -221,17 +221,21 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
   // Fill the reaction-kinematics branches.
   Kbr = Beam->GetKE();
   for (Int_t er = 0; er < numEvaporations; er++) {
-    this->theta_CM[er] = theta_CM * 180 / pi;
-    this->phi_CM[er] = phi_CM * 180 / pi;
+    theta_cm[er] = theta_CM * 180 / pi;
+    phi_cm[er] = phi_CM * 180 / pi;
     // -2 sentinel = "step not physically realised" (energetically disallowed,
-    // DoNotPropagate set). Same convention as Kl_exit/Kh_exit so analysis can
-    // mask both arrays the same way.
-    Kh[er] = EvaR[er]->DoNotPropagate ? -2.0f : (Float_t)EvaR[er]->GetKE();
-    Kl[er] = EvaP[er]->DoNotPropagate ? -2.0f : (Float_t)EvaP[er]->GetKE();
-    theta_l[er] = (EvaP[er]->GetTheta()) * 180 / pi;
-    phi_l[er] = (EvaP[er]->GetPhi()) * 180 / pi;
-    theta_h[er] = (EvaR[er]->GetTheta()) * 180 / pi;
-    phi_h[er] = (EvaR[er]->GetPhi()) * 180 / pi;
+    // DoNotPropagate set). Same convention as the exit-energy branches so
+    // analysis can mask both arrays the same way. Note: superseded residues
+    // (decayed by a later step) also carry DoNotPropagate, so their creation
+    // energy is masked too — only the surviving residue's slot is real.
+    residue_energy[er] =
+        EvaR[er]->DoNotPropagate ? -2.0f : (Float_t)EvaR[er]->GetKE();
+    evap_energy[er] =
+        EvaP[er]->DoNotPropagate ? -2.0f : (Float_t)EvaP[er]->GetKE();
+    evap_theta[er] = (EvaP[er]->GetTheta()) * 180 / pi;
+    evap_phi[er] = (EvaP[er]->GetPhi()) * 180 / pi;
+    residue_theta[er] = (EvaR[er]->GetTheta()) * 180 / pi;
+    residue_phi[er] = (EvaR[er]->GetPhi()) * 180 / pi;
   }
 
   if (PrintLevel > 0) {
@@ -293,7 +297,7 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
                Light->Name.Data(), Light->GetKE(), Light->GetTheta() * 180 / pi,
                Light->GetPhi() * 180 / pi));
     }
-    LabelKine->AddText(Form("#theta_{c.m.}=%.1f deg", this->theta_CM[0]));
+    LabelKine->AddText(Form("#theta_{c.m.}=%.1f deg", theta_cm[0]));
   }
 
   return ReactionAllowed;

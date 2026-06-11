@@ -60,6 +60,24 @@ void Simulator::LoadHardcodedAnodeGeometry() {
   put(19, 0, -2, "DeadDS", 9, 10, 3.522, 920);
 }
 
+// Readout strip id (0..17) at depth z, or -1 for the dead layers and for z
+// outside the active volume. Same row walk as PropagateParticle's cell
+// lookup, so a stop position always maps to the row that received its last
+// energy deposit.
+Int_t Simulator::StripAtZ(Double_t z) {
+  if (z < 0)
+    return -1;
+  Double_t zacc = 0;
+  for (Int_t r = 0; r < AnodeRows; ++r) {
+    zacc += AnodeDZ[r][0];
+    if (z < zacc) {
+      Int_t id = AnodeStpID[r][0];
+      return (id >= 0 && id <= 17) ? id : -1;
+    }
+  }
+  return -1;
+}
+
 Int_t Simulator::SetAnode(Short_t Trans, Int_t ELossBins, Float_t MaxELoss) {
   AnodeDepth = AnodeLength = AnodeHeight = 0;
   AnodeRows = AnodeCols = 0;
