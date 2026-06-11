@@ -107,6 +107,9 @@ private:
   // Geometry.
   void LoadHardcodedAnodeGeometry();
   void DrawMUSIC(TEveManager *gEve, Short_t Transparency /*0..100*/);
+  // Map a z position (cm along the beam axis) to the readout strip at that
+  // depth: 0..17, or -1 for the dead layers and z outside the active volume.
+  Int_t StripAtZ(Double_t z);
 
   // Event lifecycle.
   void FinalizeEvent(Int_t eventIndex);
@@ -265,36 +268,53 @@ private:
   Float_t RightdE[N_STRIPS];
   Float_t Cathode;
 
-  // MC truth branches (live on MCTree). Exit-energy sentinels:
-  //   -1.0 = stopped in gas, -2.0 = N/A for this event (e.g. Kbeam_exit on
-  //   a reacted event).
-  Int_t reacStp;
-  Float_t BeamEnergyAccel; // KE at the accelerator (= ctf.BeamEnergy)
-  Float_t Kbi;             // KE at the gas surface (after entrance window)
-  Float_t Kbr;             // KE at the reaction point
-  Float_t Kbeam_exit;
+  // MC truth branches (live on MCTree).
+  // Energy sentinels: -1.0 = stopped in the gas, -2.0 = N/A for this event
+  // (e.g. beam_energy_exit on a reacted event, evap slots of a disallowed
+  // step).
+  // *_stop_strip: 0..17 = stopped in that readout strip, -1 = did not stop
+  // in a readout strip (exited the gas or stopped in a dead layer —
+  // disambiguate via *_stop_z and the exit-energy branch), -2 = N/A.
+  // *_stop_x/y/z hold the stop point, or the point where the particle left
+  // the active volume if it exited.
+  Int_t n_steps;        // configured reaction steps; on-disk array length
+  Int_t reaction_strip; // strip selected for the vertex (-1 = unreacted run)
+  Float_t beam_energy_accel;    // KE at the accelerator (= ctf.BeamEnergy)
+  Float_t beam_energy_gas;      // KE at the gas surface (after entrance window)
+  Float_t beam_energy_reaction; // KE at the reaction vertex
+  Float_t beam_energy_exit;     // KE after the exit window (unreacted events)
+  Float_t beam_stop_x;
+  Float_t beam_stop_y;
+  Float_t beam_stop_z;
+  Int_t beam_stop_strip;
+  Float_t vertex_x;
+  Float_t vertex_y;
+  Float_t vertex_z;
   Float_t DeadUS_dE; // total dE in upstream dead gas layer (not read out)
   Float_t DeadDS_dE; // total dE in downstream dead gas layer
-  Float_t *Kl;
-  Float_t *Kh;
-  Float_t *Kl_exit;
-  Float_t *Kh_exit;
-  Float_t *theta_CM;
-  Float_t *phi_CM;
-  Float_t *theta_l;
-  Float_t *phi_l;
-  Float_t *theta_h;
-  Float_t *phi_h;
-  Float_t *xfl;
-  Float_t *yfl;
-  Float_t *zfl;
-  Float_t xr;
-  Float_t yr;
-  Float_t zr;
-  Float_t xfe;
-  Float_t yfe;
-  Float_t zfe;
-  Int_t resID;
+  // Per-step arrays (evap = light ejectile, residue = heavy product).
+  Float_t *evap_energy;   // KE at creation
+  Float_t *residue_energy;
+  Float_t *evap_energy_exit;
+  Float_t *residue_energy_exit; // only [residue_step] can be a real value:
+                                // superseded residues decay, they never exit
+  Float_t *theta_cm; // CM emission angles [deg]
+  Float_t *phi_cm;
+  Float_t *evap_theta; // lab angles [deg]
+  Float_t *evap_phi;
+  Float_t *residue_theta;
+  Float_t *residue_phi;
+  Float_t *evap_stop_x;
+  Float_t *evap_stop_y;
+  Float_t *evap_stop_z;
+  Int_t *evap_stop_strip;
+  // Only the chain's final residue is transported, so its stop info is
+  // scalar; residue_step says which step it came from (-1 = none).
+  Float_t residue_stop_x;
+  Float_t residue_stop_y;
+  Float_t residue_stop_z;
+  Int_t residue_stop_strip;
+  Int_t residue_step;
 
   std::ofstream Log;
 

@@ -209,7 +209,7 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
     Log << "Compute detector response evt " << evt << std::endl;
 
   if (SimTree != 0)
-    this->reacStp = reacStp;
+    reaction_strip = reacStp;
 
   for (Int_t row = 0; row < AnodeRows; row++) {
     // Strip ID for this row. AnodeStpID[row][1] is unset (-1) for the
@@ -301,8 +301,10 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
   }
 }
 
-// Sentinel convention (set in ResetBranches): -1.0 = stopped in gas, -2.0 =
-// N/A.
+// Fill the exit-energy and stop-location branches from each particle's final
+// state. Energy sentinels (set in ResetBranches): -1.0 = stopped in the gas,
+// -2.0 = N/A. Stop-strip sentinels: -1 = did not stop in a readout strip
+// (exited, or dead layer), -2 = N/A.
 void Simulator::ComputeExitEnergies() {
   const Double_t amu_MeV = 931.49410242;
   auto Aof = [&](Particle *P) -> Int_t {
@@ -313,37 +315,55 @@ void Simulator::ComputeExitEnergies() {
                ? (Float_t)EnergyOutOfMaterial(A, Z, Kf, exitWindow_)
                : (Float_t)Kf;
   };
-  auto kineticExit = [&](Particle *P) -> Float_t {
-    if (!P)
-      return -2.0f;
-    Double_t Kf = P->GetKE();
-    if (Kf <= 0.001)
-      return -2.0f;
-    if (P->DoNotPropagate) {
-      // Neutral particle (no EM losses); treat as exiting forward.
-      return throughExitWindow(Aof(P), P->Z, Kf);
-    }
+  // Record the particle's final position and stop strip; return the exit
+  // energy (through the exit window) or the stopped-in-gas sentinel. Only
+  // call for particles that were actually transported.
+  auto recordExit = [&](Particle *P, Float_t &sx, Float_t &sy, Float_t &sz,
+                        Int_t &sstrip) -> Float_t {
     Double_t t, x, y, z;
     P->GetX(t, x, y, z);
-    if (z >= AnodeDepth)
-      return throughExitWindow(Aof(P), P->Z, Kf);
-    return -1.0f; // charged particle stopped inside the gas
+    sx = (Float_t)x;
+    sy = (Float_t)y;
+    sz = (Float_t)z;
+    if (z >= AnodeDepth) {
+      sstrip = -1; // left out the back; sz holds the crossing point
+      return throughExitWindow(Aof(P), P->Z, P->GetKE());
+    }
+    sstrip = StripAtZ(z);
+    return -1.0f; // stopped inside the gas
+  };
+  // A particle was transported iff it isn't flagged DoNotPropagate and is not
+  // at rest. Disallowed-step products are parked at rest (KE = 0); a particle
+  // that ran out of energy mid-gas keeps the KE of its last completed step
+  // (> 1 keV), so this never misclassifies a stopped particle.
+  auto transported = [](Particle *P) -> Bool_t {
+    return P && !P->DoNotPropagate && P->GetKE() > 0.001;
   };
 
-  // Beam only contributes on unreacted-beam events; reacted events leave Beam
-  // back-propagated to the entrance, so z < AnodeDepth and Kbeam_exit stays -2.
-  if (Beam) {
-    Double_t t, x, y, z;
-    Beam->GetX(t, x, y, z);
-    if (z >= AnodeDepth)
-      Kbeam_exit = throughExitWindow(Aof(Beam), Beam->Z, Beam->GetKE());
-  }
-  for (Int_t er = 0; er < numEvaporations; ++er) {
-    if (EvaP && EvaP[er])
-      Kl_exit[er] = kineticExit(EvaP[er]);
-    if (EvaR && EvaR[er])
-      Kh_exit[er] = kineticExit(EvaR[er]);
-  }
+  // The chain's surviving residue: each allowed step stops the propagation of
+  // the previous step's residue, so at most the last one is transported.
+  for (Int_t er = 0; er < numEvaporations; ++er)
+    if (transported(EvaR[er]))
+      residue_step = er;
+  const Bool_t reacted = (residue_step >= 0);
+
+  // The beam survives only on unreacted events (no vertex picked, or the
+  // sampled reaction was energetically disallowed and the beam swept on to
+  // the exit). On reacted events it was consumed at the vertex: N/A.
+  if (Beam && !reacted)
+    beam_energy_exit = recordExit(Beam, beam_stop_x, beam_stop_y, beam_stop_z,
+                                  beam_stop_strip);
+
+  for (Int_t er = 0; er < numEvaporations; ++er)
+    if (transported(EvaP[er]))
+      evap_energy_exit[er] =
+          recordExit(EvaP[er], evap_stop_x[er], evap_stop_y[er],
+                     evap_stop_z[er], evap_stop_strip[er]);
+  // Superseded residues decayed in place — their exit slots stay -2 (N/A).
+  if (reacted)
+    residue_energy_exit[residue_step] =
+        recordExit(EvaR[residue_step], residue_stop_x, residue_stop_y,
+                   residue_stop_z, residue_stop_strip);
 }
 
 void Simulator::FinalizeEvent(Int_t eventIndex) { ComputeExitEnergies(); }

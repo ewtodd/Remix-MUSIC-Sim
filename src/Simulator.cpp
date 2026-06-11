@@ -25,34 +25,23 @@ Simulator::Simulator(Int_t workerId) {
   numEvaporations = 0;
   EvaP = new Particle *[maxEvaporations];
   EvaR = new Particle *[maxEvaporations];
-  Kl = new Float_t[maxEvaporations];
-  Kh = new Float_t[maxEvaporations];
-  Kl_exit = new Float_t[maxEvaporations];
-  Kh_exit = new Float_t[maxEvaporations];
-  theta_CM = new Float_t[maxEvaporations];
-  phi_CM = new Float_t[maxEvaporations];
-  theta_l = new Float_t[maxEvaporations];
-  phi_l = new Float_t[maxEvaporations];
-  theta_h = new Float_t[maxEvaporations];
-  phi_h = new Float_t[maxEvaporations];
-  xfl = new Float_t[maxEvaporations];
-  yfl = new Float_t[maxEvaporations];
-  zfl = new Float_t[maxEvaporations];
+  evap_energy = new Float_t[maxEvaporations];
+  residue_energy = new Float_t[maxEvaporations];
+  evap_energy_exit = new Float_t[maxEvaporations];
+  residue_energy_exit = new Float_t[maxEvaporations];
+  theta_cm = new Float_t[maxEvaporations];
+  phi_cm = new Float_t[maxEvaporations];
+  evap_theta = new Float_t[maxEvaporations];
+  evap_phi = new Float_t[maxEvaporations];
+  residue_theta = new Float_t[maxEvaporations];
+  residue_phi = new Float_t[maxEvaporations];
+  evap_stop_x = new Float_t[maxEvaporations];
+  evap_stop_y = new Float_t[maxEvaporations];
+  evap_stop_z = new Float_t[maxEvaporations];
+  evap_stop_strip = new Int_t[maxEvaporations];
   minEx = new Double_t[maxEvaporations];
-  for (Int_t er = 0; er < maxEvaporations; er++) {
-    Kl[er] = Kh[er] = -2.0f;
-    phi_CM[er] = theta_CM[er] = -1;
-    phi_l[er] = theta_l[er] = -1;
-    phi_h[er] = theta_h[er] = -1;
-    xfl[er] = yfl[er] = 0;
-    zfl[er] = -1000;
-    minEx[0] = 0.0;
-  }
-  xr = yr = 0;
-  zr = -1000;
-  xfe = yfe = 0;
-  zfe = -1000;
-  resID = -1;
+  for (Int_t er = 0; er < maxEvaporations; er++)
+    minEx[er] = 0.0;
 
   NuF = new NuclideFinder();
 
@@ -77,10 +66,7 @@ Simulator::Simulator(Int_t workerId) {
 
   SimTree = 0;
   MCTree = 0;
-  for (Int_t s = 0; s < N_STRIPS; ++s) {
-    Left_0_17_dE[s] = RightdE[s] = 0;
-  }
-  Cathode = 0;
+  ResetBranches();
 
   InitCTF();
 
@@ -274,7 +260,7 @@ Int_t Simulator::run() {
                   << " MeV at gas surface (no entrance window)";
       std::cout << std::endl;
     }
-    BeamEnergyAccel = ctf.BeamEnergy;
+    beam_energy_accel = ctf.BeamEnergy;
   }
   SetTargetParticle(ctf.target);
   Log << "\tTarget particle configured." << std::endl;
