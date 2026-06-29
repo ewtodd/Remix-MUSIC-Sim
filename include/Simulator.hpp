@@ -141,6 +141,7 @@ private:
 
   // Lifecycle / control.
   void InitCTF();
+  void SetupRun();
   Int_t CheckMemoryUsage(Int_t Print = 0);
   Int_t runMultiThreaded();
 
@@ -203,6 +204,7 @@ private:
   TGraph ***TraceER;
   TGraph ***TraceEP;
   Bool_t tracesCreated;
+  Bool_t energeticsWritten_;
 
   Int_t NTraces;
   Int_t NEvents;
@@ -293,12 +295,12 @@ private:
   Float_t DeadUS_dE; // total dE in upstream dead gas layer (not read out)
   Float_t DeadDS_dE; // total dE in downstream dead gas layer
   // Per-step arrays (evap = light ejectile, residue = heavy product).
-  Float_t *evap_energy;   // KE at creation
+  Float_t *evap_energy; // KE at creation
   Float_t *residue_energy;
   Float_t *evap_energy_exit;
   Float_t *residue_energy_exit; // only [residue_step] can be a real value:
                                 // superseded residues decay, they never exit
-  Float_t *theta_cm; // CM emission angles [deg]
+  Float_t *theta_cm;            // CM emission angles [deg]
   Float_t *phi_cm;
   Float_t *evap_theta; // lab angles [deg]
   Float_t *evap_phi;
@@ -317,6 +319,7 @@ private:
   Int_t residue_step;
 
   std::ofstream Log;
+  std::ofstream EnergeticsLog;
 
   TSystem *gSystem;
   Float_t MaxMemory;

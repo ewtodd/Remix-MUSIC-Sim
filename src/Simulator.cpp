@@ -13,6 +13,7 @@ Simulator::Simulator(Int_t workerId) {
   PrintLevel = 0;
   SegLength = SegCMERange = SegEexcRange = 0;
   tracesCreated = false;
+  energeticsWritten_ = false;
 
   Beam = Target = Compound = Light = Heavy = DeDau1 = DeDau2 = 0;
   Trace = 0;
@@ -175,18 +176,7 @@ void Simulator::PreWarmCatima() {
   }
 }
 
-Int_t Simulator::run() {
-  // MT dispatch: only the master fans out. Workers run as single-threaded
-  // (their ctf.Threads is forced to 1 before run()).
-  if (ctf.Threads > 1 && workerId_ == 0)
-    return runMultiThreaded();
-
-  TFile *ROOTfile = 0;
-
-  SetPrintLevel(ctf.PrintOpt);
-  Log << "musicsim::run() START *********************************************"
-      << std::endl;
-
+void Simulator::SetupRun() {
   if (ctf.Update) {
     Eve = new TEveManager(960, 1018, kTRUE, "V");
     Eve->GetDefaultGLViewer()->SetClearColor(kWhite);
@@ -204,31 +194,36 @@ Int_t Simulator::run() {
     LegCol = new TLegend(0.692, 0.616, 0.826, 0.861);
     LegPart = new TLegend(0.692, 0.616, 0.826, 0.861);
     LabelKine = new TPaveText(0.152, 0.679, 0.437, 0.875, "NDC");
-    Log << "\tVisualization objects created." << std::endl;
+    if (Log.is_open())
+      Log << "\tVisualization objects created." << std::endl;
   } else {
     LabelKine = 0;
   }
 
   BuildGasMaterial();
-  Log << "\tGas material configured (" << ctf.gas << ", " << ctf.pressure
-      << " Torr, " << ctf.temperature << " K, density " << gas_.density()
-      << " g/cm^3)." << std::endl;
+  if (Log.is_open())
+    Log << "\tGas material configured (" << ctf.gas << ", " << ctf.pressure
+        << " Torr, " << ctf.temperature << " K, density " << gas_.density()
+        << " g/cm^3)." << std::endl;
   BuildWindows();
   auto unitOf = [](Bool_t byLen) { return byLen ? "um" : "mg/cm^2"; };
-  Log << "\tEntrance window: " << ctf.entranceMaterial << " "
-      << ctf.entranceThickness << " " << unitOf(ctf.entranceByLength)
-      << "; exit: " << ctf.exitMaterial << " " << ctf.exitThickness << " "
-      << unitOf(ctf.exitByLength) << "." << std::endl;
+  if (Log.is_open())
+    Log << "\tEntrance window: " << ctf.entranceMaterial << " "
+        << ctf.entranceThickness << " " << unitOf(ctf.entranceByLength)
+        << "; exit: " << ctf.exitMaterial << " " << ctf.exitThickness << " "
+        << unitOf(ctf.exitByLength) << "." << std::endl;
   BuildDegrader();
-  if (hasDegrader_)
+  if (hasDegrader_ && Log.is_open())
     Log << "\tDegrader: " << ctf.degraderMaterial << " " << ctf.degraderLength
         << " " << unitOf(ctf.degraderByLength) << "." << std::endl;
   if (SetAnode(90, ctf.ELossBins, ctf.MaxELoss) == 0)
     std::exit(EXIT_FAILURE);
-  Log << "\tAnode configured." << std::endl;
+  if (Log.is_open())
+    Log << "\tAnode configured." << std::endl;
 
   SetBeamParticle(ctf.beamName, kBlack, ctf.dEdxScaleBeam);
-  Log << "\tBeam particle configured." << std::endl;
+  if (Log.is_open())
+    Log << "\tBeam particle configured." << std::endl;
   // Mean beam KE at the gas surface (after entrance window). The per-event
   // chain — accelerator FWHM, degrader straggling, window straggling — is
   // sampled inside the event loop; this value is only for log output and the
@@ -263,14 +258,17 @@ Int_t Simulator::run() {
     beam_energy_accel = ctf.BeamEnergy;
   }
   SetTargetParticle(ctf.target);
-  Log << "\tTarget particle configured." << std::endl;
+  if (Log.is_open())
+    Log << "\tTarget particle configured." << std::endl;
   SetCompoundParticle(ctf.compound);
-  Log << "\tCompound particle configured." << std::endl;
+  if (Log.is_open())
+    Log << "\tCompound particle configured." << std::endl;
   for (Int_t i = 0; i < ctf.NumEvapPart; i++)
     SetEvapResAndPart(ctf.res[i], ctf.colorRes[i], ctf.evap[i],
                       ctf.colorEvap[i], ctf.dEdxScaleRes[i],
                       ctf.dEdxScaleEvap[i]);
-  Log << "\tEvaporated particles and residues configured." << std::endl;
+  if (Log.is_open())
+    Log << "\tEvaporated particles and residues configured." << std::endl;
 
   // Minimum excitation energies needed for each step of the reaction/decay
   // chain to be energetically allowed.
@@ -282,15 +280,36 @@ Int_t Simulator::run() {
     Double_t Q0 =
         (step == 0) ? (ml + mh - mb - mt) : (ml + mh - EvaR[step - 1]->Mass);
     minEx[step] = (Q0 < 0) ? -Q0 : 0;
-    if (step == 0)
-      Log << "Q0(" << Beam->Name << "+" << Target->Name << "->"
-          << EvaP[step]->Name << "+" << EvaR[step]->Name << ") = " << Q0
-          << " MeV\tminEx" << step << " = " << minEx[step] << std::endl;
-    else
-      Log << "Q0(" << EvaR[step - 1]->Name << "->" << EvaP[step]->Name << "+"
-          << EvaR[step]->Name << ") = " << Q0 << " MeV\tminEx" << step << " = "
-          << minEx[step] << std::endl;
+    if (Log.is_open()) {
+      if (step == 0)
+        Log << "Q0(" << Beam->Name << "+" << Target->Name << "->"
+            << EvaP[step]->Name << "+" << EvaR[step]->Name << ") = " << Q0
+            << " MeV\tminEx" << step << " = " << minEx[step] << std::endl;
+      else
+        Log << "Q0(" << EvaR[step - 1]->Name << "->" << EvaP[step]->Name << "+"
+            << EvaR[step]->Name << ") = " << Q0 << " MeV\tminEx" << step
+            << " = " << minEx[step] << std::endl;
+    }
   }
+}
+
+Int_t Simulator::run() {
+  // MT dispatch: only the master fans out. Workers run as single-threaded
+  // (their ctf.Threads is forced to 1 before run()).
+  if (ctf.Threads > 1 && workerId_ == 0)
+    return runMultiThreaded();
+
+  TFile *ROOTfile = 0;
+
+  SetPrintLevel(ctf.PrintOpt);
+  Log << "musicsim::run() START *********************************************"
+      << std::endl;
+
+  SetupRun();
+
+  EnergeticsLog.open("energetics.log");
+  CalculateCMEnergyRange();
+  EnergeticsLog.close();
 
   if (!ctf.FileName.IsNull()) {
     ROOTfile = new TFile(ctf.FileName.Data(), ctf.FileOpt.Data());
@@ -342,6 +361,12 @@ Int_t Simulator::run() {
 Int_t Simulator::runMultiThreaded() {
   ROOT::EnableThreadSafety();
   PreWarmCatima();
+
+  SetupRun();
+
+  EnergeticsLog.open("energetics.log");
+  CalculateCMEnergyRange();
+  EnergeticsLog.close();
 
   const Int_t nThreads = std::max(1, ctf.Threads);
   const Int_t totalEvents = ctf.NEvents;

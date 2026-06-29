@@ -304,7 +304,9 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
 }
 
 // Non-relativistic CM-energy ranges, per strip. Used to estimate the kinematic
-// reach of a configuration before the event loop runs.
+// reach of a configuration before the event loop runs. When EnergeticsLog is
+// open and energeticsWritten_ is false, writes the full table to
+// energetics.log; otherwise only computes CMEMax/CMEMin silently.
 void Simulator::CalculateCMEnergyRange() {
   Double_t mb = Beam->Mass;
   Double_t mt = Target->Mass;
@@ -315,59 +317,61 @@ void Simulator::CalculateCMEnergyRange() {
 
   Double_t CME_beg = Kb * mt / (mt + mb);
   CMEMax = CME_beg;
-  if (verbose_) {
-    std::cout << "Center-of-mass energy range covered in " << TotalLength
-              << "cm (MUSIC length):" << std::endl;
-    std::cout << "  Ecom(initial) = " << CME_beg << " MeV" << std::endl;
-  }
+
   Double_t Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength);
   Double_t CME_end = Kb_min * mt / (mt + mb);
   CMEMin = CME_end;
-  if (verbose_) {
-    std::cout << "   Ecom(final) = " << CME_end << " MeV" << std::endl;
-    std::cout << "Energetics for each segment:" << std::endl;
-    std::cout.fill(' ');
-    std::cout.width(2);
-    std::cout << "i";
-    std::cout.width(5);
-    std::cout << "stp";
-    std::cout.width(6);
-    std::cout << "L[cm]";
-    std::cout.width(10);
-    std::cout << "Ecm_in";
-    std::cout.width(10);
-    std::cout << "DeltaEcm";
-    std::cout.width(10);
-    std::cout << "Kb_in";
-    std::cout.width(10);
-    std::cout << "DeltaKb" << std::endl;
-  }
 
-  for (Int_t i = 0; i < AnodeRows; i++) {
-    Double_t Kb_in = Kb;
-    Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0]);
-    Double_t Kb_out = Kb;
-    CME_end = Kb * mt / (mt + mb);
-    if (verbose_) {
-      std::cout.fill(' ');
-      std::cout.width(2);
-      std::cout << i;
-      std::cout.width(5);
-      std::cout << AnodeStpID[i][0];
-      std::cout.width(6);
-      std::cout << AnodeDZ[i][0];
-      std::cout.precision(5);
-      std::cout.width(10);
-      std::cout << CME_beg;
-      std::cout.width(10);
-      std::cout << CME_beg - CME_end;
-      std::cout.width(10);
-      std::cout << Kb_in;
-      std::cout.width(10);
-      std::cout << Kb_in - Kb_out << std::endl;
+  // Write energetics table to file on first call only.
+  if (EnergeticsLog.is_open() && !energeticsWritten_) {
+    EnergeticsLog << "Center-of-mass energy range covered in " << TotalLength
+                  << "cm (MUSIC length):" << std::endl;
+    EnergeticsLog << "  Ecom(initial) = " << CME_beg << " MeV" << std::endl;
+    EnergeticsLog << "   Ecom(final) = " << CME_end << " MeV" << std::endl;
+    EnergeticsLog << "Energetics for each segment:" << std::endl;
+    EnergeticsLog.fill(' ');
+    EnergeticsLog.width(2);
+    EnergeticsLog << "i";
+    EnergeticsLog.width(5);
+    EnergeticsLog << "stp";
+    EnergeticsLog.width(6);
+    EnergeticsLog << "L[cm]";
+    EnergeticsLog.width(10);
+    EnergeticsLog << "Ecm_in";
+    EnergeticsLog.width(10);
+    EnergeticsLog << "DeltaEcm";
+    EnergeticsLog.width(10);
+    EnergeticsLog << "Kb_in";
+    EnergeticsLog.width(10);
+    EnergeticsLog << "DeltaKb" << std::endl;
+
+    Kb = Kb_at_gas;
+    CME_beg = CMEMax;
+    for (Int_t i = 0; i < AnodeRows; i++) {
+      Double_t Kb_in = Kb;
+      Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0]);
+      Double_t Kb_out = Kb;
+      CME_end = Kb * mt / (mt + mb);
+      EnergeticsLog.fill(' ');
+      EnergeticsLog.width(2);
+      EnergeticsLog << i;
+      EnergeticsLog.width(5);
+      EnergeticsLog << AnodeStpID[i][0];
+      EnergeticsLog.width(6);
+      EnergeticsLog << AnodeDZ[i][0];
+      EnergeticsLog.precision(5);
+      EnergeticsLog.width(10);
+      EnergeticsLog << CME_beg;
+      EnergeticsLog.width(10);
+      EnergeticsLog << CME_beg - CME_end;
+      EnergeticsLog.width(10);
+      EnergeticsLog << Kb_in;
+      EnergeticsLog.width(10);
+      EnergeticsLog << Kb_in - Kb_out << std::endl;
+      if (i + 1 < AnodeRows)
+        CME_beg = CME_end;
     }
-    if (i + 1 < AnodeRows)
-      CME_beg = CME_end;
+    energeticsWritten_ = true;
   }
 }
 
