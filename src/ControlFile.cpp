@@ -398,8 +398,16 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
   // SRIM table location: beside the run output, named for the gas state, so a
   // table is reused across every control file sharing that gas rather than
   // regenerated per run.
-  music::gStoppingModel = ctf.stoppingModel;
-  {
+  //
+  // Master only. Every MT worker re-reads this same control file from its own
+  // thread, so letting them all assign these globals put 32 threads on the
+  // same two std::strings at once -- each assignment freeing the old buffer
+  // and allocating a new one, which corrupted the heap and aborted roughly one
+  // multi-threaded run in three. The master loads the control file before any
+  // worker is spawned, so the values are already in place by the time a worker
+  // reads them; workers only ever read.
+  if (workerId_ == 0) {
+    music::gStoppingModel = ctf.stoppingModel;
     std::string out(ctf.FileName.Data());
     size_t slash = out.find_last_of('/');
     music::gSrimDir = (slash == std::string::npos) ? "." : out.substr(0, slash);
