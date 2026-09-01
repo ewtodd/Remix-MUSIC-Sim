@@ -7,8 +7,9 @@
 //
 //   srim-cache <control.toml>
 //
-// It is a no-op unless [physics].stopping = "srim", and a no-op per table that
-// already exists, so running it over a whole batch of control files is cheap:
+// It is a no-op unless [physics].stopping is "srim" or "mean", and a no-op per
+// table that already exists, so running it over a whole batch of control files
+// is cheap:
 // each distinct (ion, gas, pressure, temperature) is built once and then shared
 // by every control file that asks for it.
 //
@@ -71,9 +72,11 @@ int main(int argc, char **argv) {
 
   const std::string model =
       tbl["physics"]["stopping"].value_or(std::string("catima"));
-  if (model != "srim") {
-    std::cout << "srim-cache: [physics].stopping is not \"srim\" in " << ctrl
-              << "; nothing to do" << std::endl;
+  // "mean" averages catima with the SRIM tables, so it needs them cached too.
+  if (model != "srim" && model != "mean") {
+    std::cout << "srim-cache: [physics].stopping is neither \"srim\" nor "
+                 "\"mean\" in "
+              << ctrl << "; nothing to do" << std::endl;
     return 0;
   }
 

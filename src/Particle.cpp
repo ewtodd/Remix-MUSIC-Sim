@@ -253,7 +253,9 @@ void Particle::Print(std::ostream &log) {
   }
   if (NumMedia > 0 && gas_) {
     log << "| Stopping-power via "
-        << (music::gStoppingModel == 1 ? "SRIM tables" : "catima")
+        << (music::gStoppingModel == 1   ? "SRIM tables"
+            : music::gStoppingModel == 2 ? "mean(catima, SRIM)"
+                                         : "catima")
         << "; gas density = " << gas_->density()
         << " g/cm³, dE/dx scale = " << dEdxScale_ << std::endl;
   }
