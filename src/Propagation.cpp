@@ -190,10 +190,15 @@ Int_t Simulator::PropagateParticle(Particle *PO, Int_t Event, Double_t MaxTime,
     }
   }
 
-  for (Int_t stp = 0; stp < AnodeRows; stp++)
+  // Rebuild, don't accumulate: on a resumed call (reset_DE == false) this
+  // column already holds the previous pass's totals, while the per-column
+  // entries already carry both passes, so += would count pass 1 twice.
+  for (Int_t stp = 0; stp < AnodeRows; stp++) {
+    Double_t rowSum = 0;
     for (Int_t col = 0; col < AnodeCols; col++)
-      if (DE[stp][col] > 0)
-        DE[stp][AnodeCols] += DE[stp][col];
+      rowSum += DE[stp][col];
+    DE[stp][AnodeCols] = rowSum;
+  }
 
   PO->SetX(tf, xf, yf, zf);
   PO->SetP(Ene, p_mag * std::cos(phi) * std::sin(theta),
@@ -287,7 +292,8 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
   // anode noise does not leak in. EresCathode is % FWHM of the summed
   // cathode energy, same convention as the anode Eres entries.
   if (SimTree != 0 && ctf.EresCathode > 0.0 && Cathode > 0.0)
-    Cathode += Rdm->Gaus(0.0, ctf.EresCathode / 100.0 * Cathode / kFwhmPerSigma);
+    Cathode +=
+        Rdm->Gaus(0.0, ctf.EresCathode / 100.0 * Cathode / kFwhmPerSigma);
 
   if (tracesCreated) {
     for (Int_t col = 0; col < AnodeCols + 1; col++) {

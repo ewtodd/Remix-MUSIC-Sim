@@ -346,6 +346,35 @@ private:
     TString target;
     TString compound;
     Int_t NumEvapPart;
+    // How much of the available energy the residue is left holding as internal
+    // excitation. "forced" is the historical behaviour: Ex uniform on
+    // [2/3, 1] x EneAvail, which favours energetically-allowed evaporation
+    // chains but is wrong for a single-step reaction -- it locks away ~83% of
+    // the available energy, so the product is too slow, stops too early, and
+    // deposits too sharply just after the vertex.
+    //   0 = forced (default, unchanged)  1 = ground state  2 = uniform
+    // Stopping-power model for the gas: 0 = catima (built in), 1 = SRIM tables
+    // read from disk. SRIM tables are per (ion, gas, pressure, temperature) and
+    // are generated once by the srim-cache tool; a missing table is an error
+    // rather than a silent fallback, since the two models disagree by ~10% and
+    // a quiet substitution would invalidate any dedx_scale calibrated on one.
+    Int_t stoppingModel = 0;
+
+    Int_t residueExc = 0;
+    // CM angular distribution of the two-body exit channel.
+    //   0 = isotropic (default): cos(theta_CM) uniform on [-1, 1]. Correct for
+    //       a compound-nucleus channel, where the residue's energy barely
+    //       depends on angle because the ejectile is light.
+    //   1 = Rutherford: dsigma/dOmega ~ 1/sin^4(theta_CM/2), the right shape
+    //       for elastic/inelastic scattering off the gas. With an alpha
+    //       ejectile the residue's energy swings ~20% across the angular
+    //       range, so isotropic sampling makes the scattered beam lose ~19%
+    //       of its energy where the real, forward-peaked process loses ~2%.
+    Int_t angularDist = 0;
+    // Small-angle cutoff for the Rutherford draw, in degrees. The cross
+    // section diverges as theta -> 0; events below this transfer too little
+    // energy to be visible anyway. Only used when angularDist == 1.
+    Double_t thetaCmMinDeg = 1.0;
     static const Int_t MaxNumEvapPart = 10;
     TString *res = new TString[MaxNumEvapPart];
     Float_t *dEdxScaleRes = new Float_t[MaxNumEvapPart];

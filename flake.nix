@@ -1,7 +1,7 @@
 {
   description = "Remix-MUSIC-Sim: catima-based, multi-threaded fork of the ANL MUSIC detector simulator";
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/ced43465ad23b2fdea055be721e79895cbf96c28";
     flake-utils.url = "github:numtide/flake-utils";
     catima-src = {
       url = "github:hrosiak/catima/75d22b260ed921f2e6d1c257ca82cf25bcd9f906";
@@ -46,6 +46,11 @@
           installPhase = ''
             mkdir -p $out/bin
             cp musicsim $out/bin/
+            # srim-cache generates the SRIM tables a control file needs. It
+            # shells out to make-srim-table (from SRIM-nix), which is not a
+            # build input: table generation drives SRIM under wine and is a
+            # deliberate, occasional step, not part of building the simulator.
+            cp srim-cache $out/bin/
           '';
         };
       in

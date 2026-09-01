@@ -62,10 +62,16 @@ void Simulator::BuildGasMaterial() {
   Double_t rho = ctf.pressure * molar_mass / (R_gas * ctf.temperature);
 
   gas_ = catima::Material();
-  for (const auto &c : components)
+  Double_t stoich_mass = 0.0;
+  for (const auto &c : components) {
     gas_.add_element(c.mass_u, c.Z, Double_t(c.stn));
+    stoich_mass += c.stn * c.mass_u;
+  }
   gas_.density(rho);
-  gas_.M(molar_mass);
+  // catima computes weight_fraction(i) = stn_i*A_i / M(), so M() must be
+  // sum(stn*A), not the mean molar mass used for the density above. For P10
+  // the two differ by 10x; for the single-species gases they coincide.
+  gas_.M(stoich_mass);
 }
 
 // Composition + density only; callers set thickness via the helpers below.
@@ -79,13 +85,16 @@ catima::Material Simulator::LookupMaterial(const TString &name) {
     m.add_element(26.982, 13, 1);
     density_g_per_cc = 2.6989;
   } else if (name == "Havar") {
-    // Havar: Co 42 / Cr 19.5 / Fe 17.9 / Ni 12.7 / Mo 2.2 / W 2.7 (wt %).
-    m.add_element(58.933, 27, 42.0);
-    m.add_element(51.996, 24, 19.5);
-    m.add_element(55.845, 26, 17.9);
-    m.add_element(58.693, 28, 12.7);
-    m.add_element(95.95, 42, 2.2);
-    m.add_element(183.84, 74, 2.7);
+    // Havar: Co 42 / Cr 19.5 / Fe 17.9 / Ni 12.7 / Mo 2.2 / W 2.7 (wt %),
+    // renormalised to 1.0 over the six listed elements. catima reads stn < 1
+    // as a mass fraction and stn >= 1 as stoichiometry, so these must be
+    // fractions -- passing the percents made W 3.1x too heavy.
+    m.add_element(58.933, 27, 0.4330);
+    m.add_element(51.996, 24, 0.2010);
+    m.add_element(55.845, 26, 0.1845);
+    m.add_element(58.693, 28, 0.1309);
+    m.add_element(95.95, 42, 0.0227);
+    m.add_element(183.84, 74, 0.0278);
     density_g_per_cc = 8.3;
   } else if (name == "Kapton") {
     // Kapton monomer C22 H10 N2 O5.

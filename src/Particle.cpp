@@ -252,7 +252,9 @@ void Particle::Print(std::ostream &log) {
     log << "| Trajectory object not saved." << std::endl;
   }
   if (NumMedia > 0 && gas_) {
-    log << "| Stopping-power via catima; gas density = " << gas_->density()
+    log << "| Stopping-power via "
+        << (music::gStoppingModel == 1 ? "SRIM tables" : "catima")
+        << "; gas density = " << gas_->density()
         << " g/cm³, dE/dx scale = " << dEdxScale_ << std::endl;
   }
   log << "|==================================================|" << std::endl;
