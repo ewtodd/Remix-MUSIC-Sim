@@ -133,12 +133,12 @@ void EnergyLoss::BuildTables() {
     sigma2_per_cm_[i] = std::max(0.0, sigma_E * sigma_E / dx_ref);
   }
 
-  // SRIM overrides only the MEAN dE/dx; the straggling variance above stays,
-  // because SRIM tables carry no variance. A missing table is fatal rather
-  // than a silent fall back to catima: the models differ by ~10% in helium,
-  // so quietly substituting one would invalidate a dedx_scale calibrated on
-  // the other.
-  if (music::gStoppingModel != 1)
+  // SRIM ("srim") replaces, and "mean" averages with, only the MEAN dE/dx; the
+  // straggling variance above stays, because SRIM tables carry no variance. A
+  // missing table is fatal rather than a silent fall back to catima: the
+  // models differ by ~10% in helium, so quietly substituting one would
+  // invalidate a dedx_scale calibrated on the other.
+  if (music::gStoppingModel == 0)
     return;
   const std::string ion =
       (Z_ > 0 && Z_ < kNElem) ? (std::to_string(A_) + kElem[Z_]) : "";
@@ -171,7 +171,10 @@ void EnergyLoss::BuildTables() {
       const Double_t f = (Ki - tE[k - 1]) / (tE[k] - tE[k - 1]);
       v = tS[k - 1] + f * (tS[k] - tS[k - 1]);
     }
-    eloss_per_cm_[i] = std::max(0.0, v);
+    // "srim" takes the table value; "mean" averages it with the catima value
+    // already sitting in the slot, per ApJ 983:142 sec 2.2.
+    eloss_per_cm_[i] = std::max(
+        0.0, music::gStoppingModel == 2 ? 0.5 * (eloss_per_cm_[i] + v) : v);
   }
   // One line per distinct table: EnergyLoss is constructed per particle per
   // worker, so an unguarded message would repeat hundreds of times.
@@ -180,8 +183,10 @@ void EnergyLoss::BuildTables() {
     static std::set<std::string> seen;
     std::lock_guard<std::mutex> lk(m);
     if (seen.insert(path).second)
-      std::cout << "  [stopping] SRIM table for " << ion << ": " << tE.size()
-                << " points from " << path << std::endl;
+      std::cout << "  [stopping] "
+                << (music::gStoppingModel == 2 ? "mean(catima, SRIM)" : "SRIM")
+                << " table for " << ion << ": " << tE.size() << " points from "
+                << path << std::endl;
   }
 }
 

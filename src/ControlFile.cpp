@@ -291,19 +291,25 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
   if (auto v = tbl.at_path("physics.straggling").value<bool>())
     music::gStragglingEnabled = *v;
 
-  // [physics] stopping = "catima" | "srim"
+  // [physics] stopping = "catima" | "srim" | "mean"
   // Selects the gas stopping-power model. SRIM reads a cached table; catima
-  // computes it. Default catima, which is what the code has used since the
-  // tables were dropped.
+  // computes it. "mean" averages the two per energy point, which is what
+  // ApJ 983:142 sec 2.2 used to reproduce the measured beam energy losses
+  // ("Monte Carlo simulations of the setup ... using the mean value of the
+  // stopping powers of the ATIMA table in LISE++ and of the tables in SRIM").
+  // It needs the same cached tables as "srim". Default catima, which is what
+  // the code has used since the tables were dropped.
   if (auto v = tbl.at_path("physics.stopping").value<std::string>()) {
     std::string m = *v;
     if (m == "catima")
       ctf.stoppingModel = 0;
     else if (m == "srim")
       ctf.stoppingModel = 1;
+    else if (m == "mean")
+      ctf.stoppingModel = 2;
     else {
-      std::cerr << "musicsim ERROR: physics.stopping must be catima or srim; "
-                   "got "
+      std::cerr << "musicsim ERROR: physics.stopping must be catima, srim or "
+                   "mean; got "
                 << m << std::endl;
       std::exit(1);
     }
