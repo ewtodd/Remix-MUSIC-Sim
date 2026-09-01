@@ -126,10 +126,19 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     }
 
     Double_t Ex = 0;
-    if (EneAvail > minEx[er])
-      // Force highly excited states (favors energetically-allowed chains).
-      Ex = Rdm->Uniform(2 * EneAvail / 3, EneAvail);
-    else
+    if (EneAvail > minEx[er]) {
+      switch (ctf.residueExc) {
+      case 1: // ground state: the available energy all goes to kinetic energy
+        Ex = 0;
+        break;
+      case 2: // uniform over the open range
+        Ex = Rdm->Uniform(0.0, EneAvail);
+        break;
+      default: // forced, favours energetically-allowed evaporation chains
+        Ex = Rdm->Uniform(2 * EneAvail / 3, EneAvail);
+        break;
+      }
+    } else
       ReactionAllowed = 0;
 
     EvaR[er]->SetExcEnergy(Ex);
@@ -137,7 +146,21 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     // For the first step, honour user-specified angles; for later steps,
     // randomise. Uniform on the unit sphere → cos(θ) uniform on [-1, 1].
     if ((theta_CM == -1 && phi_CM == -1) || er > 0) {
-      theta_CM = std::acos(Rdm->Uniform(-1.0, 1.0));
+      if (ctf.angularDist == 1) {
+        // Rutherford. With u = sin^2(theta/2), dsigma ~ du/u^2, so sampling u
+        // on [u_min, 1] with that weight inverts in closed form:
+        //     1/u = 1/u_min - r (1/u_min - 1)
+        Double_t hmin = std::sin(0.5 * ctf.thetaCmMinDeg * pi / 180.0);
+        Double_t umin = hmin * hmin;
+        Double_t r = Rdm->Uniform(0.0, 1.0);
+        Double_t inv = 1.0 / umin - r * (1.0 / umin - 1.0);
+        Double_t u = 1.0 / inv;
+        if (u > 1.0)
+          u = 1.0;
+        theta_CM = 2.0 * std::asin(std::sqrt(u));
+      } else {
+        theta_CM = std::acos(Rdm->Uniform(-1.0, 1.0));
+      }
       phi_CM = Rdm->Uniform(-pi, pi);
     }
 

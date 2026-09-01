@@ -1,3 +1,4 @@
+#include "EnergyLoss.hpp"
 #include "Simulator.hpp"
 
 // TOML control-file parser. Schema (every section optional; missing keys keep
@@ -290,6 +291,70 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
   if (auto v = tbl.at_path("physics.straggling").value<bool>())
     music::gStragglingEnabled = *v;
 
+  // [physics] stopping = "catima" | "srim"
+  // Selects the gas stopping-power model. SRIM reads a cached table; catima
+  // computes it. Default catima, which is what the code has used since the
+  // tables were dropped.
+  if (auto v = tbl.at_path("physics.stopping").value<std::string>()) {
+    std::string m = *v;
+    if (m == "catima")
+      ctf.stoppingModel = 0;
+    else if (m == "srim")
+      ctf.stoppingModel = 1;
+    else {
+      std::cerr << "musicsim ERROR: physics.stopping must be catima or srim; "
+                   "got "
+                << m << std::endl;
+      std::exit(1);
+    }
+  }
+
+  // [reaction] residue_excitation = "forced" | "ground" | "uniform"
+  // See ctf.residueExc. Default keeps the historical "forced" behaviour so
+  // existing control files reproduce exactly.
+  if (auto v =
+          tbl.at_path("reaction.residue_excitation").value<std::string>()) {
+    std::string m = *v;
+    if (m == "forced")
+      ctf.residueExc = 0;
+    else if (m == "ground")
+      ctf.residueExc = 1;
+    else if (m == "uniform")
+      ctf.residueExc = 2;
+    else {
+      std::cerr << "musicsim ERROR: reaction.residue_excitation must be "
+                   "forced, ground or uniform; got "
+                << m << std::endl;
+      std::exit(1);
+    }
+  }
+
+  // [reaction] angular_distribution = "isotropic" | "rutherford"
+  // [reaction] theta_cm_min_deg = <degrees>   (rutherford only)
+  if (auto v =
+          tbl.at_path("reaction.angular_distribution").value<std::string>()) {
+    std::string m = *v;
+    if (m == "isotropic")
+      ctf.angularDist = 0;
+    else if (m == "rutherford")
+      ctf.angularDist = 1;
+    else {
+      std::cerr << "musicsim ERROR: reaction.angular_distribution must be "
+                   "isotropic or rutherford; got "
+                << m << std::endl;
+      std::exit(1);
+    }
+  }
+  if (auto v = tbl.at_path("reaction.theta_cm_min_deg").value<double>()) {
+    if (*v <= 0.0 || *v >= 180.0) {
+      std::cerr << "musicsim ERROR: reaction.theta_cm_min_deg must be in "
+                   "(0, 180); got "
+                << *v << std::endl;
+      std::exit(1);
+    }
+    ctf.thetaCmMinDeg = *v;
+  }
+
   // [[reaction.step]]
   if (auto steps = tbl.at_path("reaction.step"); steps.is_array()) {
     Int_t idx = 0;
@@ -329,6 +394,20 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
   getDouble("run", "sim_step", ctf.SimStep);
   getInt("run", "method", ctf.Method);
   getString("run", "output", ctf.FileName);
+
+  // SRIM table location: beside the run output, named for the gas state, so a
+  // table is reused across every control file sharing that gas rather than
+  // regenerated per run.
+  music::gStoppingModel = ctf.stoppingModel;
+  {
+    std::string out(ctf.FileName.Data());
+    size_t slash = out.find_last_of('/');
+    music::gSrimDir = (slash == std::string::npos) ? "." : out.substr(0, slash);
+    char tag[128];
+    snprintf(tag, sizeof(tag), "%s_%gTorr_%gK", ctf.gas.Data(),
+             Double_t(ctf.pressure), Double_t(ctf.temperature));
+    music::gSrimGasTag = tag;
+  }
   getString("run", "file_opt", ctf.FileOpt);
   getInt("run", "print_opt", ctf.PrintOpt);
   getInt("run", "reac_class", ctf.reacClass);

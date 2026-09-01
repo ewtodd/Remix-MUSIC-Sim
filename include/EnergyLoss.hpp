@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include <TROOT.h>
@@ -26,6 +27,20 @@ extern catima::Config gStragglingConfig;
 // Gaussian window/degrader smearing alike). Set from the [physics] straggling
 // key; default on. Off means every energy loss is the catima mean.
 extern Bool_t gStragglingEnabled;
+
+// SRIM stopping-power support.
+//
+// When gStoppingModel is 1, EnergyLoss fills its mean-dE/dx table from a SRIM
+// table on disk instead of from catima. The two models disagree by ~10% in
+// helium, so a dedx_scale calibrated against one is wrong for the other; a
+// missing table is therefore a hard error, never a silent fallback.
+//
+// Tables are per (ion, gas, pressure, temperature) and live beside the run
+// output as <ion>_in_<gas>_<P>Torr_<T>K.srim. Straggling still comes from
+// catima either way: SRIM tables carry no variance.
+extern Int_t gStoppingModel;    // 0 = catima, 1 = SRIM
+extern std::string gSrimDir;    // directory holding the tables
+extern std::string gSrimGasTag; // e.g. "4He_555Torr_293K"
 } // namespace music
 
 class EnergyLoss {

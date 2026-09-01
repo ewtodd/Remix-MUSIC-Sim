@@ -1,4 +1,11 @@
 #include "EnergyLoss.hpp"
+#include <algorithm>
+#include <fstream>
+#include <iostream>
+#include <mutex>
+#include <set>
+#include <sstream>
+#include <vector>
 
 namespace music {
 // Defaults to catima's compiled default config; Simulator::loadCtrlFile
@@ -6,7 +13,71 @@ namespace music {
 // straggling-capable z_effective) once a control file is parsed.
 catima::Config gStragglingConfig;
 Bool_t gStragglingEnabled = kTRUE;
+Int_t gStoppingModel = 0;
+std::string gSrimDir;
+std::string gSrimGasTag;
 } // namespace music
+
+namespace {
+// Element symbols, index = Z. Only needed to name a SRIM table file.
+const char *kElem[] = {
+    "n",  "H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne", "Na",
+    "Mg", "Al", "Si", "P",  "S",  "Cl", "Ar", "K",  "Ca", "Sc", "Ti", "V",
+    "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br",
+    "Kr", "Rb", "Sr", "Y",  "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag",
+    "Cd", "In", "Sn", "Sb", "Te", "I",  "Xe", "Cs", "Ba", "La", "Ce", "Pr",
+    "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu",
+    "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi",
+    "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U"};
+const Int_t kNElem = Int_t(sizeof(kElem) / sizeof(kElem[0]));
+
+// Parse a SRIM output table into (kinetic energy [MeV], dE/dx [MeV/cm]).
+// The file lists electronic and nuclear stopping separately in the units named
+// by its "Stopping Units" header line; both are summed, since the anode sees
+// the total deposit.
+Bool_t ReadSrimTable(const std::string &path, std::vector<Double_t> &E_MeV,
+                     std::vector<Double_t> &dEdx_MeV_per_cm) {
+  std::ifstream in(path);
+  if (!in)
+    return kFALSE;
+  Double_t unit_to_MeV_per_cm = 0.0;
+  Bool_t in_table = kFALSE;
+  std::string line;
+  while (std::getline(in, line)) {
+    if (!in_table) {
+      if (line.find("Stopping Units") != std::string::npos) {
+        if (line.find("MeV/mm") != std::string::npos)
+          unit_to_MeV_per_cm = 10.0;
+        else if (line.find("MeV/cm") != std::string::npos)
+          unit_to_MeV_per_cm = 1.0;
+        else if (line.find("keV/um") != std::string::npos)
+          unit_to_MeV_per_cm = 10.0; // keV/um == MeV/mm
+        in_table = (unit_to_MeV_per_cm > 0.0);
+      }
+      continue;
+    }
+    std::istringstream ss(line);
+    Double_t e = 0, el = 0, nu = 0;
+    std::string unit;
+    if (!(ss >> e >> unit >> el >> nu))
+      continue;
+    Double_t scale = 0.0;
+    if (unit == "eV")
+      scale = 1e-6;
+    else if (unit == "keV")
+      scale = 1e-3;
+    else if (unit == "MeV")
+      scale = 1.0;
+    else if (unit == "GeV")
+      scale = 1e3;
+    else
+      continue;
+    E_MeV.push_back(e * scale);
+    dEdx_MeV_per_cm.push_back((el + nu) * unit_to_MeV_per_cm);
+  }
+  return E_MeV.size() > 2;
+}
+} // namespace
 
 EnergyLoss::EnergyLoss(Int_t A, Int_t Z, Double_t IonMass_MeV_per_c2,
                        const catima::Material *gas, Float_t dEdxScale)
@@ -60,6 +131,57 @@ void EnergyLoss::BuildTables() {
     const Double_t sigma_E = rStr.sigma_E * A_;
     eloss_per_cm_[i] = std::max(0.0, (Ki - Eout) / dx_ref);
     sigma2_per_cm_[i] = std::max(0.0, sigma_E * sigma_E / dx_ref);
+  }
+
+  // SRIM overrides only the MEAN dE/dx; the straggling variance above stays,
+  // because SRIM tables carry no variance. A missing table is fatal rather
+  // than a silent fall back to catima: the models differ by ~10% in helium,
+  // so quietly substituting one would invalidate a dedx_scale calibrated on
+  // the other.
+  if (music::gStoppingModel != 1)
+    return;
+  const std::string ion =
+      (Z_ > 0 && Z_ < kNElem) ? (std::to_string(A_) + kElem[Z_]) : "";
+  if (ion.empty()) {
+    std::cerr << "musicsim ERROR: no element symbol for Z=" << Z_
+              << "; cannot name a SRIM table" << std::endl;
+    std::exit(1);
+  }
+  const std::string path =
+      music::gSrimDir + "/" + ion + "_in_" + music::gSrimGasTag + ".srim";
+  std::vector<Double_t> tE, tS;
+  if (!ReadSrimTable(path, tE, tS)) {
+    std::cerr << "musicsim ERROR: physics.stopping = srim but no usable table "
+              << "at " << path << "\n  generate it with srim-cache, or set "
+              << "physics.stopping = catima" << std::endl;
+    std::exit(1);
+  }
+  for (Int_t i = 0; i < kNTable; ++i) {
+    const Double_t Ki = std::exp(log_ki_grid_[i]);
+    // Clamp outside the tabulated range; the grid deliberately spans far more
+    // than SRIM tabulates.
+    Double_t v;
+    if (Ki <= tE.front())
+      v = tS.front();
+    else if (Ki >= tE.back())
+      v = tS.back();
+    else {
+      size_t k =
+          size_t(std::lower_bound(tE.begin(), tE.end(), Ki) - tE.begin());
+      const Double_t f = (Ki - tE[k - 1]) / (tE[k] - tE[k - 1]);
+      v = tS[k - 1] + f * (tS[k] - tS[k - 1]);
+    }
+    eloss_per_cm_[i] = std::max(0.0, v);
+  }
+  // One line per distinct table: EnergyLoss is constructed per particle per
+  // worker, so an unguarded message would repeat hundreds of times.
+  {
+    static std::mutex m;
+    static std::set<std::string> seen;
+    std::lock_guard<std::mutex> lk(m);
+    if (seen.insert(path).second)
+      std::cout << "  [stopping] SRIM table for " << ion << ": " << tE.size()
+                << " points from " << path << std::endl;
   }
 }
 
@@ -199,7 +321,9 @@ Double_t EnergyLoss::GetOptimumStepSize(Double_t Energy) {
   Double_t rho = gas_->density();
   if (dEdx_per_gcm2 <= 0.0 || rho <= 0.0)
     return 0.01;
-  Double_t dEdx_MeV_per_cm = dEdx_per_gcm2 * A_ * rho;
+  // catima::dedx returns the TOTAL ion dE/dx in MeV/(g/cm^2), not a
+  // per-nucleon value, so there is no A_ factor here.
+  Double_t dEdx_MeV_per_cm = dEdx_per_gcm2 * rho;
   return 0.01 * Energy / dEdx_MeV_per_cm;
 }
 
