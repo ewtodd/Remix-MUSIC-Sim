@@ -11,8 +11,6 @@
  ♪ ♫ ♬ ♩ ♪ ♫ ♬ ♩ ♪ ♫ ♬ ♩ ♪ ♫ ♬ ♩ ♪ ♫ ♬ ♩ ♪ ♫ ♬ ♩
 ```
 <!---->
-(also printed on startup — kept in sync with [assets/remix.txt](assets/remix.txt))
-<!---->
 Fork of the ANL MUSIC simulator (originally by Daniel Santiago-Gonzalez).
 Stopping powers are computed using [catima](https://github.com/hrosiak/catima).
 <!---->
