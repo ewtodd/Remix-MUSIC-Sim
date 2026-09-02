@@ -1,11 +1,38 @@
 #!/usr/bin/env bash
 # Reformat staged C/C++ files with clang-format and staged TOML files with
-# taplo, then re-stage them. Style for TOML comes from .taplo.toml. If a
-# formatter is not on PATH the hook warns and skips that pass — enter
-# `nix develop` to get both tools.
+# taplo, then re-stage them, and keep the README's banner identical to
+# assets/remix.txt. Style for TOML comes from .taplo.toml. If a formatter is
+# not on PATH the hook warns and skips that pass — enter `nix develop` to get
+# both tools.
 set -e
 
 STYLE='{BasedOnStyle: LLVM, BreakStringLiterals: false}'
+BANNER=assets/remix.txt
+
+# The banner is the first fenced block in the README; its body is replaced
+# with the asset, line for line.
+if [ -f README.md ] && [ -f "$BANNER" ]; then
+    awk -v banner="$BANNER" '
+        /^```$/ && !done {
+            print
+            if (!inblk) {
+                while ((getline line < banner) > 0) print line
+                inblk = 1
+            } else {
+                done = 1
+            }
+            next
+        }
+        inblk && !done { next }
+        { print }
+    ' README.md > README.md.tmp
+    if ! cmp -s README.md README.md.tmp; then
+        mv README.md.tmp README.md
+        git add README.md
+    else
+        rm README.md.tmp
+    fi
+fi
 
 cpp_files=$(git diff --cached --name-only --diff-filter=ACMR \
             | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' || true)
