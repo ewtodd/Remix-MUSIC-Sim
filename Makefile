@@ -6,8 +6,15 @@ SRCDIR = src
 INCDIR = include
 OBJDIR = lib
 
+# Where the wordmark (assets/remix.txt) lives. Baked in at build so the
+# binary stays self-locating regardless of the run-time cwd; nix points it
+# at the installed copy.
+ASSETS_DIR     ?= $(abspath assets)
+ASSETS_DIR_OUT ?= $(ASSETS_DIR)
+
 CXXFLAGS = $(shell root-config --cflags) -I$(INCDIR) -I$(CATIMA_PREFIX)/include \
-           -DMUSICSIM_VERSION=\"$(VERSION)\"
+           -DMUSICSIM_VERSION=\"$(VERSION)\" \
+           -DMUSICSIM_ASSETS_DIR='"$(ASSETS_DIR_OUT)"'
 LIBS     = $(shell root-config --glibs) -lGeom -lEve -lRGL -lMathMore \
            -L$(CATIMA_PREFIX)/lib -lcatima
 
