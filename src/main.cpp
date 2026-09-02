@@ -1,14 +1,30 @@
+#include <fstream>
 #include <iostream>
 
 #include <TApplication.h>
+#include <TString.h>
 
 #include "Simulator.hpp"
 
 #ifndef MUSICSIM_VERSION
 #define MUSICSIM_VERSION "dev"
 #endif
+#ifndef MUSICSIM_ASSETS_DIR
+#define MUSICSIM_ASSETS_DIR "assets"
+#endif
+
+// Wordmark, printed once before anything else (including the multi-threaded
+// simulate path, which is only ever reached after main() has already run).
+// Read from assets/remix.txt so the same art can be pasted into the README.
+static void PrintLogo() {
+  std::ifstream in(TString(MUSICSIM_ASSETS_DIR) + "/remix.txt");
+  if (!in)
+    return; // art is decoration; never let a missing asset stop a run
+  std::cout << std::endl << in.rdbuf() << std::endl;
+}
 
 Int_t main(Int_t argc, char *argv[]) {
+  PrintLogo();
   std::cout
       << "==========================================================================\n"
       << "|--- MUSIC simulator (musicsim) version " << MUSICSIM_VERSION << "\n"

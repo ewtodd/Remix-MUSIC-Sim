@@ -41,16 +41,17 @@
             tomlplusplus
           ];
           buildPhase = ''
-            make CATIMA_PREFIX=${catima} VERSION=${version}
+            make CATIMA_PREFIX=${catima} VERSION=${version} ASSETS_DIR_OUT=$out/assets
           '';
           installPhase = ''
-            mkdir -p $out/bin
+            mkdir -p $out/bin $out/assets
             cp musicsim $out/bin/
             # srim-cache generates the SRIM tables a control file needs. It
             # shells out to make-srim-table (from SRIM-nix), which is not a
             # build input: table generation drives SRIM under wine and is a
             # deliberate, occasional step, not part of building the simulator.
             cp srim-cache $out/bin/
+            cp -r assets/. $out/assets/
           '';
         };
       in
