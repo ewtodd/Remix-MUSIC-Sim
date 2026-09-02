@@ -1,5 +1,7 @@
 run87Rb.sh
 srim-cache
+run37Cl.sh
+37Cl_beam.toml
 
 # Editor backups
 *~
