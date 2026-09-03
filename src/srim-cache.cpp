@@ -3,7 +3,10 @@
 // musicsim reads SRIM tables but never creates them: generating one drives the
 // SRIM SR-Module under wine, which is slow and needs a toolchain the simulator
 // has no business carrying. This tool does that step once, up front, so the
-// simulation itself only ever reads a table that is already there.
+// simulation itself only ever reads a table that is already there. The
+// generator is SRIM-nix's make-srim-table: the flake compiles its store path
+// in, SRIM_TABLE_BIN in the environment overrides it, and with neither the
+// name is looked up on PATH.
 //
 //   srim-cache <control.toml>
 //
@@ -24,7 +27,22 @@
 #include <toml++/toml.hpp>
 #include <vector>
 
+#ifndef MUSICSIM_SRIM_TABLE_BIN
+#define MUSICSIM_SRIM_TABLE_BIN ""
+#endif
+
 namespace {
+
+// The table generator: the environment first, then the path the build
+// compiled in, then a bare name for PATH.
+std::string TableGenerator() {
+  const char *env = std::getenv("SRIM_TABLE_BIN");
+  if (env && env[0] != '\0')
+    return env;
+  if (MUSICSIM_SRIM_TABLE_BIN[0] != '\0')
+    return MUSICSIM_SRIM_TABLE_BIN;
+  return "make-srim-table";
+}
 
 bool FileExists(const std::string &p) {
   struct stat st;
@@ -126,13 +144,14 @@ int main(int argc, char **argv) {
     }
     char cmd[1024];
     snprintf(cmd, sizeof(cmd),
-             "make-srim-table --ion %s --gas %s --pressure %g --temp %g "
-             "--out '%s'",
-             ion.c_str(), gas.c_str(), pressure, temperature, out.c_str());
+             "'%s' --ion %s --gas %s --pressure %g --temp %g --out '%s'",
+             TableGenerator().c_str(), ion.c_str(), gas.c_str(), pressure,
+             temperature, out.c_str());
     std::cout << "srim-cache: generating " << out << std::endl;
     if (std::system(cmd) != 0 || !FileExists(out)) {
       std::cerr << "srim-cache: FAILED to generate " << out
-                << "\n  (needs make-srim-table on PATH, from SRIM-nix)"
+                << "\n  (generator: " << TableGenerator()
+                << "; set SRIM_TABLE_BIN or build through the flake)"
                 << std::endl;
       failed++;
       continue;

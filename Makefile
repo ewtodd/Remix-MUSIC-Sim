@@ -30,8 +30,12 @@ all: musicsim srim-cache
 musicsim: $(OBJECTS)
 	$(CXX) -o $@ $(OBJECTS) $(LIBS)
 
+# The SRIM table generator srim-cache drives: nix passes SRIM-nix's
+# make-srim-table store path; empty means whatever is on PATH at run time.
+SRIM_TABLE_BIN ?=
+
 srim-cache: $(SRIMCACHE_SRC)
-	$(CXX) $(CXXFLAGS) -o $@ $<
+	$(CXX) $(CXXFLAGS) -DMUSICSIM_SRIM_TABLE_BIN='"$(SRIM_TABLE_BIN)"' -o $@ $<
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(HEADERS) | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@

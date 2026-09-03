@@ -7,6 +7,10 @@
       url = "github:hrosiak/catima/75d22b260ed921f2e6d1c257ca82cf25bcd9f906";
       flake = false;
     };
+    # SRIM under wine, for the stopping tables that stopping = "srim" and
+    # "mean" read. Its nixpkgs is left alone: the wine wrapper is pinned to
+    # what that flake tested.
+    srim-nix.url = "github:ewtodd/SRIM-nix";
   };
   outputs =
     {
@@ -14,12 +18,14 @@
       nixpkgs,
       flake-utils,
       catima-src,
+      srim-nix,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         version = "26.9.2";
+        make-srim-table = srim-nix.packages.${system}.make-srim-table;
         catima = pkgs.stdenv.mkDerivation {
           pname = "catima";
           version = "75d22b2";
@@ -41,15 +47,16 @@
             tomlplusplus
           ];
           buildPhase = ''
-            make CATIMA_PREFIX=${catima} VERSION=${version} ASSETS_DIR_OUT=$out/assets
+            make CATIMA_PREFIX=${catima} VERSION=${version} ASSETS_DIR_OUT=$out/assets \
+              SRIM_TABLE_BIN=${make-srim-table}/bin/make-srim-table
           '';
           installPhase = ''
             mkdir -p $out/bin $out/assets
             cp musicsim $out/bin/
-            # srim-cache generates the SRIM tables a control file needs. It
-            # shells out to make-srim-table (from SRIM-nix), which is not a
-            # build input: table generation drives SRIM under wine and is a
-            # deliberate, occasional step, not part of building the simulator.
+            # srim-cache generates the SRIM tables a control file needs by
+            # driving SRIM under wine through SRIM-nix's make-srim-table, whose
+            # store path it carries; still a deliberate, occasional step, not
+            # part of a simulation run.
             cp srim-cache $out/bin/
             cp -r assets/. $out/assets/
           '';
@@ -63,10 +70,12 @@
           nativeBuildInputs = with pkgs; [
             clang-tools
             taplo
+            make-srim-table
           ];
           shellHook = ''
             export CATIMA_PREFIX=${catima}
             export MUSICSIM_VERSION=${version}
+            export SRIM_TABLE_BIN=${make-srim-table}/bin/make-srim-table
             export CPLUS_INCLUDE_PATH="$PWD/include''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
             export ROOT_INCLUDE_PATH="$PWD/include:${pkgs.root}/include"
             export LD_LIBRARY_PATH="$PWD/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
