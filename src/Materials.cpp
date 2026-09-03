@@ -135,25 +135,36 @@ catima::Material Simulator::BuildBulkMaterial(const TString &name,
   return m;
 }
 
+// A layer's dedx_scale is applied as an equivalent thickness: the energy a
+// particle loses crossing the layer is the integral of dE/dx over its length,
+// so scaling dE/dx by s and scaling the length by s are the same integral.
+// The one difference is straggling, which grows as the square root of the
+// thickness -- a layer that stops harder than its nominal thickness says is
+// treated as if it were that much thicker, straggling included.
 void Simulator::BuildWindows() {
-  auto buildLayer = [&](const TString &material, Double_t thick, Bool_t byLen) {
-    return byLen ? BuildBulkMaterial(material, thick)
-                 : BuildSolidMaterial(material, thick);
+  auto buildLayer = [&](const TString &material, Double_t thick, Bool_t byLen,
+                        Double_t scale) {
+    return byLen ? BuildBulkMaterial(material, thick * scale)
+                 : BuildSolidMaterial(material, thick * scale);
   };
   entranceWindowEnabled_ = (ctf.entranceThickness > 0.0);
   if (entranceWindowEnabled_)
     entranceWindow_ = buildLayer(ctf.entranceMaterial, ctf.entranceThickness,
-                                 ctf.entranceByLength);
+                                 ctf.entranceByLength, ctf.entranceScale);
   else if (verbose_)
     std::cout << "musicsim warning: entrance window thickness <= 0; disabled."
               << std::endl;
 
   exitWindowEnabled_ = (ctf.exitThickness > 0.0);
   if (exitWindowEnabled_)
-    exitWindow_ =
-        buildLayer(ctf.exitMaterial, ctf.exitThickness, ctf.exitByLength);
+    exitWindow_ = buildLayer(ctf.exitMaterial, ctf.exitThickness,
+                             ctf.exitByLength, ctf.exitScale);
   else if (verbose_)
     std::cout << "musicsim warning: exit window thickness <= 0; disabled."
+              << std::endl;
+  if (verbose_ && (ctf.entranceScale != 1.0 || ctf.exitScale != 1.0))
+    std::cout << "Window stopping scale: entrance " << ctf.entranceScale
+              << ", exit " << ctf.exitScale << " (applied as thickness)"
               << std::endl;
 }
 
@@ -162,8 +173,10 @@ void Simulator::BuildDegrader() {
   if (hasDegrader_)
     degrader_ =
         ctf.degraderByLength
-            ? BuildBulkMaterial(ctf.degraderMaterial, ctf.degraderLength)
-            : BuildSolidMaterial(ctf.degraderMaterial, ctf.degraderLength);
+            ? BuildBulkMaterial(ctf.degraderMaterial,
+                                ctf.degraderLength * ctf.degraderScale)
+            : BuildSolidMaterial(ctf.degraderMaterial,
+                                 ctf.degraderLength * ctf.degraderScale);
   else if (!ctf.degraderMaterial.IsNull() && verbose_)
     std::cout << "musicsim warning: degrader material='" << ctf.degraderMaterial
               << "' but thickness <= 0; degrader disabled." << std::endl;

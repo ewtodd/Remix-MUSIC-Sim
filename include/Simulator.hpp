@@ -388,9 +388,15 @@ private:
     TString exitMaterial = "Ti";
     // Layer thickness, stored as either mg/cm² (areal density) or μm (linear
     // length along beam axis), keyed off the matching *ByLength flag.
+    // Each layer's dedx_scale multiplies its stopping power; it is applied as
+    // an equivalent thickness, since the energy lost in a layer is the
+    // integral of dE/dx over its length (see BuildWindows).
     Double_t entranceThickness = 0.9;
     Bool_t entranceByLength = false;
+    Double_t entranceScale = 1.0;
     Double_t exitThickness = 0.9;
+    Double_t exitScale = 1.0;
+    Double_t degraderScale = 1.0;
     Bool_t exitByLength = false;
     TString degraderMaterial = "";
     Double_t degraderLength = 0.0;
