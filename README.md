@@ -238,6 +238,13 @@ Pick whichever matches the
 spec sheet for the physical layer; the loader dispatches to catima's areal
 or linear thickness path accordingly.
 <!---->
+Each layer also accepts `dedx_scale` (default 1.0), a multiplier on its
+stopping power for calibrating the layer's energy loss against a measured
+value. It is applied as an equivalent thickness: the energy lost crossing a
+layer is the integral of dE/dx over its length, so scaling one is scaling the
+other, with straggling following the thickness. The `[beam]` and reaction-step
+`dedx_scale` keys are separate and apply to the gas only.
+<!---->
 ### Multi-threading
 <!---->
 `run.threads = N` fans the event loop out across `N` worker threads using

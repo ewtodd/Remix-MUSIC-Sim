@@ -8,7 +8,8 @@
 //   [beam]     species, energy (MeV), energy_fwhm (MeV), dedx_scale
 //   [target]   species, compound
 //   [windows.entrance], [windows.exit], [windows.degrader]
-//                 material, and exactly one of thickness_mg_cm2 / thickness_um
+//                 material, exactly one of thickness_mg_cm2 / thickness_um,
+//                 and dedx_scale (stopping-power multiplier, default 1)
 //   [detector] eloss_bins, max_eloss, strip OR (strip_first, strip_last),
 //              eres in % FWHM of the deposit (scalar broadcast to anodes
 //              only, or [detector.eres] table keyed by channel name:
@@ -126,9 +127,16 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
   // Each subtable accepts exactly one of thickness_mg_cm2 or thickness_um.
   if (auto w = tbl["windows"]; w.is_table()) {
     auto loadLayer = [&](toml::node_view<toml::node> sub, TString &mat,
-                         Double_t &thick, Bool_t &byLen,
+                         Double_t &thick, Bool_t &byLen, Double_t &scale,
                          const char *layerName) {
       getInlineString(sub, "material", mat);
+      getInlineDouble(sub, "dedx_scale", scale);
+      if (scale <= 0.0) {
+        std::cerr << "musicsim ERROR: [windows." << layerName
+                  << "] dedx_scale must be positive; got " << scale
+                  << std::endl;
+        std::exit(EXIT_FAILURE);
+      }
       Bool_t hasMg = false, hasUm = false;
       if (auto v = sub["thickness_mg_cm2"].value<Double_t>()) {
         thick = *v;
@@ -150,15 +158,15 @@ Int_t Simulator::loadCtrlFile(char *fileName) {
     auto entrance = w["entrance"];
     if (entrance.is_table())
       loadLayer(entrance, ctf.entranceMaterial, ctf.entranceThickness,
-                ctf.entranceByLength, "entrance");
+                ctf.entranceByLength, ctf.entranceScale, "entrance");
     auto exitw = w["exit"];
     if (exitw.is_table())
       loadLayer(exitw, ctf.exitMaterial, ctf.exitThickness, ctf.exitByLength,
-                "exit");
+                ctf.exitScale, "exit");
     auto deg = w["degrader"];
     if (deg.is_table())
       loadLayer(deg, ctf.degraderMaterial, ctf.degraderLength,
-                ctf.degraderByLength, "degrader");
+                ctf.degraderByLength, ctf.degraderScale, "degrader");
   }
 
   // [detector]
