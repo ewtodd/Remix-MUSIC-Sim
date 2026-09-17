@@ -11,8 +11,10 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
   const Bool_t update = (FileOpt == "update" || FileOpt == "UPDATE");
   if (ROOTfile && update) {
     tree = (TTree *)ROOTfile->Get("events_MeV");
-    tree->SetBranchAddress("Left_0_17_dE", Left_0_17_dE);
+    tree->SetBranchAddress("LeftdE", LeftdE);
     tree->SetBranchAddress("RightdE", RightdE);
+    tree->SetBranchAddress("Strip0dE", &Strip0dE);
+    tree->SetBranchAddress("Strip17dE", &Strip17dE);
     tree->SetBranchAddress("Cathode", &Cathode);
     MCTree = (TTree *)ROOTfile->Get("MC");
     MCTree->SetBranchAddress("n_steps", &n_steps);
@@ -51,9 +53,10 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     MCTree->SetBranchAddress("residue_step", &residue_step);
   } else {
     tree = new TTree("events_MeV", "Simulated MUSIC events (energies in MeV)");
-    tree->Branch("Left_0_17_dE", Left_0_17_dE,
-                 Form("Left_0_17_dE[%d]/F", N_STRIPS));
-    tree->Branch("RightdE", RightdE, Form("RightdE[%d]/F", N_STRIPS));
+    tree->Branch("LeftdE", LeftdE, Form("LeftdE[%d]/F", N_SEG_STRIPS));
+    tree->Branch("RightdE", RightdE, Form("RightdE[%d]/F", N_SEG_STRIPS));
+    tree->Branch("Strip0dE", &Strip0dE, "Strip0dE/F");
+    tree->Branch("Strip17dE", &Strip17dE, "Strip17dE/F");
     tree->Branch("Cathode", &Cathode, "Cathode/F");
 
     MCTree = new TTree("MC", "Truth-level MUSIC simulation");
@@ -66,8 +69,7 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     MCTree->Branch("beam_energy_gas", &beam_energy_gas, "beam_energy_gas/F");
     MCTree->Branch("beam_energy_reaction", &beam_energy_reaction,
                    "beam_energy_reaction/F");
-    MCTree->Branch("beam_energy_exit", &beam_energy_exit,
-                   "beam_energy_exit/F");
+    MCTree->Branch("beam_energy_exit", &beam_energy_exit, "beam_energy_exit/F");
     MCTree->Branch("beam_stop_x", &beam_stop_x, "beam_stop_x/F");
     MCTree->Branch("beam_stop_y", &beam_stop_y, "beam_stop_y/F");
     MCTree->Branch("beam_stop_z", &beam_stop_z, "beam_stop_z/F");
@@ -115,9 +117,10 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
 }
 
 void Simulator::ResetBranches() {
-  for (Int_t s = 0; s < N_STRIPS; ++s) {
-    Left_0_17_dE[s] = RightdE[s] = 0;
+  for (Int_t k = 0; k < N_SEG_STRIPS; ++k) {
+    LeftdE[k] = RightdE[k] = 0;
   }
+  Strip0dE = Strip17dE = 0;
   Cathode = 0;
   n_steps = numEvaporations;
   reaction_strip = -1;

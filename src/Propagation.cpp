@@ -265,15 +265,18 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
           // it gets the noiseless dE summed across electrodes, and a single
           // independent Gaussian is added after the row loop.
           Cathode += baseDE[col];
-          if (rowStpid == 0 || rowStpid == 17) {
-            // Single-ended guard strips: full energy in the left slot, RightdE
-            // stays 0 (matches the experimental Left_0_17_dE convention).
-            Left_0_17_dE[rowStpid] += noisedDE[col];
+          if (rowStpid == 0) {
+            // Single-ended guard strips: one scalar each, as in the
+            // experimental events tree.
+            Strip0dE += noisedDE[col];
+          } else if (rowStpid == 17) {
+            Strip17dE += noisedDE[col];
           } else {
+            // Segmented strips 1..16 live in arrays of 16 indexed by strip - 1.
             if (col == 0)
-              RightdE[rowStpid] += noisedDE[col];
+              RightdE[rowStpid - 1] += noisedDE[col];
             else
-              Left_0_17_dE[rowStpid] += noisedDE[col];
+              LeftdE[rowStpid - 1] += noisedDE[col];
           }
         }
       }
