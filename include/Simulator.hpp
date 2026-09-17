@@ -264,8 +264,8 @@ private:
   static const Int_t N_SEG_STRIPS = 16;
   // Mirrors the experimental "events" tree: the segmented strips 1..16 are read
   // at a left and a right end, held in arrays of 16 indexed by strip - 1; the
-  // single-ended guard strips 0 and 17 are each one scalar. The strip total is
-  // L+R for 1..16; no TotaldE branch, matching the data tree.
+  // unsegmented strips 0 and 17 are each one scalar. The strip total is L+R
+  // for 1..16; no TotaldE branch, matching the data tree.
   Float_t LeftdE[N_SEG_STRIPS];
   Float_t RightdE[N_SEG_STRIPS];
   Float_t Strip0dE;

@@ -289,8 +289,8 @@ the experimental `events` tree produced by the
 <!---->
 - **`events_MeV`** — detector-level branches `LeftdE[16]` and `RightdE[16]`
   (Float, MeV) for the segmented strips 1–16, indexed by `strip - 1`, the
-  scalars `Strip0dE` and `Strip17dE` for the single-ended guard strips, and a
-  scalar `Cathode`. The strip total is `LeftdE[s-1] + RightdE[s-1]` for
+  scalars `Strip0dE` and `Strip17dE` for the unsegmented strips 0 and 17, and
+  a scalar `Cathode`. The strip total is `LeftdE[s-1] + RightdE[s-1]` for
   strips 1–16 (no separate `TotaldE` branch, matching the data tree).
   Energies are MeV
   truth (hence the `_MeV` suffix vs the experimental ADC-valued `events`

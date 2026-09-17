@@ -266,7 +266,7 @@ void Simulator::ComputeDetectorResponse(Int_t evt, Int_t reacStp,
           // independent Gaussian is added after the row loop.
           Cathode += baseDE[col];
           if (rowStpid == 0) {
-            // Single-ended guard strips: one scalar each, as in the
+            // Unsegmented strips 0 and 17: one scalar each, as in the
             // experimental events tree.
             Strip0dE += noisedDE[col];
           } else if (rowStpid == 17) {
