@@ -287,13 +287,11 @@ Each run produces one ROOT file with two trees, mirroring the branch layout of
 the experimental `events` tree produced by the
 [MUSIC](https://github.com/ewtodd/MUSIC) `EventBuilder`:
 <!---->
-- **`events_MeV`** — detector-level branches `Left_0_17_dE[18]` and
-  `RightdE[18]` (Float, MeV), plus a scalar `Cathode`.
-  `Left_0_17_dE[s]` holds
-  the left end of strips 1–16; the single-ended guard strips 0 and 17 carry
-  their full energy in `Left_0_17_dE[0]` / `Left_0_17_dE[17]` with `RightdE`
-  zero there, so the strip total is `Left_0_17_dE[s] + RightdE[s]` everywhere
-  (no separate `TotaldE` branch, matching the data tree).
+- **`events_MeV`** — detector-level branches `LeftdE[16]` and `RightdE[16]`
+  (Float, MeV) for the segmented strips 1–16, indexed by `strip - 1`, the
+  scalars `Strip0dE` and `Strip17dE` for the single-ended guard strips, and a
+  scalar `Cathode`. The strip total is `LeftdE[s-1] + RightdE[s-1]` for
+  strips 1–16 (no separate `TotaldE` branch, matching the data tree).
   Energies are MeV
   truth (hence the `_MeV` suffix vs the experimental ADC-valued `events`
   tree), so analysis macros should calibrate data to MeV rather than rescaling

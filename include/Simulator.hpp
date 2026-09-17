@@ -261,13 +261,15 @@ private:
   // branches and is friended onto events_MeV (rows correspond 1:1).
   TTree *SimTree;
   TTree *MCTree;
-  static const Int_t N_STRIPS = 18;
-  // Mirrors the experimental "events" tree: Left_0_17_dE[s] holds the left end
-  // of strips 1..16 plus the full energy of the single-ended guard strips 0/17
-  // (RightdE is 0 there). The strip total is L+R everywhere; no TotaldE branch,
-  // matching the data tree.
-  Float_t Left_0_17_dE[N_STRIPS];
-  Float_t RightdE[N_STRIPS];
+  static const Int_t N_SEG_STRIPS = 16;
+  // Mirrors the experimental "events" tree: the segmented strips 1..16 are read
+  // at a left and a right end, held in arrays of 16 indexed by strip - 1; the
+  // single-ended guard strips 0 and 17 are each one scalar. The strip total is
+  // L+R for 1..16; no TotaldE branch, matching the data tree.
+  Float_t LeftdE[N_SEG_STRIPS];
+  Float_t RightdE[N_SEG_STRIPS];
+  Float_t Strip0dE;
+  Float_t Strip17dE;
   Float_t Cathode;
 
   // MC truth branches (live on MCTree).
