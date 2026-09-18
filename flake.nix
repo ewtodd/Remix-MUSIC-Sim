@@ -24,7 +24,7 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "26.9.2";
+        version = "26.9.17";
         make-srim-table = srim-nix.packages.${system}.make-srim-table;
         catima = pkgs.stdenv.mkDerivation {
           pname = "catima";
