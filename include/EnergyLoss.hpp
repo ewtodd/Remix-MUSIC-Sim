@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -14,50 +15,49 @@
 #include "catima/catima.h"
 
 namespace music {
-// catima's atima14 z_effective model — used for the mean dE/dx because it
-// matches LISE++ — returns sigma_E = 0: that code path never populates the
-// energy-loss straggling variance. So the straggling magnitude (for the gas,
-// windows, and degrader alike) is read from this separate Config, whose
-// z_effective is a straggling-capable model (pierce_blann by default,
-// overridable via the [physics] straggling_z_effective key). sigma_E is only
-// weakly model-dependent, so pairing it with the atima14 mean is well-behaved.
-// Set in Simulator::loadCtrlFile.
-extern catima::Config gStragglingConfig;
-// Master switch for energy-loss straggling (gas Vavilov sampling and the
-// Gaussian window/degrader smearing alike). Set from the [physics] straggling
-// key; default on. Off means every energy loss is the catima mean.
-extern Bool_t gStragglingEnabled;
+// Immutable, instance-owned physics settings. Keeping these values out of
+// process globals makes worker setup deterministic and removes configuration
+// data races. catima itself still owns a process-wide cache, so all calls into
+// it are serialized through CatimaMutex(). Energy-loss tables make that lock a
+// setup-time cost rather than a hot-loop cost.
+struct PhysicsConfig {
+  catima::Config mean;
+  catima::Config straggling;
+  Bool_t stragglingEnabled = kTRUE;
+  Int_t stoppingModel = 0; // 0 = catima, 1 = SRIM, 2 = arithmetic mean
+  std::string srimDir = ".";
+  std::string srimGasTag;
+};
 
-// SRIM stopping-power support.
-//
-// When gStoppingModel is 1, EnergyLoss fills its mean-dE/dx table from a SRIM
-// table on disk instead of from catima. The two models disagree by ~10% in
-// helium, so a dedx_scale calibrated against one is wrong for the other; a
-// missing table is therefore a hard error, never a silent fallback.
-//
-// Tables are per (ion, gas, pressure, temperature) and live beside the run
-// output as <ion>_in_<gas>_<P>Torr_<T>K.srim. Straggling still comes from
-// catima either way: SRIM tables carry no variance.
-extern Int_t gStoppingModel;    // 0 = catima, 1 = SRIM
-extern std::string gSrimDir;    // directory holding the tables
-extern std::string gSrimGasTag; // e.g. "4He_555Torr_293K"
+std::mutex &CatimaMutex();
+
+struct EnergyStepResult {
+  Double_t finalEnergy = 0.0;
+  Double_t distance = 0.0;
+  Double_t depositedEnergy = 0.0;
+  Bool_t stopped = kFALSE;
+};
 } // namespace music
 
 class EnergyLoss {
 public:
   EnergyLoss(Int_t A, Int_t Z, Double_t IonMass_MeV_per_c2,
-             const catima::Material *gas, Float_t dEdxScale = 1.0);
+             const catima::Material *gas, const music::PhysicsConfig &physics,
+             Float_t dEdxScale = 1.0);
   ~EnergyLoss() = default;
 
   Double_t GetFinalEnergy(Double_t InitialEnergy, Double_t PathLength);
   // Forward propagation with per-step Vavilov-sampled straggling. At our κ ≈
   // 0.1 the Bohr Gaussian catima exposes is the wrong shape (it can sample Kf >
   // Ki, unphysical). We sample from Vavilov via music::VavilovSampler (Yi & Han
-  // convolution), falling back to Gaussian outside the band [1e-3, 10]. Final
-  // energy is clamped to [0, Ki]. dEdxScale multiplies the mean only.
+  // table): below the ROOT-supported band the lowest-kappa, Landau-like shape
+  // is retained; above it the Gaussian limit is used. Final energy is clamped
+  // to [0, Ki]. dEdxScale multiplies the mean only.
   // Pass rng=nullptr for the mean-only result.
   Double_t GetFinalEnergyStraggled(Double_t InitialEnergy, Double_t PathLength,
                                    TRandom *rng);
+  music::EnergyStepResult TransportStep(Double_t InitialEnergy,
+                                        Double_t PathLength, TRandom *rng);
   Double_t GetInitialEnergy(Double_t FinalEnergy, Double_t PathLength);
   Double_t GetEnergyLoss(Double_t InitialEnergy, Double_t PathLength);
 
@@ -85,6 +85,7 @@ private:
   Double_t IonMass_;
   Double_t dEdxScale_;
   Double_t TOF_;
+  music::PhysicsConfig physics_;
 
   Double_t gas_ZoverA_ = -1.0;
 

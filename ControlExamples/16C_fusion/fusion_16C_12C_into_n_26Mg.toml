@@ -29,13 +29,15 @@ material     = "Al"
 thickness_um = 360.0
 
 [detector]
-eloss_bins  = 500
-max_eloss   = 25.0 # MeV
-strip_first = 3
-strip_last  = 3
-eres        = 0.05 # % FWHM of the deposit; scalar broadcasts to all 34 anode electrodes
+eloss_bins              = 500
+max_eloss               = 25.0 # MeV
+strip_first             = 3
+strip_last              = 3
+resolution_fwhm_percent = 0.05 # % FWHM of the deposit; scalar broadcasts to all 34 anode electrodes
 
 [[reaction.step]]
+residue_excitation   = "forced"
+angular_distribution = "isotropic"
 [reaction.step.evap]
 name  = "1n"
 color = 2
@@ -46,6 +48,8 @@ color      = 3
 dedx_scale = 1
 
 [[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
 [reaction.step.evap]
 name  = "1n"
 color = 4
@@ -56,14 +60,14 @@ color      = 5
 dedx_scale = 1
 
 [run]
-n_events   = 10000
-threads    = 32
-wait       = 0
-update     = 0
-max_time   = 2000.0                              # ns
-sim_step   = 0.001                               # cm
-method     = 0
-output     = "fusion_16C12C_2n_26Mg_strip3.root"
-file_opt   = "recreate"
-print_opt  = 0
-reac_class = 1                                   # Reaction label for event classification
+seed             = 12345
+events_per_strip = 10000
+threads          = 32
+wait             = 0
+update           = 0
+max_time         = 2000.0                              # ns
+sim_step         = 0.001                               # cm
+method           = 0
+output           = "fusion_16C12C_2n_26Mg_strip3.root"
+file_opt         = "recreate"
+print_opt        = 0

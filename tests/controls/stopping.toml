@@ -1,0 +1,40 @@
+[gas]
+species     = "4He"
+pressure    = 760.0
+temperature = 293.0
+
+[beam]
+species     = "4He"
+energy      = 2.0
+energy_fwhm = 0.0
+
+[target]
+species  = "4He"
+compound = "8Be"
+
+[windows.entrance]
+thickness_mg_cm2 = -1.0
+
+[windows.exit]
+thickness_mg_cm2 = -1.0
+
+[detector]
+eloss_bins = 100
+max_eloss  = 3.0
+strip      = -1
+
+[physics]
+straggling = false
+
+[run]
+events_per_strip = 1
+threads          = 1
+wait             = 0
+update           = 0
+max_time         = 2000.0
+sim_step         = 0.001
+method           = 0
+output           = "stopping.root"
+file_opt         = "recreate"
+print_opt        = 0
+seed             = 101

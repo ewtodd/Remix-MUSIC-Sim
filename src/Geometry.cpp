@@ -19,22 +19,22 @@ void Simulator::LoadHardcodedAnodeGeometry() {
     AnodeColor[r] = new Short_t[AnodeCols];
     AnodeSegName[r] = new TString[AnodeCols];
     AnodeStpID[r] = new Int_t[AnodeCols];
-    for (Int_t c = 0; c < AnodeCols; ++c) {
-      AnodeDX[r][c] = AnodeDY[r][c] = AnodeDZ[r][c] = 0;
-      AnodeColor[r][c] = kWhite;
-      AnodeSegName[r][c] = "";
-      AnodeStpID[r][c] = -1;
+    for (Int_t column = 0; column < AnodeCols; ++column) {
+      AnodeDX[r][column] = AnodeDY[r][column] = AnodeDZ[r][column] = 0;
+      AnodeColor[r][column] = kWhite;
+      AnodeSegName[r][column] = "";
+      AnodeStpID[r][column] = -1;
     }
   }
 
-  auto put = [&](Int_t r, Int_t c, Int_t id, const char *nm, Double_t dx,
+  auto put = [&](Int_t r, Int_t column, Int_t id, const char *nm, Double_t dx,
                  Double_t dy, Double_t dz, Short_t color) {
-    AnodeStpID[r][c] = id;
-    AnodeSegName[r][c] = nm;
-    AnodeDX[r][c] = dx;
-    AnodeDY[r][c] = dy;
-    AnodeDZ[r][c] = dz;
-    AnodeColor[r][c] = color;
+    AnodeStpID[r][column] = id;
+    AnodeSegName[r][column] = nm;
+    AnodeDX[r][column] = dx;
+    AnodeDY[r][column] = dy;
+    AnodeDZ[r][column] = dz;
+    AnodeColor[r][column] = color;
   };
 
   // Upstream dead layer (full width).
@@ -121,7 +121,7 @@ Int_t Simulator::SetAnode(Short_t Trans, Int_t ELossBins, Float_t MaxELoss) {
               Form("VolAnode%d%d", row, col), Vacuum, AnodeDX[row][col] / 2,
               AnodeDY[row][col] / 2, AnodeDZ[row][col] / 2);
           VolAnode[row][col]->SetLineColor(AnodeColor[row][col]);
-          VolAnode[row][col]->SetTransparency(Trans);
+          VolAnode[row][col]->SetTransparency(static_cast<Char_t>(Trans));
           x0 += AnodeDX[row][col] / 2;
           VolTop->AddNode(VolAnode[row][col], 1,
                           new TGeoTranslation(x0, 0, z0));
@@ -136,21 +136,11 @@ Int_t Simulator::SetAnode(Short_t Trans, Int_t ELossBins, Float_t MaxELoss) {
   // sum across columns for that strip.
   DeltaEB_ave = new Double_t *[AnodeRows];
   DeltaEB = new Double_t *[AnodeRows];
-  DeltaEL = new Double_t *[AnodeRows];
-  DeltaEH = new Double_t *[AnodeRows];
-  DeltaED1 = new Double_t *[AnodeRows];
-  DeltaED2 = new Double_t *[AnodeRows];
   for (Int_t row = 0; row < AnodeRows; row++) {
     DeltaEB_ave[row] = new Double_t[AnodeCols + 1];
     DeltaEB[row] = new Double_t[AnodeCols + 1];
-    DeltaEL[row] = new Double_t[AnodeCols + 1];
-    DeltaEH[row] = new Double_t[AnodeCols + 1];
-    DeltaED1[row] = new Double_t[AnodeCols + 1];
-    DeltaED2[row] = new Double_t[AnodeCols + 1];
     for (Int_t col = 0; col < AnodeCols + 1; col++) {
       DeltaEB_ave[row][col] = DeltaEB[row][col] = 0;
-      DeltaEL[row][col] = DeltaEH[row][col] = 0;
-      DeltaED1[row][col] = DeltaED2[row][col] = 0;
     }
   }
   DeltaE_EvaR = new Double_t **[maxEvaporations];
@@ -208,7 +198,7 @@ Int_t Simulator::SetAnode(Short_t Trans, Int_t ELossBins, Float_t MaxELoss) {
   return 1;
 }
 
-void Simulator::DrawMUSIC(TEveManager *gEve, Short_t Transparency) {
+void Simulator::DrawMUSIC(TEveManager *eveManager, Short_t Transparency) {
   if (VolAnode == 0)
     return;
   if (Transparency < 0 || Transparency > 100) {
@@ -218,28 +208,28 @@ void Simulator::DrawMUSIC(TEveManager *gEve, Short_t Transparency) {
   }
 
   TopNode = new TEveGeoTopNode(Geo, Geo->GetTopNode());
-  gEve->AddGlobalElement(TopNode);
+  eveManager->AddGlobalElement(TopNode);
 
   TEveArrow *Xaxis = new TEveArrow(20, 0, 0, -10, 0, 0);
   Xaxis->SetName("x axis");
   Xaxis->SetMainColor(kGray);
   Xaxis->SetMainTransparency(65);
-  Xaxis->SetTubeR(0.01);
-  gEve->AddElement(Xaxis);
+  Xaxis->SetTubeR(0.01f);
+  eveManager->AddElement(Xaxis);
 
   TEveArrow *Yaxis = new TEveArrow(0, 20, 0, 0, -10, 0);
   Yaxis->SetName("y axis");
   Yaxis->SetMainColor(kYellow);
   Yaxis->SetMainTransparency(65);
-  Yaxis->SetTubeR(0.01);
-  gEve->AddElement(Yaxis);
+  Yaxis->SetTubeR(0.01f);
+  eveManager->AddElement(Yaxis);
 
   TEveArrow *Zaxis = new TEveArrow(0, 0, 1, 0, 0, 0);
   Zaxis->SetName("z axis");
   Zaxis->SetMainColor(kWhite);
-  Zaxis->SetTubeR(0.1);
+  Zaxis->SetTubeR(0.1f);
   Zaxis->SetMainTransparency(65);
-  gEve->AddElement(Zaxis);
+  eveManager->AddElement(Zaxis);
 
-  gEve->Redraw3D(kTRUE);
+  eveManager->Redraw3D(kTRUE);
 }

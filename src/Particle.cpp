@@ -1,13 +1,14 @@
 #include "Particle.hpp"
 
-Particle::Particle(TString Name, Double_t M, Int_t Q, Bool_t SaveTrajectory) {
-  this->Name = Name;
-  this->Q = Q;
-  Mass = M;
+Particle::Particle(TString particleName, Double_t mass, Int_t charge,
+                   Bool_t saveTrajectory) {
+  Name = particleName;
+  Q = charge;
+  Mass = mass;
   A = 0;
-  Z = Q;
+  Z = charge;
   NEexc = 1;
-  this->SaveTrajectory = SaveTrajectory;
+  SaveTrajectory = saveTrajectory;
   DoNotPropagate = false;
 
   AttColor = 1;
@@ -15,29 +16,30 @@ Particle::Particle(TString Name, Double_t M, Int_t Q, Bool_t SaveTrajectory) {
   AttWidth = 2;
   CurrentExcState = 0;
   NumMedia = 0;
-  P.SetName("P_" + Name);
-  P.SetCoords(M, 0, 0, 0);
+  P.SetName("P_" + particleName);
+  P.SetCoords(mass, 0, 0, 0);
   RI = 0;
   TrPts = 0;
-  X.SetName("X_" + Name);
+  X.SetName("X_" + particleName);
   X.SetCoords(0, 0, 0, 0);
 
-  Eexc = new Double_t[NEexc];
-  Eexc[0] = 0.0;
-  PDF = 0;
-  ProbExc = 0;
-  IonInMedium = new EnergyLoss *[MaxMedia];
-  for (Int_t m = 0; m < MaxMedia; m++)
-    IonInMedium[m] = 0;
+  Eexc.assign(1, 0.0);
+  IonInMedium.resize(MaxMedia);
   gas_ = nullptr;
   dEdxScale_ = 1.0;
-  TrT = new Float_t[MaxPoints];
-  TrX = new Float_t[MaxPoints];
-  TrY = new Float_t[MaxPoints];
-  TrZ = new Float_t[MaxPoints];
-  TrK = new Float_t[MaxPoints];
-  Trajectory = new TEveStraightLineSet();
+  if (saveTrajectory) {
+    TrT.resize(MaxPoints);
+    TrX.resize(MaxPoints);
+    TrY.resize(MaxPoints);
+    TrZ.resize(MaxPoints);
+    TrK.resize(MaxPoints);
+    Trajectory = new TEveStraightLineSet();
+  } else {
+    Trajectory = nullptr;
+  }
 }
+
+Particle::~Particle() { delete Trajectory; }
 
 void Particle::Boost(Double_t BetaX, Double_t BetaY, Double_t BetaZ) {
   X.Boost(BetaX, BetaY, BetaZ);
@@ -48,19 +50,26 @@ void Particle::Boost(Double_t BetaX, Double_t BetaY, Double_t BetaZ) {
 void Particle::Copy(Particle *rhs) {
   if (this != rhs) {
     A = rhs->A;
-    SetExcEnergies(rhs->NEexc, rhs->Eexc);
+    NEexc = rhs->NEexc;
+    Eexc = rhs->Eexc;
+    ProbExc = rhs->ProbExc;
+    CurrentExcState = rhs->CurrentExcState;
     Mass = rhs->Mass;
     Q = rhs->Q;
     Z = rhs->Z;
     X = rhs->X;
     P = rhs->P;
     if (rhs->gas_)
-      SetMedium(rhs->gas_, rhs->dEdxScale_);
+      SetMedium(rhs->gas_, rhs->physics_, rhs->dEdxScale_);
   }
 }
 
 void Particle::CopyTrace(Int_t &NumPts, Float_t *t, Float_t *x, Float_t *y,
                          Float_t *z, Float_t *K) {
+  if (!SaveTrajectory) {
+    NumPts = 0;
+    return;
+  }
   Int_t TotPoints = TrPts;
   if (TrPts > MaxPoints)
     TotPoints = MaxPoints;
@@ -83,32 +92,15 @@ void Particle::GetBeta(Double_t &BetaX, Double_t &BetaY, Double_t &BetaZ) {
 
 Int_t Particle::GetCurrentExcState() { return CurrentExcState; }
 
-Double_t Particle::GetEexc() {
-  Double_t Eexc = 0;
-  if (NEexc == 1) {
-    Eexc = this->Eexc[0];
-  } else if (PDF != 0 && ProbExc != 0 && this->Eexc != 0) {
-    Double_t Rdm = PDF->Uniform();
-    for (Int_t ne = 0; ne < NEexc; ne++) {
-      if (Rdm >= ProbExc[ne] && Rdm < ProbExc[ne + 1]) {
-        CurrentExcState = ne;
-        Eexc = this->Eexc[ne];
-        break;
-      }
-    }
-  }
-  return Eexc;
+Double_t Particle::GetEexc() const {
+  if (CurrentExcState >= 0 && CurrentExcState < NEexc)
+    return Eexc[CurrentExcState];
+  return 0.0;
 }
 
-Double_t Particle::GetEexc(Int_t ExcState) {
-  if (this->Eexc != 0 && ExcState >= 0 && ExcState < NEexc)
-    return this->Eexc[ExcState];
-  return 0;
-}
-
-// OBSOLETE — body retained as a no-op for legacy callers.
-Double_t Particle::GetEnergyLoss(Int_t /*MediumID*/, Double_t /*InitE*/,
-                                 Double_t /*PathLength*/) {
+Double_t Particle::GetEexc(Int_t ExcState) const {
+  if (ExcState >= 0 && ExcState < NEexc)
+    return Eexc[ExcState];
   return 0;
 }
 
@@ -131,6 +123,17 @@ Double_t Particle::GetFinalEnergyStraggled(Int_t MediumID, Double_t InitE,
   return InitE;
 }
 
+music::EnergyStepResult Particle::TransportStep(Int_t MediumID, Double_t InitE,
+                                                Double_t PathLength,
+                                                TRandom *rng) {
+  if (MediumID >= 0 && MediumID < NumMedia)
+    return IonInMedium[MediumID]->TransportStep(InitE, PathLength, rng);
+  music::EnergyStepResult result;
+  result.finalEnergy = InitE;
+  result.distance = std::max(0.0, PathLength);
+  return result;
+}
+
 Double_t Particle::GetInitialEnergy(Int_t MediumID, Double_t FinalE,
                                     Double_t PathLength) {
   if (MediumID >= 0 && MediumID < NumMedia) {
@@ -141,7 +144,7 @@ Double_t Particle::GetInitialEnergy(Int_t MediumID, Double_t FinalE,
   return FinalE;
 }
 
-Double_t Particle::GetKE() {
+Double_t Particle::GetKE() const {
   Double_t KE = P.GetX0() - Mass - GetEexc();
   if (KE < 0.0) {
     KE = 0.0;
@@ -157,9 +160,10 @@ Double_t Particle::GetOptimumStepSize(Int_t MediumID, Double_t Energy) {
   return 0.1;
 }
 
-FourVector Particle::GetP() { return P; }
+FourVector Particle::GetP() const { return P; }
 
-void Particle::GetP(Double_t &P0, Double_t &P1, Double_t &P2, Double_t &P3) {
+void Particle::GetP(Double_t &P0, Double_t &P1, Double_t &P2,
+                    Double_t &P3) const {
   P0 = P.GetX0();
   P1 = P.GetX1();
   P2 = P.GetX2();
@@ -173,7 +177,7 @@ Double_t Particle::GetPathLength(Int_t MediumID, Double_t InitE,
   return 0;
 }
 
-Double_t Particle::GetPhi() {
+Double_t Particle::GetPhi() const {
   Double_t phi = std::atan2(P.GetX2(), P.GetX1());
   if (phi < 0)
     phi += 2 * M_PI;
@@ -187,7 +191,7 @@ Double_t Particle::GetPhiX() {
   return phi;
 }
 
-Double_t Particle::GetTheta() {
+Double_t Particle::GetTheta() const {
   Double_t px = P.GetX1();
   Double_t py = P.GetX2();
   return std::atan2(std::sqrt(px * px + py * py), P.GetX3());
@@ -219,7 +223,8 @@ void Particle::GetTrajectoryAtt(Short_t &Color, Short_t &Style,
   Width = AttWidth;
 }
 
-void Particle::GetX(Double_t &X0, Double_t &X1, Double_t &X2, Double_t &X3) {
+void Particle::GetX(Double_t &X0, Double_t &X1, Double_t &X2,
+                    Double_t &X3) const {
   X0 = X.GetX0();
   X1 = X.GetX1();
   X2 = X.GetX2();
@@ -253,9 +258,9 @@ void Particle::Print(std::ostream &log) {
   }
   if (NumMedia > 0 && gas_) {
     log << "| Stopping-power via "
-        << (music::gStoppingModel == 1   ? "SRIM tables"
-            : music::gStoppingModel == 2 ? "mean(catima, SRIM)"
-                                         : "catima")
+        << (physics_.stoppingModel == 1   ? "SRIM tables"
+            : physics_.stoppingModel == 2 ? "mean(catima, SRIM)"
+                                          : "catima")
         << "; gas density = " << gas_->density()
         << " g/cm³, dE/dx scale = " << dEdxScale_ << std::endl;
   }
@@ -263,6 +268,8 @@ void Particle::Print(std::ostream &log) {
 }
 
 void Particle::ResetTrace() {
+  if (!SaveTrajectory)
+    return;
   Int_t TotPoints = TrPts;
   if (TrPts == 0)
     TotPoints = MaxPoints;
@@ -279,7 +286,10 @@ void Particle::ResetTrace() {
 void Particle::ResetKinematics() {
   P.SetCoords(Mass, 0, 0, 0);
   X.SetCoords(0, 0, 0, 0);
-  Eexc[0] = 0.0;
+  Eexc.assign(1, 0.0);
+  ProbExc.clear();
+  NEexc = 1;
+  CurrentExcState = 0;
 }
 
 void Particle::SetCurrentExcState(Int_t ExcState) {
@@ -289,38 +299,52 @@ void Particle::SetCurrentExcState(Int_t ExcState) {
 // If Prob is provided, it's the (un-normalised) selection weight per state;
 // the cumulative probability ProbExc is built and normalised. If Prob=0, all
 // excited states are equally likely.
-void Particle::SetExcEnergies(Int_t N, Double_t *Eexc, Double_t *Prob) {
-  if (N <= 0 || Eexc == 0)
+void Particle::SetExcEnergies(Int_t count, Double_t *energies,
+                              Double_t *probabilities) {
+  if (count <= 0 || energies == nullptr)
     return;
-  NEexc = N;
-  delete[] this->Eexc;
-  delete[] ProbExc;
-  delete PDF;
-  this->Eexc = new Double_t[N];
-  ProbExc = new Double_t[N + 1];
+  NEexc = count;
+  Eexc.assign(energies, energies + count);
+  ProbExc.assign(static_cast<size_t>(count + 1), 0.0);
 
   Double_t Norm = 0;
-  for (Int_t n = 0; n < N; n++) {
-    this->Eexc[n] = Eexc[n];
-    Norm += (Prob != 0) ? Prob[n] : 1.0 / N;
+  for (Int_t n = 0; n < count; n++) {
+    Norm += probabilities != nullptr ? probabilities[n] : 1.0 / count;
   }
   ProbExc[0] = 0.0;
   Double_t Cumulative = 0;
-  for (Int_t n = 0; n < N; n++) {
-    Cumulative += (Prob != 0) ? Prob[n] : 1.0 / N;
+  for (Int_t n = 0; n < count; n++) {
+    Cumulative += probabilities != nullptr ? probabilities[n] : 1.0 / count;
     ProbExc[n + 1] = Cumulative;
   }
-  for (Int_t n = 0; n < N + 1; n++)
+  for (Int_t n = 0; n < count + 1; n++)
     ProbExc[n] /= Norm;
 
-  PDF = new TRandom3();
-  PDF->SetSeed();
+  CurrentExcState = 0;
 }
 
-void Particle::SetExcEnergy(Double_t Ex) { Eexc[0] = Ex; }
+void Particle::SampleExcitation(TRandom *rng) {
+  if (!rng || NEexc <= 1 || ProbExc.size() != size_t(NEexc + 1)) {
+    CurrentExcState = 0;
+    return;
+  }
+  const Double_t draw = rng->Uniform();
+  const auto upper = std::upper_bound(ProbExc.begin(), ProbExc.end(), draw);
+  CurrentExcState =
+      std::clamp(Int_t(upper - ProbExc.begin()) - 1, 0, NEexc - 1);
+}
+
+void Particle::SetExcEnergy(Double_t Ex) {
+  Eexc.assign(1, Ex);
+  ProbExc.clear();
+  NEexc = 1;
+  CurrentExcState = 0;
+}
 
 // Mass number A is derived from Mass (MeV/c²) / atomic mass unit.
-void Particle::SetMedium(const catima::Material *gas, Float_t dEdxScale) {
+void Particle::SetMedium(const catima::Material *gas,
+                         const music::PhysicsConfig &physics,
+                         Float_t dEdxScale) {
   if (gas == nullptr)
     return;
   if (Z <= 0) {
@@ -339,10 +363,10 @@ void Particle::SetMedium(const catima::Material *gas, Float_t dEdxScale) {
     A = A_derived;
   NumMedia = 1;
   gas_ = gas;
+  physics_ = physics;
   dEdxScale_ = dEdxScale;
-  if (IonInMedium[0])
-    delete IonInMedium[0];
-  IonInMedium[0] = new EnergyLoss(A_derived, Z, Mass, gas, dEdxScale);
+  IonInMedium[0] =
+      std::make_unique<EnergyLoss>(A_derived, Z, Mass, gas, physics, dEdxScale);
 }
 
 void Particle::SetP(FourVector V) {
@@ -353,10 +377,12 @@ void Particle::SetP(Double_t P0, Double_t P1, Double_t P2, Double_t P3) {
   P.SetCoords(P0, P1, P2, P3);
 }
 
-void Particle::SetReactionIndex(Int_t RI) { this->RI = RI; }
+void Particle::SetReactionIndex(Int_t reactionIndex) { RI = reactionIndex; }
 
 void Particle::SetTracePoint(Float_t t, Float_t x, Float_t y, Float_t z,
                              Float_t K) {
+  if (!SaveTrajectory)
+    return;
   Int_t p = TrPts;
   if (p < MaxPoints) {
     TrT[p] = t;

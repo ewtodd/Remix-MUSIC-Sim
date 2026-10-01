@@ -63,9 +63,9 @@ void Simulator::BuildGasMaterial() {
 
   gas_ = catima::Material();
   Double_t stoich_mass = 0.0;
-  for (const auto &c : components) {
-    gas_.add_element(c.mass_u, c.Z, Double_t(c.stn));
-    stoich_mass += c.stn * c.mass_u;
+  for (const auto &component : components) {
+    gas_.add_element(component.mass_u, component.Z, Double_t(component.stn));
+    stoich_mass += component.stn * component.mass_u;
   }
   gas_.density(rho);
   // catima computes weight_fraction(i) = stn_i*A_i / M(), so M() must be
@@ -182,15 +182,19 @@ void Simulator::BuildDegrader() {
               << "' but thickness <= 0; degrader disabled." << std::endl;
 }
 
-// Mean energy out of a material, no straggling. Used for thin entrance/exit
-// windows. Returns Ein for neutrals (Z <= 0).
+// Mean energy out of a material, no straggling. Used for startup beam-energy
+// estimates and the exit window. Returns Ein for neutrals (Z <= 0).
 Double_t Simulator::EnergyOutOfMaterial(Int_t A, Int_t Z, Double_t Ein_MeV,
                                         const catima::Material &mat) {
   if (Z <= 0 || A <= 0 || Ein_MeV <= 0.0)
     return Ein_MeV;
   catima::Projectile proj{Double_t(A), Double_t(Z)};
   proj.T = Ein_MeV / A;
-  Double_t Eout_per_u = catima::energy_out(proj, mat);
+  Double_t Eout_per_u;
+  {
+    std::lock_guard<std::mutex> lock(music::CatimaMutex());
+    Eout_per_u = catima::energy_out(proj, mat, physics_.mean);
+  }
   return Eout_per_u * A;
 }
 
@@ -205,13 +209,19 @@ Double_t Simulator::EnergyThroughWithStraggling(Int_t A, Int_t Z,
   proj.T = Ein_MeV / A;
   // Mean energy out from the default (atima14) config; straggling sigma_E from
   // the straggling config, since atima14 returns sigma_E = 0.
-  catima::Result r = catima::calculate(proj, mat);
+  catima::Result r;
+  catima::Result rStr;
+  {
+    std::lock_guard<std::mutex> lock(music::CatimaMutex());
+    r = catima::calculate(proj, mat, physics_.mean);
+    if (physics_.stragglingEnabled)
+      rStr = catima::calculate(proj, mat, physics_.straggling);
+  }
   Double_t Eout = r.Eout * A; // catima reports MeV/u
-  if (music::gStragglingEnabled) {
-    Double_t sigma_E =
-        catima::calculate(proj, mat, music::gStragglingConfig).sigma_E * A;
+  if (physics_.stragglingEnabled) {
+    Double_t sigma_E = rStr.sigma_E * A;
     if (sigma_E > 0)
       Eout += Rdm->Gaus(0.0, sigma_E);
   }
-  return std::max(0.0, Eout);
+  return std::clamp(Eout, 0.0, Ein_MeV);
 }

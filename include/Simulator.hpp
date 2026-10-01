@@ -7,6 +7,7 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -46,47 +47,42 @@
 class Simulator {
 public:
   Simulator(Int_t workerId = 0);
-  Int_t loadCtrlFile(char *fileName);
+  ~Simulator();
+
+  Simulator(const Simulator &) = delete;
+  Simulator &operator=(const Simulator &) = delete;
+
+  Int_t loadCtrlFile(const char *fileName);
   Int_t run();
+  Bool_t WantsVisualization() const { return ctf.Update != 0; }
 
   // Used by the MT driver to repurpose a per-worker instance.
   void OverrideNEvents(Int_t n) { ctf.NEvents = n; }
   void OverrideOutputFile(const TString &f) { ctf.FileName = f; }
   void OverrideThreads(Int_t t) { ctf.Threads = t; }
+  void OverrideEventOffset(ULong64_t offset) { eventOffset_ = offset; }
   void DisableVisualization() {
     ctf.Update = 0;
     ctf.Wait = 0;
   }
-  void SeedRandom(ULong_t s);
+  void SeedRandom(UInt_t seed);
 
   void CalculateCMEnergyRange();
-  void CalculateExcEnergyRange();
-  void GenerateTraceDatabase(TString FileName, Double_t ThCMMin,
-                             Double_t ThCMMax, Int_t ThSteps, Double_t PhiCMMin,
-                             Double_t PhiCMMax, Int_t PhiSteps,
-                             Double_t MaxTime, Double_t UserStep,
-                             Int_t UpdateEnabled = 0, Int_t Wait = 0);
   Int_t SetAnode(Short_t Trans /*0..100*/, Int_t ELossBins = 400,
                  Float_t MaxELoss = 5);
-  void SetBeamParticle(TString Name, Int_t Color, Float_t dEdxScale = 1.0);
-  void SetCompoundParticle(TString Name);
-  void SetDecayDaughter1(TString Name, Int_t Color);
-  void SetDecayDaughter2(TString Name, Int_t Color);
-  void SetEvapResAndPart(TString ResName, Int_t ResColor, TString ParName,
-                         Int_t ParColor, Float_t dEdxScaleRes = 1.0,
+  void SetBeamParticle(TString particleName, Int_t color,
+                       Float_t dEdxScale = 1.0);
+  void SetCompoundParticle(TString particleName);
+  void SetEvapResAndPart(TString residueName, Int_t residueColor,
+                         TString particleName, Int_t particleColor,
+                         Float_t dEdxScaleRes = 1.0,
                          Float_t dEdxScalePar = 1.0);
-  void SetHeavyParticle(TString Name, Int_t Color, Int_t NEexc = 0,
-                        Double_t *Eexc = 0 /*MeV*/);
-  void SetLightParticle(TString Name, Int_t Color);
   void SetPrintLevel(Int_t PrintLevel);
-  void SetROOTSystemPointer(TSystem *gSystem);
-  void SetTargetParticle(TString Name);
-  void Simulate(Int_t StpID, Int_t NEvents, Double_t MaxTime, Double_t UserStep,
-                Int_t UpdateVis = 0, Int_t Wait = 0, TFile *ROOTfile = 0);
-  void Simulate(Int_t StpID, Double_t ThCMMin, Double_t ThCMMax, Int_t ThSteps,
-                Double_t PhiCMMin, Double_t PhiCMMax, Int_t PhiSteps,
-                Double_t MaxTime, Double_t UserStep, Int_t Wait = 0);
-  void WriteTraces(char *FileName);
+  void SetROOTSystemPointer(TSystem *system);
+  void SetTargetParticle(TString particleName);
+  void Simulate(Int_t StpID, Int_t eventCount, Double_t MaxTime,
+                Double_t UserStep, Int_t UpdateVis = 0, Int_t Wait = 0,
+                TFile *ROOTfile = 0);
 
 private:
   // Materials and energy-loss propagation through them.
@@ -106,7 +102,7 @@ private:
 
   // Geometry.
   void LoadHardcodedAnodeGeometry();
-  void DrawMUSIC(TEveManager *gEve, Short_t Transparency /*0..100*/);
+  void DrawMUSIC(TEveManager *eveManager, Short_t Transparency /*0..100*/);
   // Map a z position (cm along the beam axis) to the readout strip at that
   // depth: 0..17, or -1 for the dead layers and z outside the active volume.
   Int_t StripAtZ(Double_t z);
@@ -115,20 +111,40 @@ private:
   void FinalizeEvent(Int_t eventIndex);
   void ComputeExitEnergies();
   void ComputeDetectorResponse(Int_t event, Int_t reacStp, Int_t UpdateVis);
+  enum class TerminationReason : Int_t {
+    NotPropagated = 0,
+    ReachedVertex = 1,
+    Stopped = 2,
+    DownstreamExit = 3,
+    UpstreamExit = 4,
+    SideExit = 5,
+    Timeout = 6,
+    InvalidState = 7,
+  };
+  struct PropagationResult {
+    TerminationReason reason = TerminationReason::InvalidState;
+    Double_t distance = 0.0;
+    Double_t depositedEnergy = 0.0;
+    Bool_t reachedVertex() const {
+      return reason == TerminationReason::ReachedVertex;
+    }
+  };
   // Propagate `PO` step-by-step through the gas, accumulating per-strip energy
   // deposits in `DE`. If `endZ > 0`, the loop exits when the particle crosses
   // that z (forward sweep up to a reaction vertex); otherwise the bound is the
   // full anode depth. If `reset_DE == false` the caller-provided `DE` array is
   // *added to* rather than zeroed first — used to continue an interrupted
   // sweep past a rejected reaction vertex.
-  Int_t PropagateParticle(Particle *PO, Int_t Event, Double_t MaxTime,
-                          Double_t UserStep, Double_t **DE,
-                          Double_t endZ = -1.0, Bool_t reset_DE = true);
+  PropagationResult PropagateParticle(Particle *PO, Int_t Event,
+                                      Double_t MaxTime, Double_t UserStep,
+                                      Double_t **DE, Double_t endZ = -1.0,
+                                      Bool_t reset_DE = true);
 
   // I/O and visualization.
   void CreateTracesAndTrajectories();
   TTree *InitTree(TFile *ROOTfile, TString FileOpt);
   void ResetBranches();
+  Bool_t WriteRunMetadata(TFile *ROOTfile);
   void UpdateVisuals(Int_t event, Double_t Kbr, Double_t zr, Double_t TOF,
                      Int_t Wait = 0);
 
@@ -137,13 +153,13 @@ private:
   Int_t SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
                               Double_t theta_CM = -1, Double_t phi_CM = -1);
   void PrintCompoundEexc(Double_t Kb, Double_t **DeltaEB);
-  void PrintEnergetics(Double_t Kb, Double_t **DeltaEB);
 
   // Lifecycle / control.
   void InitCTF();
-  void SetupRun();
+  Bool_t SetupRun();
   Int_t CheckMemoryUsage(Int_t Print = 0);
   Int_t runMultiThreaded();
+  UInt_t EventSeed(Int_t strip, ULong64_t eventIndex) const;
 
   TRandom *Rdm;
 
@@ -151,18 +167,15 @@ private:
   Particle *Beam;
   Particle *Target;
   Particle *Compound;
-  Particle *Heavy;
-  Particle *DeDau1;
-  Particle *DeDau2;
-  Particle *Light;
   Particle **EvaP;
   Particle **EvaR;
   Int_t maxEvaporations;
   Int_t numEvaporations;
   Double_t Kb_after_window;
   Double_t *minEx;
+  music::PhysicsConfig physics_;
 
-  // Map (stpid, col) to flat index in ctf.Eres / per-electrode arrays.
+  // Map (stpid, col) to flat index in per-electrode configuration arrays.
   // User-facing order: S0, L1, R1, L2, R2, ..., L16, R16, S17 (34 entries).
   // In code: col 0 = beam right, col 1 = beam left.
   static constexpr Int_t kNumElectrodes = 34;
@@ -177,23 +190,14 @@ private:
   // Per-strip energy deposits.
   Double_t **DeltaEB_ave;
   Double_t **DeltaEB;
-  Double_t **DeltaEL;
-  Double_t **DeltaEH;
-  Double_t **DeltaED1;
-  Double_t **DeltaED2;
   Double_t ***DeltaE_EvaP;
   Double_t ***DeltaE_EvaR;
 
   TString Name;
   Int_t PrintLevel;
 
-  Double_t *SegLength;
-  Double_t *SegEexcRange;
-  Double_t *SegCMERange;
   Double_t CMEMax;
   Double_t CMEMin;
-  Double_t EexcMax;
-  Double_t EexcMin;
 
   TH2F *HCT;
   TH2F *HCTB;
@@ -273,16 +277,19 @@ private:
   Float_t Cathode;
 
   // MC truth branches (live on MCTree).
-  // Energy sentinels: -1.0 = stopped in the gas, -2.0 = N/A for this event
-  // (e.g. beam_energy_exit on a reacted event, evap slots of a disallowed
-  // step).
+  // Energy sentinels: -1.0 = transported but did not reach the downstream
+  // exit, -2.0 = N/A for this event (e.g. beam_energy_exit on a reacted event,
+  // evap slots of a disallowed step). The termination branches distinguish a
+  // stop, upstream/side escape, timeout, and invalid state.
   // *_stop_strip: 0..17 = stopped in that readout strip, -1 = did not stop
   // in a readout strip (exited the gas or stopped in a dead layer —
   // disambiguate via *_stop_z and the exit-energy branch), -2 = N/A.
   // *_stop_x/y/z hold the stop point, or the point where the particle left
   // the active volume if it exited.
-  Int_t n_steps;        // configured reaction steps; on-disk array length
-  Int_t reaction_strip; // strip selected for the vertex (-1 = unreacted run)
+  Int_t n_steps;         // configured reaction steps; on-disk array length
+  Int_t requested_strip; // configured strip for this event (-1 = beam run)
+  Int_t reaction_strip;  // actual reaction strip (-1 = no reaction occurred)
+  ULong64_t event_index; // per-strip event index, stable across thread counts
   Float_t beam_energy_accel;    // KE at the accelerator (= ctf.BeamEnergy)
   Float_t beam_energy_gas;      // KE at the gas surface (after entrance window)
   Float_t beam_energy_reaction; // KE at the reaction vertex
@@ -319,12 +326,20 @@ private:
   Float_t residue_stop_z;
   Int_t residue_stop_strip;
   Int_t residue_step;
+  Int_t beam_termination;
+  Int_t *evap_termination;
+  Int_t residue_termination;
+
+  TerminationReason beamTermination_ = TerminationReason::NotPropagated;
+  std::array<TerminationReason, 20> evapTermination_{};
+  std::array<TerminationReason, 20> residueTermination_{};
+  Bool_t eventReacted_ = kFALSE;
+  Bool_t ioFailed_ = kFALSE;
 
   std::ofstream Log;
   std::ofstream EnergeticsLog;
 
   TSystem *gSystem;
-  Float_t MaxMemory;
 
   // Worker id (0 = master / single-threaded). Used to name per-worker
   // TGeoManagers and per-worker output files.
@@ -333,28 +348,22 @@ private:
   // runMultiThreaded summary lines reach stdout.
   Bool_t verbose_ = true;
   TString ctrlFilePath_;
+  ULong64_t eventOffset_ = 0;
 
   static constexpr Double_t c = 29.9792458; // speed of light, cm/ns
   static constexpr Double_t pi = 3.14159265359;
 
   struct controlFileParams {
     TString gas = "4He";
-    Float_t pressure = 760.0;    // Torr
-    Float_t temperature = 293.0; // K
-    Int_t ELossBins;
-    Float_t MaxELoss;
-    TString beamName;
+    Double_t pressure = 760.0;    // Torr
+    Double_t temperature = 293.0; // K
+    Int_t ELossBins = 300;
+    Float_t MaxELoss = 10.0;
+    TString beamName = "";
     Float_t dEdxScaleBeam = 1.0;
-    TString target;
-    TString compound;
-    Int_t NumEvapPart;
-    // How much of the available energy the residue is left holding as internal
-    // excitation. "forced" is the historical behaviour: Ex uniform on
-    // [2/3, 1] x EneAvail, which favours energetically-allowed evaporation
-    // chains but is wrong for a single-step reaction -- it locks away ~83% of
-    // the available energy, so the product is too slow, stops too early, and
-    // deposits too sharply just after the vertex.
-    //   0 = forced (default, unchanged)  1 = ground state  2 = uniform
+    TString target = "";
+    TString compound = "";
+    Int_t NumEvapPart = 0;
     // Stopping-power model for the gas: 0 = catima (built in), 1 = SRIM tables
     // read from disk. SRIM tables are per (ion, gas, pressure, temperature) and
     // are generated once by the srim-cache tool; a missing table is an error
@@ -362,29 +371,21 @@ private:
     // a quiet substitution would invalidate any dedx_scale calibrated on one.
     Int_t stoppingModel = 0;
 
-    Int_t residueExc = 0;
-    // CM angular distribution of the two-body exit channel.
-    //   0 = isotropic (default): cos(theta_CM) uniform on [-1, 1]. Correct for
-    //       a compound-nucleus channel, where the residue's energy barely
-    //       depends on angle because the ejectile is light.
-    //   1 = Rutherford: dsigma/dOmega ~ 1/sin^4(theta_CM/2), the right shape
-    //       for elastic/inelastic scattering off the gas. With an alpha
-    //       ejectile the residue's energy swings ~20% across the angular
-    //       range, so isotropic sampling makes the scattered beam lose ~19%
-    //       of its energy where the real, forward-peaked process loses ~2%.
-    Int_t angularDist = 0;
-    // Small-angle cutoff for the Rutherford draw, in degrees. The cross
-    // section diverges as theta -> 0; events below this transfer too little
-    // energy to be visible anyway. Only used when angularDist == 1.
-    Double_t thetaCmMinDeg = 1.0;
     static const Int_t MaxNumEvapPart = 10;
-    TString *res = new TString[MaxNumEvapPart];
-    Float_t *dEdxScaleRes = new Float_t[MaxNumEvapPart];
-    Int_t *colorRes = new Int_t[MaxNumEvapPart];
-    TString *evap = new TString[MaxNumEvapPart];
-    Float_t *dEdxScaleEvap = new Float_t[MaxNumEvapPart];
-    Int_t *colorEvap = new Int_t[MaxNumEvapPart];
-    Double_t BeamEnergy; // MeV — KE at the accelerator (before windows)
+    std::array<TString, MaxNumEvapPart> res;
+    std::array<Float_t, MaxNumEvapPart> dEdxScaleRes{};
+    std::array<Int_t, MaxNumEvapPart> colorRes{};
+    std::array<TString, MaxNumEvapPart> evap;
+    std::array<Float_t, MaxNumEvapPart> dEdxScaleEvap{};
+    std::array<Int_t, MaxNumEvapPart> colorEvap{};
+    // Per-step residue excitation: 0 = explicitly forced, 1 = ground,
+    // 2 = uniform. -1 means not supplied and is rejected for reacted runs.
+    std::array<Int_t, MaxNumEvapPart> residueExc{};
+    // Per-step angular distribution: 0 = isotropic, 1 = Rutherford; -1 means
+    // not supplied and is rejected for reacted runs.
+    std::array<Int_t, MaxNumEvapPart> angularDist{};
+    std::array<Double_t, MaxNumEvapPart> thetaCmMinDeg{};
+    Double_t BeamEnergy = std::numeric_limits<Double_t>::quiet_NaN();
     Double_t KbFWHM = 0; // MeV FWHM at the accelerator
     TString entranceMaterial = "Ti";
     TString exitMaterial = "Ti";
@@ -393,10 +394,10 @@ private:
     // Each layer's dedx_scale multiplies its stopping power; it is applied as
     // an equivalent thickness, since the energy lost in a layer is the
     // integral of dE/dx over its length (see BuildWindows).
-    Double_t entranceThickness = 0.9;
+    Double_t entranceThickness = -1.0;
     Bool_t entranceByLength = false;
     Double_t entranceScale = 1.0;
-    Double_t exitThickness = 0.9;
+    Double_t exitThickness = -1.0;
     Double_t exitScale = 1.0;
     Double_t degraderScale = 1.0;
     Bool_t exitByLength = false;
@@ -411,26 +412,34 @@ private:
     Int_t strip = kStripUnset;
     Int_t stripFirst = kStripUnset;
     Int_t stripLast = kStripUnset;
-    // Per-electrode anode noise as relative resolution in % FWHM of the
-    // electrode's energy deposit. 34 entries indexed by
-    // ElectrodeIndex(stpid, col). -1 means "no noise on this electrode".
-    // Scalar TOML eres = X broadcasts X to all 34 entries (anodes only).
-    std::array<Double_t, kNumElectrodes> Eres;
-    // Independent cathode-readout noise (% FWHM of the summed cathode
-    // energy). Set via the `Cathode` key inside the [detector.eres] table
-    // (scalar broadcast does not touch it).
-    Double_t EresCathode = -1;
-    Int_t NEvents;
-    Int_t Wait;       // 1: canvas waits for user click; 0: no wait
-    Int_t Update;     // 1: update visuals per event; 0: don't
-    Double_t MaxTime; // ns
-    Double_t SimStep; // cm
-    Int_t Method;     // 0: Simulate; 1: GenerateTraceDatabase
+    // Exactly one detector-noise schema may be selected: 1 = absolute
+    // Gaussian sigma [MeV], 2 = relative FWHM [%]. Values are per electrode;
+    // a negative value disables noise. Scalar keys broadcast to anodes only.
+    Int_t noiseMode = 0;
+    std::array<Double_t, kNumElectrodes> Noise;
+    Double_t NoiseCathode = -1;
+    Int_t NEvents = 10; // events per selected strip
+    Int_t Wait = 0;
+    Int_t Update = 0;
+    Double_t MaxTime = 2000.0;
+    Double_t SimStep = 0.001;
+    Int_t Method = 0;
     Int_t Threads = 1;
-    TString FileName;
-    TString FileOpt;
-    Int_t reacClass;
+    TString FileName = "";
+    TString FileOpt = "recreate";
     Int_t PrintOpt = 0;
+    ULong64_t Seed = 1;
+
+    controlFileParams() {
+      Noise.fill(-1.0);
+      dEdxScaleRes.fill(1.0f);
+      dEdxScaleEvap.fill(1.0f);
+      colorRes.fill(416);
+      colorEvap.fill(616);
+      residueExc.fill(-1);
+      angularDist.fill(-1);
+      thetaCmMinDeg.fill(1.0);
+    }
   };
 
   controlFileParams ctf;

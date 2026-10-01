@@ -29,13 +29,15 @@ material     = "Mylar"
 thickness_um = 6.0
 
 [detector]
-eloss_bins  = 555  # Number of bins for y axis
-max_eloss   = 10.0 # Max y value [MeV]
-strip_first = 3
-strip_last  = 13
-eres        = 0.05 # Energy noise level (sigma) in each strip [MeV]
+eloss_bins      = 555  # Number of bins for y axis
+max_eloss       = 10.0 # Max y value [MeV]
+strip_first     = 3
+strip_last      = 13
+noise_sigma_mev = 0.05 # Energy noise level (sigma) in each strip [MeV]
 
 [[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
 [reaction.step.evap]
 name  = "n"
 color = 4
@@ -46,13 +48,14 @@ color      = 3
 dedx_scale = 1.0
 
 [run]
-n_events  = 10000
-threads   = 8
-wait      = 0
-update    = 0
-max_time  = 2000.0                     # ns
-sim_step  = 0.001                      # cm
-method    = 0
-output    = "traces_37Cl_an_bulk.root"
-file_opt  = "recreate"
-print_opt = 0
+seed             = 12345
+events_per_strip = 10000
+threads          = 8
+wait             = 0
+update           = 0
+max_time         = 2000.0                     # ns
+sim_step         = 0.001                      # cm
+method           = 0
+output           = "traces_37Cl_an_bulk.root"
+file_opt         = "recreate"
+print_opt        = 0

@@ -1,0 +1,22 @@
+[gas]
+species     = "4He"
+pressure    = 760.0
+temperature = 293.0
+
+[beam]
+species = "4He"
+energy  = 10.0
+
+[target]
+species  = "4He"
+compound = "8Be"
+
+[detector]
+eloss_bins = 100
+max_eloss  = 3.0
+strip      = 0
+
+[run]
+events_per_strip = 1
+output           = "invalid.root"
+seed             = 1

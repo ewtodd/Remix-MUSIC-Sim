@@ -29,20 +29,20 @@ material     = "Al"
 thickness_um = 400.0
 
 [detector]
-eloss_bins = 500
-max_eloss  = 25.0 # MeV
-strip      = -1   # -1 = unreacted beam (no reaction at any strip)
-eres       = 0.05 # % FWHM of the deposit; scalar broadcasts to all 34 anode electrodes
+eloss_bins              = 500
+max_eloss               = 25.0 # MeV
+strip                   = -1   # -1 = unreacted beam (no reaction at any strip)
+resolution_fwhm_percent = 0.05 # % FWHM of the deposit; scalar broadcasts to all 34 anode electrodes
 
 [run]
-n_events   = 50000
-threads    = 32
-wait       = 0
-update     = 0
-max_time   = 2000.0                      # ns
-sim_step   = 0.001                       # cm
-method     = 0
-output     = "16C12C_unreactedbeam.root"
-file_opt   = "recreate"
-print_opt  = 0
-reac_class = 0                           # Reaction label for event classification (0 = unreacted)
+seed             = 12345
+events_per_strip = 50000
+threads          = 32
+wait             = 0
+update           = 0
+max_time         = 2000.0                      # ns
+sim_step         = 0.001                       # cm
+method           = 0
+output           = "16C12C_unreactedbeam.root"
+file_opt         = "recreate"
+print_opt        = 0

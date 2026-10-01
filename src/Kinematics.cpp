@@ -24,7 +24,9 @@ void Simulator::SetInitialKinematics(Double_t Kbi) {
 // LISE++ kinematics calculator; results were consistent.
 Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
                                        Double_t theta_CM, Double_t phi_CM) {
-  Int_t ReactionAllowed = 1;
+  if (numEvaporations <= 0)
+    return 0;
+  Bool_t reactionAllowed = kTRUE;
   if (PrintLevel > 0) {
     Log << "musicsim::SetReactionKinematics ***********************************"
         << std::endl;
@@ -71,11 +73,13 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     Compound->Print(Log);
   }
 
-  // Assume all the particles will be propagated; reset their 4-vectors and Eex.
+  // Build the chain transactionally. Products stay non-propagating until every
+  // configured step succeeds, so a late failure cannot leave a half-reaction
+  // alongside a resumed incident beam.
   for (Int_t er = 0; er < numEvaporations; er++) {
-    EvaP[er]->DoNotPropagate = false;
+    EvaP[er]->DoNotPropagate = true;
     EvaP[er]->ResetKinematics();
-    EvaR[er]->DoNotPropagate = false;
+    EvaR[er]->DoNotPropagate = true;
     EvaR[er]->ResetKinematics();
   }
 
@@ -105,89 +109,98 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
       Log << "Max energy avail.=" << EneAvail << " MeV" << std::endl;
     }
 
-    if (EneAvail < 0) {
-      // Step is not energetically allowed; mark this and all later steps as
-      // non-propagating and stop.
+    constexpr Double_t thresholdTolerance = 1e-9;
+    if (EneAvail < -thresholdTolerance) {
       if (PrintLevel > 0)
-        Log << "Negative EneAvail!\nThe following particles will NOT be propagated:"
-            << std::endl;
-      for (Int_t i = er; i < numEvaporations; i++) {
-        EvaP[i]->DoNotPropagate = true;
-        EvaR[i]->DoNotPropagate = true;
-        if (PrintLevel > 0)
-          Log << i << " " << EvaP[i]->Name << ", " << EvaR[i]->Name
-              << std::endl;
-      }
+        Log << "Reaction step " << er << " is below threshold." << std::endl;
+      reactionAllowed = kFALSE;
       break;
-    } else if (er > 0) {
-      // Reaction at this step is allowed; stop propagating the previous
-      // residue.
-      EvaR[er - 1]->DoNotPropagate = true;
     }
+    EneAvail = std::max(0.0, EneAvail);
 
     Double_t Ex = 0;
-    if (EneAvail > minEx[er]) {
-      switch (ctf.residueExc) {
-      case 1: // ground state: the available energy all goes to kinetic energy
-        Ex = 0;
-        break;
-      case 2: // uniform over the open range
-        Ex = Rdm->Uniform(0.0, EneAvail);
-        break;
-      default: // forced, favours energetically-allowed evaporation chains
-        Ex = Rdm->Uniform(2 * EneAvail / 3, EneAvail);
+    switch (ctf.residueExc[er]) {
+    case 1:
+      Ex = 0.0;
+      break;
+    case 2:
+      Ex = Rdm->Uniform(0.0, EneAvail);
+      break;
+    case 0:
+      if (er + 1 >= numEvaporations ||
+          EneAvail + thresholdTolerance < minEx[er + 1]) {
+        reactionAllowed = kFALSE;
         break;
       }
-    } else
-      ReactionAllowed = 0;
+      // A forced intermediate residue carries at least the invariant-mass
+      // excess required by the rest of the configured decay chain.
+      Ex = minEx[er + 1] >= EneAvail ? EneAvail
+                                     : Rdm->Uniform(minEx[er + 1], EneAvail);
+      break;
+    default:
+      reactionAllowed = kFALSE;
+      break;
+    }
+    if (!reactionAllowed)
+      break;
 
     EvaR[er]->SetExcEnergy(Ex);
 
     // For the first step, honour user-specified angles; for later steps,
     // randomise. Uniform on the unit sphere → cos(θ) uniform on [-1, 1].
-    if ((theta_CM == -1 && phi_CM == -1) || er > 0) {
-      if (ctf.angularDist == 1) {
+    Double_t stepTheta = theta_CM;
+    Double_t stepPhi = phi_CM;
+    if ((stepTheta == -1 && stepPhi == -1) || er > 0) {
+      if (ctf.angularDist[er] == 1) {
         // Rutherford. With u = sin^2(theta/2), dsigma ~ du/u^2, so sampling u
         // on [u_min, 1] with that weight inverts in closed form:
         //     1/u = 1/u_min - r (1/u_min - 1)
-        Double_t hmin = std::sin(0.5 * ctf.thetaCmMinDeg * pi / 180.0);
+        Double_t hmin = std::sin(0.5 * ctf.thetaCmMinDeg[er] * pi / 180.0);
         Double_t umin = hmin * hmin;
         Double_t r = Rdm->Uniform(0.0, 1.0);
         Double_t inv = 1.0 / umin - r * (1.0 / umin - 1.0);
         Double_t u = 1.0 / inv;
         if (u > 1.0)
           u = 1.0;
-        theta_CM = 2.0 * std::asin(std::sqrt(u));
+        stepTheta = 2.0 * std::asin(std::sqrt(u));
       } else {
-        theta_CM = std::acos(Rdm->Uniform(-1.0, 1.0));
+        stepTheta = std::acos(Rdm->Uniform(-1.0, 1.0));
       }
-      phi_CM = Rdm->Uniform(-pi, pi);
+      stepPhi = Rdm->Uniform(-pi, pi);
     }
+    theta_cm[er] = static_cast<Float_t>(stepTheta * 180.0 / pi);
+    phi_cm[er] = static_cast<Float_t>(stepPhi * 180.0 / pi);
 
     if (PrintLevel > 0) {
       Log << "Ex(" << EvaR[er]->Name << ")=" << Ex
-          << " MeV\ntheta_cm=" << theta_CM * 180 / pi
-          << "\nphi_cm=" << phi_CM * 180 / pi << std::endl;
+          << " MeV\ntheta_cm=" << stepTheta * 180 / pi
+          << "\nphi_cm=" << stepPhi * 180 / pi << std::endl;
       Log << "--- Outgoing particles (evap res = " << er
           << ") -------------------------------" << std::endl;
     }
 
-    if (ReactionAllowed) {
+    if (reactionAllowed) {
       // pf_CM is the outgoing momentum magnitude in the CM. Ptot² is
       // Lorentz-invariant.
-      Double_t pf_CM = std::sqrt((Ptot * Ptot - std::pow(ml + mh + Ex, 2)) *
-                                 (Ptot * Ptot - std::pow(ml - mh - Ex, 2)) /
-                                 (4 * (Ptot * Ptot)));
+      const Double_t invariantMass2 = Ptot * Ptot;
+      const Double_t radicand = (invariantMass2 - std::pow(ml + mh + Ex, 2)) *
+                                (invariantMass2 - std::pow(ml - mh - Ex, 2)) /
+                                (4.0 * invariantMass2);
+      if (radicand < -thresholdTolerance || !std::isfinite(radicand)) {
+        reactionAllowed = kFALSE;
+        break;
+      }
+      Double_t pf_CM = std::sqrt(std::max(0.0, radicand));
 
-      Double_t plxCM = -pf_CM * std::sin(theta_CM) * std::cos(phi_CM);
-      Double_t plyCM = -pf_CM * std::sin(theta_CM) * std::sin(phi_CM);
-      Double_t plzCM = -pf_CM * std::cos(theta_CM);
+      Double_t plxCM = -pf_CM * std::sin(stepTheta) * std::cos(stepPhi);
+      Double_t plyCM = -pf_CM * std::sin(stepTheta) * std::sin(stepPhi);
+      Double_t plzCM = -pf_CM * std::cos(stepTheta);
       Double_t ElCM = std::sqrt(ml * ml + pf_CM * pf_CM);
       EvaP[er]->SetP(ElCM, plxCM, plyCM, plzCM);
 
-      Double_t phxCM = pf_CM * std::sin(theta_CM) * std::cos(phi_CM);
-      Double_t phyCM = pf_CM * std::sin(theta_CM) * std::sin(phi_CM);
-      Double_t phzCM = pf_CM * std::cos(theta_CM);
+      Double_t phxCM = pf_CM * std::sin(stepTheta) * std::cos(stepPhi);
+      Double_t phyCM = pf_CM * std::sin(stepTheta) * std::sin(stepPhi);
+      Double_t phzCM = pf_CM * std::cos(stepTheta);
       Double_t EhCM = std::sqrt((mh + Ex) * (mh + Ex) + pf_CM * pf_CM);
       EvaR[er]->SetP(EhCM, phxCM, phyCM, phzCM);
 
@@ -205,17 +218,11 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
       // secondary decay's "reaction" is just a decay of this residue).
       Ptot = EvaR[er]->GetP();
 
-      evap_theta[er] = (EvaP[er]->GetTheta()) * 180 / pi;
-      evap_phi[er] = (EvaP[er]->GetPhi()) * 180 / pi;
-
       // Light particle starts at the vertex; it will be propagated.
       EvaP[er]->SetX(tof, 0, 0, zr);
       // Residue starts at the vertex; we don't yet know if it'll be propagated
       // (decided in the next loop iteration).
       EvaR[er]->SetX(tof, 0, 0, zr);
-
-      residue_theta[er] = (EvaR[er]->GetTheta()) * 180 / pi;
-      residue_phi[er] = (EvaR[er]->GetPhi()) * 180 / pi;
 
       if (PrintLevel > 0) {
         Log << ")))))))))) After lorentz boost ((((((((((" << std::endl;
@@ -229,36 +236,42 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
         Log << "\tBetaX=" << BetaX << "  BetaY=" << BetaY << "  BetaZ=" << BetaZ
             << std::endl;
       }
-    } else {
-      // Not allowed: park the products at rest at the vertex and mark them
-      // as non-propagating.
-      EvaP[er]->SetP(ml, 0, 0, 0);
-      EvaP[er]->SetX(tof, 0, 0, zr);
-      EvaP[er]->DoNotPropagate = true;
-      EvaR[er]->SetP(mh + Ex, 0, 0, 0);
-      EvaR[er]->SetX(tof, 0, 0, zr);
-      EvaR[er]->DoNotPropagate = true;
     }
+  }
+
+  if (!reactionAllowed) {
+    for (Int_t er = 0; er < numEvaporations; ++er) {
+      EvaP[er]->ResetKinematics();
+      EvaP[er]->SetX(tof, 0.0, 0.0, zr);
+      EvaP[er]->DoNotPropagate = true;
+      EvaR[er]->ResetKinematics();
+      EvaR[er]->SetX(tof, 0.0, 0.0, zr);
+      EvaR[er]->DoNotPropagate = true;
+      // A rejected chain is wholly absent from truth output. In particular,
+      // erase angles already sampled by an earlier successful step before a
+      // later step failed its threshold check.
+      theta_cm[er] = phi_cm[er] = -1.0f;
+      evap_energy[er] = residue_energy[er] = -2.0f;
+      evap_theta[er] = evap_phi[er] = -1.0f;
+      residue_theta[er] = residue_phi[er] = -1.0f;
+    }
+    return 0;
+  }
+
+  for (Int_t er = 0; er < numEvaporations; ++er) {
+    EvaP[er]->DoNotPropagate = false;
+    EvaR[er]->DoNotPropagate = (er != numEvaporations - 1);
   }
 
   // Fill the reaction-kinematics branches.
   Kbr = Beam->GetKE();
   for (Int_t er = 0; er < numEvaporations; er++) {
-    theta_cm[er] = theta_CM * 180 / pi;
-    phi_cm[er] = phi_CM * 180 / pi;
-    // -2 sentinel = "step not physically realised" (energetically disallowed,
-    // DoNotPropagate set). Same convention as the exit-energy branches so
-    // analysis can mask both arrays the same way. Note: superseded residues
-    // (decayed by a later step) also carry DoNotPropagate, so their creation
-    // energy is masked too — only the surviving residue's slot is real.
-    residue_energy[er] =
-        EvaR[er]->DoNotPropagate ? -2.0f : (Float_t)EvaR[er]->GetKE();
-    evap_energy[er] =
-        EvaP[er]->DoNotPropagate ? -2.0f : (Float_t)EvaP[er]->GetKE();
-    evap_theta[er] = (EvaP[er]->GetTheta()) * 180 / pi;
-    evap_phi[er] = (EvaP[er]->GetPhi()) * 180 / pi;
-    residue_theta[er] = (EvaR[er]->GetTheta()) * 180 / pi;
-    residue_phi[er] = (EvaR[er]->GetPhi()) * 180 / pi;
+    residue_energy[er] = static_cast<Float_t>(EvaR[er]->GetKE());
+    evap_energy[er] = static_cast<Float_t>(EvaP[er]->GetKE());
+    evap_theta[er] = static_cast<Float_t>(EvaP[er]->GetTheta() * 180.0 / pi);
+    evap_phi[er] = static_cast<Float_t>(EvaP[er]->GetPhi() * 180.0 / pi);
+    residue_theta[er] = static_cast<Float_t>(EvaR[er]->GetTheta() * 180.0 / pi);
+    residue_phi[er] = static_cast<Float_t>(EvaR[er]->GetPhi() * 180.0 / pi);
   }
 
   if (PrintLevel > 0) {
@@ -299,31 +312,11 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
             EvaR[er]->Name.Data(), EvaR[er]->GetKE(),
             EvaR[er]->GetTheta() * 180 / pi, EvaR[er]->GetPhi() * 180 / pi));
     }
-    if (DeDau1 && DeDau2) {
-      LabelKine->AddText(
-          Form("%s: K=%.2f MeV  #theta_{lab}=%.1f deg  #phi_{lab}=%.1f deg",
-               DeDau1->Name.Data(), DeDau1->GetKE(),
-               DeDau1->GetTheta() * 180 / pi, DeDau1->GetPhi() * 180 / pi));
-      LabelKine->AddText(
-          Form("%s: K=%.2f MeV  #theta_{lab}=%.1f deg  #phi_{lab}=%.1f deg",
-               DeDau2->Name.Data(), DeDau2->GetKE(),
-               DeDau2->GetTheta() * 180 / pi, DeDau2->GetPhi() * 180 / pi));
-    } else if (Heavy) {
-      LabelKine->AddText(
-          Form("%s: K=%.2f MeV  #theta_{lab}=%.1f deg  #phi_{lab}=%.1f deg",
-               Heavy->Name.Data(), Heavy->GetKE(), Heavy->GetTheta() * 180 / pi,
-               Heavy->GetPhi() * 180 / pi));
-    }
-    if (Light) {
-      LabelKine->AddText(
-          Form("%s: K=%.2f MeV  #theta_{lab}=%.1f deg  #phi_{lab}=%.1f deg",
-               Light->Name.Data(), Light->GetKE(), Light->GetTheta() * 180 / pi,
-               Light->GetPhi() * 180 / pi));
-    }
-    LabelKine->AddText(Form("#theta_{c.m.}=%.1f deg", theta_cm[0]));
+    LabelKine->AddText(
+        Form("#theta_{c.m.}=%.1f deg", static_cast<Double_t>(theta_cm[0])));
   }
 
-  return ReactionAllowed;
+  return 1;
 }
 
 // Non-relativistic CM-energy ranges, per strip. Used to estimate the kinematic
@@ -334,7 +327,7 @@ void Simulator::CalculateCMEnergyRange() {
   Double_t mb = Beam->Mass;
   Double_t mt = Target->Mass;
   Double_t Kb = Kb_at_gas;
-  Float_t TotalLength = 0;
+  Double_t TotalLength = 0;
   for (Int_t i = 0; i < AnodeRows; i++)
     TotalLength += AnodeDZ[i][0];
 
@@ -395,126 +388,5 @@ void Simulator::CalculateCMEnergyRange() {
         CME_beg = CME_end;
     }
     energeticsWritten_ = true;
-  }
-}
-
-void Simulator::CalculateExcEnergyRange() {
-  Double_t mb = Beam->Mass;
-  Double_t mt = Target->Mass;
-  Double_t mf = Compound->Mass;
-  FourVector Pb("Pb");
-  FourVector Pt("Pt", mt, 0, 0, 0);
-  FourVector Ptot("Total four-mom. in the lab");
-  Double_t Kb = Kb_at_gas;
-  Float_t TotalLength = 0;
-  for (Int_t i = 0; i < AnodeRows; i++)
-    TotalLength += AnodeDZ[i][0];
-
-  Double_t pb = std::sqrt(2 * mb * Kb * (1 + Kb / (2 * mb)));
-  Double_t Eb = std::sqrt(mb * mb + pb * pb);
-  Pb.SetCoords(Eb, 0, 0, pb);
-  Ptot = Pb + Pt;
-  EexcMax = std::sqrt(Ptot * Ptot) - mf;
-  Double_t Eexc_beg = EexcMax;
-  std::cout << "Full excitation energy range covered in " << TotalLength
-            << "cm:\n Eexc(beg) = " << Eexc_beg << " MeV";
-
-  Double_t Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength);
-  pb = std::sqrt(2 * mb * Kb_min * (1 + Kb_min / (2 * mb)));
-  Eb = std::sqrt(mb * mb + pb * pb);
-  Pb.SetCoords(Eb, 0, 0, pb);
-  Ptot = Pb + Pt;
-  EexcMin = std::sqrt(Ptot * Ptot) - mf;
-  Double_t Eexc_end = EexcMin;
-  std::cout << "   Eexc(end) = " << Eexc_end << " MeV" << std::endl;
-  std::cout << "Exc. energy range in each segment:" << std::endl;
-
-  for (Int_t i = 0; i < AnodeRows; i++) {
-    Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0]);
-    pb = std::sqrt(2 * mb * Kb * (1 + Kb / (2 * mb)));
-    Eb = std::sqrt(mb * mb + pb * pb);
-    Pb.SetCoords(Eb, 0, 0, pb);
-    Ptot = Pb + Pt;
-    Eexc_end = std::sqrt(Ptot * Ptot) - mf;
-    SegEexcRange[i] = Eexc_beg - Eexc_end;
-    std::cout << i << "\t" << AnodeDZ[i][0] << " cm \t" << SegEexcRange[i]
-              << " MeV" << std::endl;
-    if (i + 1 < AnodeRows)
-      Eexc_beg = Eexc_end;
-  }
-}
-
-void Simulator::PrintEnergetics(Double_t Kb, Double_t **DeltaEB) {
-  Double_t mb = Beam->Mass;
-  Double_t mt = Target->Mass;
-  Double_t mc = Compound->Mass;
-
-  std::cout.width(5);
-  std::cout << "Stp";
-  std::cout.width(15);
-  std::cout << "ExMax[MeV]";
-  std::cout.width(15);
-  std::cout << "ExMin[MeV]";
-  std::cout.width(15);
-  std::cout << "Exmax[MeV]";
-  std::cout.width(15);
-  std::cout << "Exmin[MeV]";
-  std::cout.width(15);
-  std::cout << "ECMmax[MeV]";
-  std::cout.width(15);
-  std::cout << "ECMmin[MeV]" << std::endl;
-
-  for (Int_t stp = 0; stp < AnodeRows + 1; stp++) {
-    std::cout.width(5);
-    std::cout << stp;
-    Double_t pb = std::sqrt(2 * mb * Kb * (1 + Kb / 2 / mb));
-    Double_t Eb = std::sqrt(mb * mb + pb * pb);
-    FourVector Ptot;
-    Ptot.SetCoords(Eb + mt, 0, 0, pb);
-    std::cout.width(15);
-    std::cout.precision(4);
-    std::cout << std::sqrt(Ptot * Ptot) - mc;
-    Double_t pCM_max =
-        std::sqrt((Ptot * Ptot - std::pow(mt + mb, 2)) *
-                  (Ptot * Ptot - std::pow(mb - mt, 2)) / (4 * (Ptot * Ptot)));
-
-    Kb -= DeltaEB[stp][AnodeCols];
-    if (Kb > 0) {
-      pb = std::sqrt(2 * mb * Kb * (1 + Kb / 2 / mb));
-      Eb = std::sqrt(mb * mb + pb * pb);
-      Ptot.SetCoords(Eb + mt, 0, 0, pb);
-      std::cout.width(15);
-      std::cout.precision(4);
-      std::cout << std::sqrt(Ptot * Ptot) - mc;
-
-      Double_t Ecm = mt * Kb / (mb + mt);
-      Double_t Kt = Ecm * (mt + mb) / mb;
-      std::cout.width(15);
-      std::cout.precision(4);
-      std::cout << Kt;
-      std::cout.width(15);
-      std::cout.precision(4);
-      std::cout << std::sqrt(Ptot * Ptot) - mc;
-
-      Double_t pCM_min =
-          std::sqrt((Ptot * Ptot - std::pow(mt + mb, 2)) *
-                    (Ptot * Ptot - std::pow(mb - mt, 2)) / (4 * (Ptot * Ptot)));
-      std::cout.width(15);
-      std::cout.precision(4);
-      std::cout << std::sqrt(mt * mt + pCM_max * pCM_max) - mt;
-      std::cout.width(15);
-      std::cout.precision(4);
-      std::cout << std::sqrt(mt * mt + pCM_min * pCM_min) - mt;
-      std::cout.width(15);
-      std::cout.precision(4);
-      std::cout << Kb * mt / (mb + mt) << std::endl;
-    } else {
-      std::cout.width(15);
-      std::cout << "0";
-      std::cout.width(15);
-      std::cout << "0";
-      std::cout.width(15);
-      std::cout << "0" << std::endl;
-    }
   }
 }

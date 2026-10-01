@@ -29,12 +29,14 @@ material     = "Mylar"
 thickness_um = 6.0
 
 [detector]
-eloss_bins = 555  # Number of bins for y axis
-max_eloss  = 10.0 # Max y value [MeV]
-strip      = -1
-eres       = 0.05 # Ad-hoc post-physics electronic noise sigma per strip [MeV]; -1 disables
+eloss_bins      = 555  # Number of bins for y axis
+max_eloss       = 10.0 # Max y value [MeV]
+strip           = -1
+noise_sigma_mev = 0.05 # Ad-hoc post-physics electronic noise sigma per strip [MeV]; -1 disables
 
 [[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "rutherford"
 [reaction.step.evap]
 name  = "4He"
 color = 2
@@ -45,12 +47,13 @@ color      = 4
 dedx_scale = 1.0
 
 [run]
-n_events  = 20
-max_time  = 2000.0                            # ns
-threads   = 1
-sim_step  = 0.001                             # cm
-wait      = 1                                 # Pause between events; double-click canvas to advanceMethod           0
-update    = 1                                 # Render EVE 3D view + trace canvas
-output    = "traces_37Cl_aa_interactive.root"
-file_opt  = "recreate"
-print_opt = 0
+seed             = 12345
+events_per_strip = 20
+max_time         = 2000.0                            # ns
+threads          = 1
+sim_step         = 0.001                             # cm
+wait             = 1                                 # Pause between events; double-click canvas to advanceMethod           0
+update           = 1                                 # Render EVE 3D view + trace canvas
+output           = "traces_37Cl_aa_interactive.root"
+file_opt         = "recreate"
+print_opt        = 0

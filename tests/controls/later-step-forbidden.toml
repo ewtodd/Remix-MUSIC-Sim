@@ -1,0 +1,63 @@
+[gas]
+species     = "4He"
+pressure    = 0.0
+temperature = 293.0
+
+[beam]
+species     = "98Zr"
+energy      = 400.0
+energy_fwhm = 0.0
+
+[target]
+species  = "4He"
+compound = "102Mo"
+
+[windows.entrance]
+thickness_mg_cm2 = -1.0
+
+[windows.exit]
+thickness_mg_cm2 = -1.0
+
+[detector]
+eloss_bins = 100
+max_eloss  = 30.0
+strip      = 0
+
+[[reaction.step]]
+# Ground-state 101Mo cannot feed the configured second neutron emission. The
+# first step is individually allowed, so this exercises transactional rollback
+# after a later step has already sampled truth values.
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
+
+[reaction.step.evap]
+name = "1n"
+
+[reaction.step.res]
+name = "101Mo"
+
+[[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
+
+[reaction.step.evap]
+name = "1n"
+
+[reaction.step.res]
+name = "100Mo"
+
+[physics]
+straggling = false
+
+[run]
+events_per_strip = 1
+threads          = 1
+wait             = 0
+update           = 0
+max_time         = 2000.0
+sim_step         = 0.01
+method           = 0
+output           = "later-step-forbidden.root"
+file_opt         = "recreate"
+print_opt        = 0
+seed             = 107

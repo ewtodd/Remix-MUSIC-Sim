@@ -1,18 +1,124 @@
 #include "NuclideFinder.hpp"
 
+#include <cctype>
+#include <cerrno>
+#include <cmath>
+#include <limits>
+#include <utility>
+
+namespace {
+
+std::string Trim(std::string value) {
+  const auto first = value.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos)
+    return {};
+  const auto last = value.find_last_not_of(" \t\r\n");
+  return value.substr(first, last - first + 1);
+}
+
+std::string Field(const std::string &line, size_t offset, size_t count) {
+  if (offset >= line.size())
+    return {};
+  return line.substr(offset, std::min(count, line.size() - offset));
+}
+
+bool ParseInteger(const std::string &field, Int_t &value) {
+  const std::string text = Trim(field);
+  if (text.empty())
+    return false;
+  errno = 0;
+  char *end = nullptr;
+  const long parsed = std::strtol(text.c_str(), &end, 10);
+  if (errno == ERANGE || end == text.c_str() || *end != '\0' ||
+      parsed < std::numeric_limits<Int_t>::min() ||
+      parsed > std::numeric_limits<Int_t>::max())
+    return false;
+  value = static_cast<Int_t>(parsed);
+  return true;
+}
+
+bool ParseNumber(std::string field, Double_t &value) {
+  field.erase(std::remove(field.begin(), field.end(), '#'), field.end());
+  const std::string text = Trim(field);
+  if (text.empty())
+    return false;
+  errno = 0;
+  char *end = nullptr;
+  const Double_t parsed = std::strtod(text.c_str(), &end);
+  while (end && *end != '\0' && std::isspace(static_cast<unsigned char>(*end)))
+    ++end;
+  if (errno == ERANGE || end == text.c_str() || (end && *end != '\0') ||
+      !std::isfinite(parsed))
+    return false;
+  value = parsed;
+  return true;
+}
+
+struct NubaseGroundState {
+  std::string name;
+  Int_t stateIndex = 0;
+  Double_t excitationKeV = 0.0;
+  Float_t spin = -1.0f;
+  Int_t parity = 0;
+  bool spinCertain = false;
+  bool parityCertain = false;
+};
+
+bool ParseSpinParity(std::string field, NubaseGroundState &entry) {
+  field = Trim(field);
+  const size_t isospin = field.find('T');
+  if (isospin != std::string::npos)
+    field.erase(isospin);
+  if (field.empty() || field.find('(') != std::string::npos ||
+      field.find(',') != std::string::npos ||
+      field.find("to") != std::string::npos)
+    return false;
+
+  entry.spinCertain = field.find('#') == std::string::npos;
+  field.erase(std::remove(field.begin(), field.end(), '#'), field.end());
+  field.erase(std::remove(field.begin(), field.end(), '*'), field.end());
+
+  const bool hasPlus = field.find('+') != std::string::npos;
+  const bool hasMinus = field.find('-') != std::string::npos;
+  entry.parityCertain = hasPlus != hasMinus;
+  entry.parity = hasPlus ? 1 : hasMinus ? -1 : 0;
+  field.erase(std::remove(field.begin(), field.end(), '+'), field.end());
+  field.erase(std::remove(field.begin(), field.end(), '-'), field.end());
+  field.erase(
+      std::remove_if(field.begin(), field.end(),
+                     [](unsigned char c) { return std::isspace(c) != 0; }),
+      field.end());
+
+  Double_t spinValue = 0.0;
+  const size_t half = field.find("/2");
+  if (half != std::string::npos) {
+    if (half + 2 != field.size() ||
+        !ParseNumber(field.substr(0, half), spinValue))
+      return false;
+    entry.spin = static_cast<Float_t>(spinValue / 2.0);
+  } else {
+    if (!ParseNumber(field, spinValue))
+      return false;
+    entry.spin = static_cast<Float_t>(spinValue);
+  }
+  return entry.spin >= 0.0f;
+}
+
+} // namespace
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // Constructor.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 NuclideFinder::NuclideFinder() {
   Size = 3179;
-  A = new Int_t[Size];
-  N = new Int_t[Size];
-  Z = new Int_t[Size];
-  Name = new std::string[Size];
-  Mass = new Double_t[Size];
-  Measured = new Int_t[Size];
-  GSspin = new Float_t[Size];
-  GSparity = new Int_t[Size];
+  A.resize(Size);
+  N.resize(Size);
+  Z.resize(Size);
+  Name.resize(Size);
+  Mass.resize(Size);
+  Measured.resize(Size);
+  GSspin.resize(Size);
+  GSparity.resize(Size);
   Init();
   for (Int_t i = 0; i < Size; i++) {
     GSspin[i] = -1;
@@ -20,14 +126,22 @@ NuclideFinder::NuclideFinder() {
   }
 }
 
+Int_t NuclideFinder::GetA(std::string UserNuclide) {
+  const std::string nuclide = GetProperName(UserNuclide);
+  for (Int_t i = 0; i < Size; ++i)
+    if (nuclide == Name[i])
+      return A[i];
+  return -1;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // Obtain the mass number given the general array index.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 Int_t NuclideFinder::GetA(Int_t Index) {
-  Int_t A = -1;
+  Int_t massNumber = -1;
   if (Index >= 0 && Index < Size)
-    A = this->A[Index];
-  return A;
+    massNumber = A[Index];
+  return massNumber;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,6 +189,8 @@ Double_t NuclideFinder::GetMass(Int_t Index, std::string Units) {
               << std::endl;
     return 0;
   }
+  if (Index < 0 || Index >= Size)
+    return 0.0;
   m = ConvFactor * Mass[Index];
   return m;
 }
@@ -83,7 +199,8 @@ Double_t NuclideFinder::GetMass(Int_t Index, std::string Units) {
 // Similar to the method above but now the nuclide is specified by its number of
 // protons, Z, and its mass number, A.
 /////////////////////////////////////////////////////////////////////////////////////////////////
-Double_t NuclideFinder::GetMass(Int_t Z, Int_t A, std::string Units) {
+Double_t NuclideFinder::GetMass(Int_t atomicNumber, Int_t massNumber,
+                                std::string Units) {
   Double_t m = 0;
   Double_t ConvFactor = 0;
   if (Units == "MeV/c^2")
@@ -98,7 +215,7 @@ Double_t NuclideFinder::GetMass(Int_t Z, Int_t A, std::string Units) {
     return 0;
   }
   for (Int_t i = 0; i < Size; i++) {
-    if (Z == this->Z[i] && A == this->A[i]) {
+    if (atomicNumber == Z[i] && massNumber == A[i]) {
       m = ConvFactor * Mass[i];
       break;
     }
@@ -111,7 +228,6 @@ Double_t NuclideFinder::GetMass(Int_t Z, Int_t A, std::string Units) {
 // '44S'.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 Double_t NuclideFinder::GetMass(std::string UserNuclide, std::string Units) {
-  Double_t m = 0;
   Double_t ConvFactor = 0;
 
   if (Units == "MeV/c^2")
@@ -140,528 +256,283 @@ Double_t NuclideFinder::GetMass(std::string UserNuclide, std::string Units) {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-// Obtain the neutron number given the nuclide Name.
+// Obtain the neutron number given the nuclide name.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 Int_t NuclideFinder::GetN(std::string UserNuclide) {
-  Int_t N = 0;
-  std::string Nuclide = GetProperName(UserNuclide);
-  // Find the std::string corresponding to the specified nuclide.
-  for (Int_t i = 0; i < Size; i++) {
-    if (Nuclide == Name[i]) {
-      N = this->N[i];
-      break;
-    }
-  }
-  return N;
+  const std::string nuclide = GetProperName(UserNuclide);
+  for (Int_t i = 0; i < Size; ++i)
+    if (nuclide == Name[i])
+      return N[i];
+  return -1;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // Obtain the nuclide name given the general array index.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 std::string NuclideFinder::GetName(Int_t Index) {
-  std::string Name = "";
   if (Index >= 0 && Index < Size)
-    Name = this->Name[Index];
-  return Name;
+    return Name[Index];
+  return {};
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // Obtain the nuclide name given Z and A.
 /////////////////////////////////////////////////////////////////////////////////////////////////
-std::string NuclideFinder::GetName(Int_t Z, Int_t A) {
-  std::string Name = "";
-  for (Int_t i = 0; i < Size; i++) {
-    if (Z == this->Z[i] && A == this->A[i]) {
-      Name = this->Name[i];
-      break;
-    }
-  }
-  return Name;
+std::string NuclideFinder::GetName(Int_t protonNumber, Int_t massNumber) {
+  for (Int_t i = 0; i < Size; ++i)
+    if (protonNumber == Z[i] && massNumber == A[i])
+      return Name[i];
+  return {};
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-// Common spellings of nuclides' names that need to be change to the 'proper'
-// name (i.e. the name used by this program).
+// Normalize common shorthand names to the built-in table spelling.
 /////////////////////////////////////////////////////////////////////////////////////////////////
-std::string NuclideFinder::GetProperName(std::string UserNuclideName) {
-  std::string ProperName = UserNuclideName;
-  if (UserNuclideName == "n" || UserNuclideName == "N")
-    ProperName = "1n";
-  else if (UserNuclideName == "p" || UserNuclideName == "P")
-    ProperName = "1H";
-  else if (UserNuclideName == "d" || UserNuclideName == "D")
-    ProperName = "2H";
-  else if (UserNuclideName == "t" || UserNuclideName == "T")
-    ProperName = "3H";
-  else if (UserNuclideName == "a" || UserNuclideName == "A")
-    ProperName = "4He";
-  return ProperName;
+std::string NuclideFinder::GetProperName(std::string name) {
+  if (name == "n" || name == "N")
+    return "1n";
+  if (name == "p" || name == "P")
+    return "1H";
+  if (name == "d" || name == "D")
+    return "2H";
+  if (name == "t" || name == "T")
+    return "3H";
+  if (name == "a" || name == "A")
+    return "4He";
+  return name;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-// Obtain the proton number given the general array index.
+// Obtain the proton number by array index or nuclide name.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 Int_t NuclideFinder::GetZ(Int_t Index) {
-  Int_t Z = -1;
   if (Index >= 0 && Index < Size)
-    Z = this->Z[Index];
-  return Z;
+    return Z[Index];
+  return -1;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////
-// Obtain the proton number given the nuclide Name.
-/////////////////////////////////////////////////////////////////////////////////////////////////
 Int_t NuclideFinder::GetZ(std::string UserNuclide) {
-  std::string Nuclide = GetProperName(UserNuclide);
-  // Find the std::string corresponding to the specified nuclide.
-  for (Int_t i = 0; i < Size; i++) {
-    if (Nuclide == Name[i]) {
-      return this->Z[i];
-    }
-  }
-  std::cerr << "NuclideFinder ERROR: nuclide '" << UserNuclide
-            << "' not in the built-in mass table." << std::endl;
-  exit(EXIT_FAILURE);
+  const std::string nuclide = GetProperName(UserNuclide);
+  for (Int_t i = 0; i < Size; ++i)
+    if (nuclide == Name[i])
+      return Z[i];
+  return -1;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////
-// Obtain the mass number given the general array index.
-/////////////////////////////////////////////////////////////////////////////////////////////////
 Int_t NuclideFinder::IsMeasured(Int_t Index) {
-  Int_t Answer = 0;
   if (Index >= 0 && Index < Size)
-    Answer = Measured[Index];
-  return Answer;
+    return Measured[Index];
+  return 0;
+}
+
+Bool_t NuclideFinder::Contains(std::string UserNuclide) {
+  const std::string nuclide = GetProperName(UserNuclide);
+  return std::find(Name.begin(), Name.end(), nuclide) != Name.end();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-// Load a file with the AME data format (AME2012 and AME2016).
+// Load a fixed-width AME mass table transactionally.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 Int_t NuclideFinder::LoadAMEFile(std::string file) {
-  std::ifstream read;
-  std::string line;
-  Int_t goodDataFile = 0;
-  Int_t numLines = 0;
-  Int_t start_counting_lines = 0;
-  Int_t mass_list_starts = 0;
-
-  read.open(file.c_str());
-  if (!read.is_open())
-    std::cout << "*** AME file " << file << " was not found." << std::endl;
-  else {
-    // The file is now open. Read it and count the lines with masses.
-    goodDataFile = 1;
-    do {
-      std::getline(read, line);
-      if (start_counting_lines && !line.empty()) {
-        // std::string MassExcessStr = line.substr(29,12);
-        // Double_t MassExcess = atof(MassExcessStr.c_str());
-        // std::cout << MassExcessStr << " = " << MassExcess << std::endl;
-        numLines++;
-      }
-
-      if (line.find("MASS LIST") != std::string::npos) {
-        start_counting_lines = 1;
-        std::getline(read, line);
-        std::getline(read, line);
-        std::getline(read, line);
-        std::getline(read, line);
-        mass_list_starts = read.tellg();
-      }
-
-    } while (!read.eof());
-    read.close();
-
-    delete[] A;
-    delete[] N;
-    delete[] Z;
-    delete[] Name;
-    delete[] Mass;
-    delete[] GSspin;
-    delete[] GSparity;
-
-    Size = numLines;
-    A = new Int_t[Size];
-    N = new Int_t[Size];
-    Z = new Int_t[Size];
-    Name = new std::string[Size];
-    Mass = new Double_t[Size];
-    Measured = new Int_t[Size]; // 1 if mass excess is measured, 0 if it is
-                                // estimated (contains '#')
-    GSspin = new Float_t[Size]; // Only filled if nubase file is loaded
-    GSparity = new Int_t[Size]; // Only filled if nubase file is loaded
-
-    read.open(file.c_str());
-    read.seekg(mass_list_starts);
-    Int_t i = 0;
-    do {
-      std::getline(read, line);
-      if (!line.empty()) {
-        std::string Nstr = line.substr(6, 3);
-        std::string Zstr = line.substr(11, 3);
-        std::string Astr = line.substr(16, 3);
-        std::string Elem = line.substr(20, 2);
-
-        std::string MassExcessStr = line.substr(29, 12);
-        N[i] = atoi(Nstr.c_str());
-        Z[i] = atoi(Zstr.c_str());
-        A[i] = atoi(Astr.c_str());
-        Name[i] = Astr + Elem;
-        GSspin[i] = -1;  // will be set with nubase data
-        GSparity[i] = 0; // will be set with nubase data
-        Name[i].erase(std::remove(Name[i].begin(), Name[i].end(), ' '),
-                      Name[i].end());
-        Double_t MassExcess = atof(MassExcessStr.c_str()); // in keV
-        Double_t ConvFactor = 931494.0954;                 // u to keV/c^2
-        Mass[i] = MassExcess / ConvFactor; // convert from keV/cm^2 to u
-        Mass[i] = (A[i] + Mass[i]) * 1e6;  // convert to micro-u (default units)
-        if (MassExcessStr.find('#') != std::string::npos)
-          Measured[i] = 0;
-        else
-          Measured[i] = 1;
-        // std::cout << N[i] << " " << Z[i] << " " << A[i] << " " << Name[i] <<
-        // " "
-        //      << MassExcessStr << " = " << MassExcess << " " << Mass[i] << "
-        //      u" << std::endl;
-        i++;
-      }
-    } while (!read.eof());
-    read.close();
-    std::cout << "NuclideFinder: Loaded AME file " << file << " with "
-              << numLines << " nuclear masses." << std::endl;
+  std::ifstream input(file);
+  if (!input) {
+    std::cerr << "*** AME file " << file << " was not found." << std::endl;
+    return 0;
   }
-  return goodDataFile;
+
+  std::string line;
+  bool foundMassList = false;
+  size_t lineNumber = 0;
+  while (std::getline(input, line)) {
+    ++lineNumber;
+    if (line.find("MASS LIST") == std::string::npos)
+      continue;
+    foundMassList = true;
+    for (Int_t skipped = 0; skipped < 4; ++skipped) {
+      if (!std::getline(input, line)) {
+        std::cerr << "NuclideFinder ERROR: truncated AME header in " << file
+                  << std::endl;
+        return 0;
+      }
+      ++lineNumber;
+    }
+    break;
+  }
+  if (!foundMassList) {
+    std::cerr << "NuclideFinder ERROR: no MASS LIST marker in " << file
+              << std::endl;
+    return 0;
+  }
+
+  std::vector<Int_t> nextA;
+  std::vector<Int_t> nextN;
+  std::vector<Int_t> nextZ;
+  std::vector<Int_t> nextMeasured;
+  std::vector<std::string> nextName;
+  std::vector<Double_t> nextMass;
+  while (std::getline(input, line)) {
+    ++lineNumber;
+    if (Trim(line).empty())
+      continue;
+    if (line.size() < 41) {
+      std::cerr << "NuclideFinder ERROR: malformed AME record at " << file
+                << ':' << lineNumber << std::endl;
+      return 0;
+    }
+
+    Int_t neutronNumber = 0;
+    Int_t atomicNumber = 0;
+    Int_t massNumber = 0;
+    Double_t massExcess = 0.0;
+    const std::string massExcessField = Field(line, 29, 12);
+    if (!ParseInteger(Field(line, 6, 3), neutronNumber) ||
+        !ParseInteger(Field(line, 11, 3), atomicNumber) ||
+        !ParseInteger(Field(line, 16, 3), massNumber) ||
+        !ParseNumber(massExcessField, massExcess) || massNumber <= 0 ||
+        neutronNumber < 0 || atomicNumber < 0 ||
+        neutronNumber + atomicNumber != massNumber) {
+      std::cerr << "NuclideFinder ERROR: invalid AME record at " << file << ':'
+                << lineNumber << std::endl;
+      return 0;
+    }
+
+    const std::string element = Trim(Field(line, 20, 2));
+    if (element.empty()) {
+      std::cerr << "NuclideFinder ERROR: missing element at " << file << ':'
+                << lineNumber << std::endl;
+      return 0;
+    }
+
+    constexpr Double_t uToKeV = 931494.0954;
+    nextN.push_back(neutronNumber);
+    nextZ.push_back(atomicNumber);
+    nextA.push_back(massNumber);
+    nextName.push_back(std::to_string(massNumber) + element);
+    nextMass.push_back((massNumber + massExcess / uToKeV) * 1e6);
+    nextMeasured.push_back(massExcessField.find('#') == std::string::npos);
+  }
+  if (nextA.empty()) {
+    std::cerr << "NuclideFinder ERROR: AME file contains no mass records: "
+              << file << std::endl;
+    return 0;
+  }
+
+  A = std::move(nextA);
+  N = std::move(nextN);
+  Z = std::move(nextZ);
+  Measured = std::move(nextMeasured);
+  Name = std::move(nextName);
+  Mass = std::move(nextMass);
+  Size = static_cast<Int_t>(A.size());
+  GSspin.assign(A.size(), -1.0f);
+  GSparity.assign(A.size(), 0);
+  std::cout << "NuclideFinder: Loaded AME file " << file << " with " << Size
+            << " nuclear masses." << std::endl;
+  return 1;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-// Load a file with the NUBASE data format (nubase2020, etc.)
+// Load ground-state spin/parity data from a fixed-width NUBASE table.
 /////////////////////////////////////////////////////////////////////////////////////////////////
 Int_t NuclideFinder::LoadNubaseFile(std::string file) {
-  std::ifstream read;
-  std::string line;
-  Int_t goodDataFile = 0;
-  Int_t numLines = 0;
-  Int_t start_counting_lines = 0;
-  Int_t list_starts = 0;
-  Double_t ConvFactor = 931494.0954; // from u to keV/c^2
-  std::ofstream logf("NuclideFinder.log");
-
-  read.open(file.c_str());
-  if (!read.is_open()) {
-    std::cout << "*** NUBASE file " << file << " was not found." << std::endl;
-    logf << "*** NUBASE file " << file << " was not found." << std::endl;
-  } else {
-    // The nubase file is now open. Read it and count the data lines.
-    goodDataFile = 1;
-    do {
-      std::getline(read, line);
-      if (start_counting_lines && !line.empty()) {
-        numLines++;
-      }
-
-      if (line.find("#-------------------------------------------------") !=
-          std::string::npos) {
-        start_counting_lines = 1;
-        std::getline(read, line);
-        list_starts = read.tellg();
-      }
-
-    } while (!read.eof());
-    read.close();
-
-    // Based on how many lines (entries) are contained in the nubase
-    // file, create an array with the nubaseEntry structure.
-    const Int_t dataLines = numLines;
-    nubaseEntry nubase[dataLines];
-    nubaseLines = numLines;
-    logf << dataLines << std::endl;
-
-    // Open the nubase file again now to load the data to memory
-    read.open(file.c_str());
-    read.seekg(list_starts);
-    Int_t i = 0;
-    do {
-      std::getline(read, line);
-      if (!line.empty()) {
-        std::string ss = line.substr(0, 3);
-        nubase[i].massNumber = atoi(ss.c_str());
-        logf << nubase[i].massNumber << "|";
-
-        ss = line.substr(4, 3);
-        nubase[i].atomicNumber = atoi(ss.c_str());
-        logf << nubase[i].atomicNumber << "|";
-
-        ss = line.substr(7, 1);
-        if (ss == " ")
-          nubase[i].stateIndex = 0;
-        else
-          nubase[i].stateIndex = atoi(ss.c_str());
-        logf << "i=" << nubase[i].stateIndex << "|";
-
-        nubase[i].Aelem = ss = line.substr(11, 5);
-        // Next 2 lines are for removing empty spaces
-        std::string::iterator end_pos =
-            remove(nubase[i].Aelem.begin(), nubase[i].Aelem.end(), ' ');
-        nubase[i].Aelem.erase(end_pos, nubase[i].Aelem.end());
-        logf << nubase[i].Aelem << "|";
-
-        ss = line.substr(16, 1);
-        nubase[i].Ssym = ss[0];
-        logf << nubase[i].Ssym << "|";
-
-        // Mass excess in keV
-        try {
-          ss = line.substr(18, 11);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-        if (ss.find('#') != std::string::npos)
-          nubase[i].massMeas = 0;
-        else
-          nubase[i].massMeas = 1;
-        nubase[i].massExcess = atof(ss.c_str()); // in keV
-        logf << nubase[i].massExcess << "|" << nubase[i].massMeas << "|";
-        // To get the mass of the nucleus: convert mass excess from
-        // keV/cm^2 to u, then add to mass number, lastly multiply by
-        // 1e6 to convert to micro-u (consistent with units in AME).
-        nubase[i].mass =
-            (nubase[i].massNumber + nubase[i].massExcess / ConvFactor) * 1e6;
-
-        // Uncertainty in mass excess
-        try {
-          ss = line.substr(29, 9);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-        if (ss.find('#') != std::string::npos)
-          nubase[i].massUncMeas = 0;
-        else
-          nubase[i].massUncMeas = 1;
-        nubase[i].massUnc = atof(ss.c_str()); // in keV
-        logf << nubase[i].massUnc << "|" << nubase[i].massUncMeas << "|";
-
-        // Excitation energy
-        try {
-          ss = line.substr(38, 10);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-        if (ss.find('#') != std::string::npos)
-          nubase[i].excMeas = 0;
-        else
-          nubase[i].excMeas = 1;
-        ss.erase(remove(ss.begin(), ss.end(), ' '),
-                 ss.end()); // erase/remove empty spaces
-        if (ss.empty())
-          nubase[i].exc = 0.0;
-        else
-          nubase[i].exc = atof(ss.c_str()); // in keV
-        logf << "Ex=" << nubase[i].exc << "|" << nubase[i].excMeas << "|";
-
-        // Uncertainty in excitation energy
-        try {
-          ss = line.substr(48, 8);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-
-        if (ss.find('#') != std::string::npos)
-          nubase[i].excUncMeas = 0;
-        else
-          nubase[i].excUncMeas = 1;
-        nubase[i].excUnc = atof(ss.c_str()); // in keV
-        logf << nubase[i].excUnc << "|" << nubase[i].excUncMeas << "|";
-
-        // Whether the order of isomer or ground state is uncertain (1 or 0)
-        try {
-          ss = line.substr(58, 1);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-        if (ss.find('*') != std::string::npos)
-          nubase[i].uncertIGorder = 1;
-        else
-          nubase[i].uncertIGorder = 0;
-        logf << nubase[i].uncertIGorder << "|";
-
-        // Half-time
-        try {
-          ss = line.substr(60, 9);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-        if (ss.find('#') != std::string::npos)
-          nubase[i].halfLifeMeas = 0;
-        else
-          nubase[i].halfLifeMeas = 1;
-        if (ss.find("stbl") != std::string::npos) {
-          nubase[i].stable = 1;
-          nubase[i].halfLife = 1.0e+32; // > 1 Yotta-year >> age of the universe
-        } else {
-          nubase[i].stable = 0;
-          //	  if (ss.find('>')!=std::string::npos) {  // DSG: might need to
-          // deal with limits, i.e. '>'
-          //  nubase[i].
-          //}
-          nubase[i].halfLife = atof(ss.c_str());
-        }
-        logf << "T=" << nubase[i].halfLife << "|";
-
-        // Unit time for halflife
-        try {
-          ss = line.substr(69, 2);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-        nubase[i].unitTime = ss;
-        logf << nubase[i].unitTime << "|";
-
-        // Time conversion factor (to seconds)
-        nubase[i].timeToSec = 1.0;
-        if (ss == "ys")
-          nubase[i].timeToSec = 1e-24;
-        else if (ss == "zs")
-          nubase[i].timeToSec = 1e-21;
-        else if (ss == "as")
-          nubase[i].timeToSec = 1e-18;
-        else if (ss == "fs")
-          nubase[i].timeToSec = 1e-15;
-        else if (ss == "ps")
-          nubase[i].timeToSec = 1e-12;
-        else if (ss == "ns")
-          nubase[i].timeToSec = 1e-9;
-        else if (ss == "us")
-          nubase[i].timeToSec = 1e-6;
-        else if (ss == "ms")
-          nubase[i].timeToSec = 1e-3;
-        else if (ss == "" || ss == "  " || ss == " s" || ss == "s ")
-          nubase[i].timeToSec = 1.0;
-        else if (ss == " m" || ss == "m ")
-          nubase[i].timeToSec = 60.0;
-        else if (ss == " h" || ss == "h ")
-          nubase[i].timeToSec = 3.6e+3;
-        else if (ss == " d" || ss == "d ")
-          nubase[i].timeToSec = 8.64e+4;
-        else if (ss == " w" || ss == "w ")
-          nubase[i].timeToSec = 6.048e+5;
-        else if (ss == " y" || ss == "y ")
-          nubase[i].timeToSec = 3.1536e+7;
-        else if (ss == "ky")
-          nubase[i].timeToSec = 3.1536e+10;
-        else if (ss == "My")
-          nubase[i].timeToSec = 3.1536e+13;
-        else if (ss == "Gy")
-          nubase[i].timeToSec = 3.1536e+16;
-        else if (ss == "Ty")
-          nubase[i].timeToSec = 3.1536e+19;
-        else if (ss == "Py")
-          nubase[i].timeToSec = 3.1536e+22;
-        else if (ss == "Ey")
-          nubase[i].timeToSec = 3.1536e+25;
-        else if (ss == "Zy")
-          nubase[i].timeToSec = 3.1536e+28;
-        else if (ss == "Yy")
-          nubase[i].timeToSec = 3.1536e+31;
-        else
-          logf << "WARNING! Unknow unit of time:\'" << ss << "\'" << std::endl;
-        nubase[i].halfLifeSec = nubase[i].timeToSec * nubase[i].halfLife;
-        logf << nubase[i].halfLifeSec << " s|";
-
-        // Uncertainty of half-time
-        try {
-          ss = line.substr(72, 7);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-        if (ss.find('#') != std::string::npos)
-          nubase[i].halfLifeUncMeas = 0;
-        else
-          nubase[i].halfLifeUncMeas = 1;
-        nubase[i].halfLifeUnc = atof(ss.c_str());
-        logf << "dT=" << nubase[i].halfLifeUnc << "|";
-
-        // Spin-parity, for now ignore whether there is uncertainty or not
-        try {
-          ss = line.substr(79, 14);
-        } catch (const std::out_of_range &oor) {
-          ss = "";
-        }
-        logf << "spin_str=" << ss << "|";
-        // DSG: for now ignore isospin T
-        if (ss.find('T') != std::string::npos)
-          ss = ss.substr(0, ss.find('T'));
-        // DSG: for now ignore cases where spin or parity are uncertainty
-        if (ss.find('(') != std::string::npos) {
-          nubase[i].twoJ = -2;
-          nubase[i].spinUnc = 1;
-          nubase[i].parity = 0;
-          nubase[i].parityUnc = 1;
-        } else {
-
-          // Parity
-          nubase[i].parity = 0;
-          nubase[i].parityUnc = 0;
-          if (ss.find('+') != std::string::npos) {
-            nubase[i].parity = 1;
-            // once parity is known remove the symbol
-            ss.erase(remove(ss.begin(), ss.end(), '+'), ss.end());
-          } else if (ss.find('-') != std::string::npos) {
-            nubase[i].parity = -1;
-            // once parity is known remove the symbol
-            ss.erase(remove(ss.begin(), ss.end(), '-'), ss.end());
-          }
-
-          // DSG: for now, just ignore the * symbol in spin-parity
-          // which means that it was 'directly measured'
-          ss.erase(remove(ss.begin(), ss.end(), '*'), ss.end());
-
-          // Spin from systematics?
-          if (ss.find('#') != std::string::npos)
-            nubase[i].halfLifeUncMeas = 0;
-          else
-            nubase[i].halfLifeUncMeas = 1;
-          ss.erase(remove(ss.begin(), ss.end(), '#'), ss.end());
-
-          // Spin
-          ss.erase(remove(ss.begin(), ss.end(), ' '),
-                   ss.end()); // remove empty spaces
-          // Extract the spin value (actually 2J)
-          if (ss.find("/2") < std::string::npos) {
-            ss = ss.substr(0, ss.find("/2"));
-            nubase[i].twoJ = atof(ss.c_str());
-          } else
-            nubase[i].twoJ = 2 * atof(ss.c_str());
-          logf << "2J=" << ss << "|";
-        }
-
-        logf << std::endl;
-        i++;
-      }
-    } while (!read.eof());
-    read.close();
-    std::cout << "NuclideFinder: Loaded NUBASE file " << file << " with "
-              << numLines << " nuclear masses." << std::endl;
-    logf << "NuclideFinder: Loaded NUBASE file " << file << " with " << numLines
-         << " nuclear masses." << std::endl;
-
-    // Take the properties of the ground state for each nuclei in the
-    // nubase database and assign them to the GSspin and GSparity
-    // arrays.
-    for (Int_t mi = 0; mi < Size; mi++) {
-      for (Int_t ni = 0; ni < nubaseLines; ni++) {
-        //	std::cout << GetName(mi) << " " << nubase[ni].Aelem << " Ex=" <<
-        // nubase[ni].exc << std::endl;
-        if (GetName(mi) == nubase[ni].Aelem && nubase[ni].exc == 0) {
-          if (nubase[ni].spinUnc == 0)
-            GSspin[mi] = nubase[ni].twoJ / 2;
-          if (nubase[ni].parityUnc == 0)
-            GSparity[mi] = nubase[ni].parity;
-        }
-      }
-    }
+  std::ifstream input(file);
+  if (!input) {
+    std::cerr << "*** NUBASE file " << file << " was not found." << std::endl;
+    return 0;
   }
 
-  return goodDataFile;
+  std::string line;
+  bool foundHeader = false;
+  size_t lineNumber = 0;
+  while (std::getline(input, line)) {
+    ++lineNumber;
+    if (line.find("#-------------------------------------------------") ==
+        std::string::npos)
+      continue;
+    foundHeader = true;
+    if (!std::getline(input, line)) {
+      std::cerr << "NuclideFinder ERROR: truncated NUBASE header in " << file
+                << std::endl;
+      return 0;
+    }
+    ++lineNumber;
+    break;
+  }
+  if (!foundHeader) {
+    std::cerr << "NuclideFinder ERROR: no data marker in " << file << std::endl;
+    return 0;
+  }
+
+  std::vector<NubaseGroundState> states;
+  while (std::getline(input, line)) {
+    ++lineNumber;
+    if (Trim(line).empty())
+      continue;
+    if (line.size() < 17) {
+      std::cerr << "NuclideFinder ERROR: malformed NUBASE record at " << file
+                << ':' << lineNumber << std::endl;
+      return 0;
+    }
+
+    NubaseGroundState entry;
+    Int_t massNumber = 0;
+    Int_t atomicNumber = 0;
+    if (!ParseInteger(Field(line, 0, 3), massNumber) ||
+        !ParseInteger(Field(line, 4, 3), atomicNumber) || massNumber <= 0 ||
+        atomicNumber < 0 || atomicNumber > massNumber) {
+      std::cerr << "NuclideFinder ERROR: invalid NUBASE identity at " << file
+                << ':' << lineNumber << std::endl;
+      return 0;
+    }
+    const std::string state = Trim(Field(line, 7, 1));
+    if (!state.empty() && !ParseInteger(state, entry.stateIndex)) {
+      std::cerr << "NuclideFinder ERROR: invalid NUBASE state index at " << file
+                << ':' << lineNumber << std::endl;
+      return 0;
+    }
+    entry.name = Trim(Field(line, 11, 5));
+    entry.name.erase(std::remove(entry.name.begin(), entry.name.end(), ' '),
+                     entry.name.end());
+    if (entry.name.empty()) {
+      std::cerr << "NuclideFinder ERROR: missing NUBASE nuclide name at "
+                << file << ':' << lineNumber << std::endl;
+      return 0;
+    }
+
+    const std::string excitation = Trim(Field(line, 38, 10));
+    if (!excitation.empty() && !ParseNumber(excitation, entry.excitationKeV)) {
+      std::cerr << "NuclideFinder ERROR: invalid NUBASE excitation at " << file
+                << ':' << lineNumber << std::endl;
+      return 0;
+    }
+    ParseSpinParity(Field(line, 79, 14), entry);
+    states.push_back(std::move(entry));
+  }
+  if (states.empty()) {
+    std::cerr << "NuclideFinder ERROR: NUBASE file contains no records: "
+              << file << std::endl;
+    return 0;
+  }
+
+  std::vector<Float_t> nextSpin(static_cast<size_t>(Size), -1.0f);
+  std::vector<Int_t> nextParity(static_cast<size_t>(Size), 0);
+  for (const auto &entry : states) {
+    if (entry.stateIndex != 0 || std::fabs(entry.excitationKeV) > 1e-9)
+      continue;
+    const auto found = std::find(Name.begin(), Name.end(), entry.name);
+    if (found == Name.end())
+      continue;
+    const size_t index = static_cast<size_t>(found - Name.begin());
+    if (entry.spinCertain)
+      nextSpin[index] = entry.spin;
+    if (entry.parityCertain)
+      nextParity[index] = entry.parity;
+  }
+  GSspin = std::move(nextSpin);
+  GSparity = std::move(nextParity);
+  std::cout << "NuclideFinder: Loaded NUBASE file " << file << " with "
+            << states.size() << " records." << std::endl;
+  return 1;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,8 @@
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <string>
 
 #include <TApplication.h>
 #include <TString.h>
@@ -28,30 +31,34 @@ Int_t main(Int_t argc, char *argv[]) {
   std::cout
       << "==========================================================================\n"
       << "|--- MUSIC simulator (musicsim) version " << MUSICSIM_VERSION << "\n"
-      << "| Usage: ./musicsim control.toml                                         |\n"
+      << "| Usage: ./musicsim [--check] control.toml                               |\n"
       << "| See README.md for installation and usage.                              |\n"
       << "| Fork of https://gitlab.phy.anl.gov/music/sim (D. Santiago-Gonzalez)    |\n"
       << "==========================================================================\n";
 
-  if (argc > 2) {
-    std::cout << "musicsim error: only one argument is expected." << std::endl;
-    return 0;
+  const Bool_t checkOnly = argc == 3 && std::string(argv[1]) == "--check";
+  if ((!checkOnly && argc != 2) ||
+      (argc >= 2 && std::string(argv[1]) == "--check" && argc != 3)) {
+    std::cerr << "musicsim error: usage: musicsim [--check] control.toml"
+              << std::endl;
+    return EXIT_FAILURE;
   }
 
-  auto *MS = new Simulator();
-  if (argc == 1) {
-    std::cout
-        << "musicsim warning: no control file specified. Using default parameters."
-        << std::endl;
-  } else {
-    std::cout << "Loading control file: " << argv[1] << std::endl;
-    if (MS->loadCtrlFile(argv[1]) == 0)
-      std::cout << "musicsim warning: invalid control file (check address)."
-                << std::endl;
+  auto simulator = std::make_unique<Simulator>();
+  const char *controlPath = argv[checkOnly ? 2 : 1];
+  std::cout << "Loading control file: " << controlPath << std::endl;
+  if (simulator->loadCtrlFile(controlPath) == 0)
+    return EXIT_FAILURE;
+  if (checkOnly) {
+    std::cout << "Control file is valid." << std::endl;
+    return EXIT_SUCCESS;
   }
 
   TApplication rootApp("musicsim", &argc, argv);
-  if (MS->run()) {
+  const Bool_t visualize = simulator->WantsVisualization();
+  if (simulator->run() == 0)
+    return EXIT_FAILURE;
+  if (visualize) {
     std::cout << "To quit musicsim:\n"
               << "  1) In the Eve Main Window, click 'Browser' -> 'Quit ROOT'\n"
               << "  2) In the Chart window, click 'File' -> 'Quit ROOT'\n"
@@ -59,5 +66,5 @@ Int_t main(Int_t argc, char *argv[]) {
     rootApp.Run(kTRUE);
     rootApp.HandleException(kSigSegmentationViolation);
   }
-  return 1;
+  return EXIT_SUCCESS;
 }

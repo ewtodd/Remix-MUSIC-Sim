@@ -1,5 +1,13 @@
 #include "Simulator.hpp"
 
+#include <filesystem>
+#include <map>
+#include <memory>
+#include <set>
+#include <system_error>
+
+#include <TObjString.h>
+
 Simulator::Simulator(Int_t workerId) {
   Name = "Simulator";
   this->workerId_ = workerId;
@@ -7,16 +15,15 @@ Simulator::Simulator(Int_t workerId) {
   this->verbose_ = (workerId == 0);
 
   CMEMax = CMEMin = 0;
-  EexcMax = EexcMin = 0;
   Kb_after_window = 0;
   NTraces = 0;
   PrintLevel = 0;
-  SegLength = SegCMERange = SegEexcRange = 0;
   tracesCreated = false;
   energeticsWritten_ = false;
 
-  Beam = Target = Compound = Light = Heavy = DeDau1 = DeDau2 = 0;
-  Trace = 0;
+  Beam = Target = Compound = 0;
+  Trace = TraceUB = TraceB = nullptr;
+  TraceER = TraceEP = nullptr;
   // Trace-background histograms only exist for the interactive visualizer
   // (ctf.Update != 0). Workers leave these null so they don't collide on
   // gROOT's name registry.
@@ -24,8 +31,8 @@ Simulator::Simulator(Int_t workerId) {
 
   maxEvaporations = 20;
   numEvaporations = 0;
-  EvaP = new Particle *[maxEvaporations];
-  EvaR = new Particle *[maxEvaporations];
+  EvaP = new Particle *[maxEvaporations]();
+  EvaR = new Particle *[maxEvaporations]();
   evap_energy = new Float_t[maxEvaporations];
   residue_energy = new Float_t[maxEvaporations];
   evap_energy_exit = new Float_t[maxEvaporations];
@@ -40,6 +47,7 @@ Simulator::Simulator(Int_t workerId) {
   evap_stop_y = new Float_t[maxEvaporations];
   evap_stop_z = new Float_t[maxEvaporations];
   evap_stop_strip = new Int_t[maxEvaporations];
+  evap_termination = new Int_t[maxEvaporations];
   minEx = new Double_t[maxEvaporations];
   for (Int_t er = 0; er < maxEvaporations; er++)
     minEx[er] = 0.0;
@@ -61,9 +69,24 @@ Simulator::Simulator(Int_t workerId) {
   }
   VolAnode = 0;
 
-  // TRandom3(0) reseeds itself per process, so runs are not deterministic
-  // by default — the MT driver overrides this via SeedRandom.
-  Rdm = new TRandom3(0);
+  AnodeRows = AnodeCols = 0;
+  AnodeDepth = AnodeLength = AnodeHeight = 0.0;
+  AnodeColor = nullptr;
+  AnodeDX = AnodeDY = AnodeDZ = nullptr;
+  AnodeSegName = nullptr;
+  AnodeStpID = nullptr;
+  DeltaEB_ave = DeltaEB = nullptr;
+  DeltaE_EvaP = DeltaE_EvaR = nullptr;
+
+  TrackBeam = nullptr;
+  TrackEvaP = TrackEvaR = nullptr;
+  Eve = nullptr;
+  TraceCan = nullptr;
+  LegCol = LegPart = nullptr;
+  LabelKine = nullptr;
+  TopNode = nullptr;
+
+  Rdm = new TRandom3(1);
 
   SimTree = 0;
   MCTree = 0;
@@ -71,7 +94,97 @@ Simulator::Simulator(Int_t workerId) {
 
   InitCTF();
 
-  gSystem = 0;
+  gSystem = ::gSystem;
+}
+
+Simulator::~Simulator() {
+  for (Int_t i = 0; i < maxEvaporations; ++i) {
+    delete EvaP[i];
+    delete EvaR[i];
+  }
+  delete[] EvaP;
+  delete[] EvaR;
+  delete Beam;
+  delete Target;
+  delete Compound;
+  delete NuF;
+  delete Rdm;
+
+  delete[] evap_energy;
+  delete[] residue_energy;
+  delete[] evap_energy_exit;
+  delete[] residue_energy_exit;
+  delete[] theta_cm;
+  delete[] phi_cm;
+  delete[] evap_theta;
+  delete[] evap_phi;
+  delete[] residue_theta;
+  delete[] residue_phi;
+  delete[] evap_stop_x;
+  delete[] evap_stop_y;
+  delete[] evap_stop_z;
+  delete[] evap_stop_strip;
+  delete[] evap_termination;
+  delete[] minEx;
+
+  auto freeRows = [&](auto **&rows, Int_t count) {
+    if (!rows)
+      return;
+    for (Int_t row = 0; row < count; ++row)
+      delete[] rows[row];
+    delete[] rows;
+    rows = nullptr;
+  };
+  if (DeltaE_EvaP) {
+    for (Int_t er = 0; er < maxEvaporations; ++er)
+      freeRows(DeltaE_EvaP[er], AnodeRows);
+    delete[] DeltaE_EvaP;
+  }
+  if (DeltaE_EvaR) {
+    for (Int_t er = 0; er < maxEvaporations; ++er)
+      freeRows(DeltaE_EvaR[er], AnodeRows);
+    delete[] DeltaE_EvaR;
+  }
+  freeRows(DeltaEB_ave, AnodeRows);
+  freeRows(DeltaEB, AnodeRows);
+  freeRows(AnodeColor, AnodeRows);
+  freeRows(AnodeDX, AnodeRows);
+  freeRows(AnodeDY, AnodeRows);
+  freeRows(AnodeDZ, AnodeRows);
+  freeRows(AnodeSegName, AnodeRows);
+  freeRows(AnodeStpID, AnodeRows);
+  freeRows(VolAnode, AnodeRows);
+
+  auto freeGraphs = [&](TGraph **&graphs) {
+    if (!graphs)
+      return;
+    for (Int_t col = 0; col < AnodeCols + 1; ++col)
+      delete graphs[col];
+    delete[] graphs;
+    graphs = nullptr;
+  };
+  freeGraphs(Trace);
+  freeGraphs(TraceUB);
+  freeGraphs(TraceB);
+  if (TraceER) {
+    for (Int_t er = 0; er < numEvaporations; ++er)
+      freeGraphs(TraceER[er]);
+    delete[] TraceER;
+  }
+  if (TraceEP) {
+    for (Int_t er = 0; er < numEvaporations; ++er)
+      freeGraphs(TraceEP[er]);
+    delete[] TraceEP;
+  }
+  // TEveManager owns the arrow objects; these two arrays only store borrowed
+  // pointers to them.
+  delete[] TrackEvaP;
+  delete[] TrackEvaR;
+  // TGeoManager registers itself in ROOT's global geometry list. ROOT owns and
+  // destroys registered managers during TApplication teardown; deleting it
+  // here after that teardown is a double free. Worker instances never create
+  // one, and the master manager follows ROOT's process-lifetime ownership.
+  Geo = nullptr;
 }
 
 Int_t Simulator::CheckMemoryUsage(Int_t Print) {
@@ -79,23 +192,23 @@ Int_t Simulator::CheckMemoryUsage(Int_t Print) {
     return 1;
   MemInfo_t mem;
   gSystem->GetMemInfo(&mem);
-  Float_t MemoryLimit = 0.95 * mem.fMemTotal;
+  const Double_t memoryLimit = 0.95 * static_cast<Double_t>(mem.fMemTotal);
   if (Print) {
     std::cout << "> Total memory used: " << mem.fMemUsed
               << " MB = " << 100.0 * mem.fMemUsed / mem.fMemTotal
               << " % of max memory (" << mem.fMemTotal << " MB)" << std::endl;
   }
-  if (static_cast<Float_t>(mem.fMemUsed) > MemoryLimit) {
-    std::cout << "Memory limit exceeded! Limit at " << MemoryLimit << " MB"
+  if (static_cast<Double_t>(mem.fMemUsed) > memoryLimit) {
+    std::cout << "Memory limit exceeded! Limit at " << memoryLimit << " MB"
               << std::endl;
     return 0;
   }
   return 1;
 }
 
-void Simulator::SeedRandom(ULong_t s) {
+void Simulator::SeedRandom(UInt_t seed) {
   delete Rdm;
-  Rdm = new TRandom3(s);
+  Rdm = new TRandom3(seed);
 }
 
 void Simulator::SetPrintLevel(Int_t Level /*0-2*/) {
@@ -112,24 +225,26 @@ void Simulator::SetPrintLevel(Int_t Level /*0-2*/) {
   if (verbose_)
     std::cout << "See musicsim.log file for detailed information" << std::endl;
   PrintLevel = Level;
-  Log.open("musicsim.log");
+  const TString logName = workerId_ == 0
+                              ? "musicsim.log"
+                              : TString::Format("musicsim_w%d.log", workerId_);
+  Log.open(logName.Data());
   Log << "================================================================================"
       << std::endl;
   Log << "|--- MUSIC simulator log file -------------------------------------------------|"
       << std::endl;
 }
 
-void Simulator::SetROOTSystemPointer(TSystem *gSystem) {
-  this->gSystem = gSystem;
-  std::cout << "gSystem = " << gSystem << std::endl;
+void Simulator::SetROOTSystemPointer(TSystem *system) {
+  gSystem = system;
+  std::cout << "gSystem = " << system << std::endl;
   CheckMemoryUsage(1);
 }
 
 // Populate catima's global DataPoint cache for every (projectile, material)
-// the workers will see. catima's cache is a process-wide ring buffer;
-// concurrent writes race, but read-only lookups (cspline_special, our default
-// eval) are thread-safe. Pre-warming on the master makes every worker call a
-// pure read.
+// the workers will see. This is a performance optimization; every catima call
+// is still protected by CatimaMutex because its process-wide cache can evict
+// entries and write again after pre-warming.
 void Simulator::PreWarmCatima() {
   if (!NuF)
     NuF = new NuclideFinder();
@@ -142,15 +257,16 @@ void Simulator::PreWarmCatima() {
     // Warm both the mean (default, atima14) config and the straggling config:
     // EnergyLoss::BuildTables and EnergyThroughWithStraggling now query catima
     // under each. DataPoint keys on Config, so the two land in distinct cache
-    // slots — without warming the straggling slot too, the first concurrent
-    // worker calls would race to fill it and crash.
+    // slots. Warming both avoids avoidable cache misses in worker setup; the
+    // mutex remains the correctness guard if the finite cache later evicts one.
     catima::Projectile proj{Double_t(A), Double_t(Z)};
     proj.T = 100.0 / A;
     auto warm = [&](Bool_t enabled, const catima::Material &mat) {
       if (!enabled)
         return;
-      catima::calculate(proj, mat);
-      catima::calculate(proj, mat, music::gStragglingConfig);
+      std::lock_guard<std::mutex> lock(music::CatimaMutex());
+      catima::calculate(proj, mat, physics_.mean);
+      catima::calculate(proj, mat, physics_.straggling);
     };
     warm(gasEnabled_, gas_);
     warm(entranceWindowEnabled_, entranceWindow_);
@@ -176,7 +292,7 @@ void Simulator::PreWarmCatima() {
   }
 }
 
-void Simulator::SetupRun() {
+Bool_t Simulator::SetupRun() {
   if (ctf.Update) {
     Eve = new TEveManager(960, 1018, kTRUE, "V");
     Eve->GetDefaultGLViewer()->SetClearColor(kWhite);
@@ -216,8 +332,11 @@ void Simulator::SetupRun() {
   if (hasDegrader_ && Log.is_open())
     Log << "\tDegrader: " << ctf.degraderMaterial << " " << ctf.degraderLength
         << " " << unitOf(ctf.degraderByLength) << "." << std::endl;
-  if (SetAnode(90, ctf.ELossBins, ctf.MaxELoss) == 0)
-    std::exit(EXIT_FAILURE);
+  if (SetAnode(90, ctf.ELossBins, ctf.MaxELoss) == 0) {
+    std::cerr << "musicsim ERROR: failed to configure the detector geometry."
+              << std::endl;
+    return kFALSE;
+  }
   if (Log.is_open())
     Log << "\tAnode configured." << std::endl;
 
@@ -255,7 +374,7 @@ void Simulator::SetupRun() {
                   << " MeV at gas surface (no entrance window)";
       std::cout << std::endl;
     }
-    beam_energy_accel = ctf.BeamEnergy;
+    beam_energy_accel = static_cast<Float_t>(ctf.BeamEnergy);
   }
   SetTargetParticle(ctf.target);
   if (Log.is_open())
@@ -270,8 +389,9 @@ void Simulator::SetupRun() {
   if (Log.is_open())
     Log << "\tEvaporated particles and residues configured." << std::endl;
 
-  // Minimum excitation energies needed for each step of the reaction/decay
-  // chain to be energetically allowed.
+  // Minimum parent excitation needed for each remaining decay step. When a
+  // residue is configured as "forced", this recursively includes the
+  // excitation required to reach every later step in the chain.
   for (Int_t step = numEvaporations - 1; step >= 0; step--) {
     Double_t mb = Beam->Mass;
     Double_t mt = Target->Mass;
@@ -279,7 +399,11 @@ void Simulator::SetupRun() {
     Double_t mh = EvaR[step]->Mass;
     Double_t Q0 =
         (step == 0) ? (ml + mh - mb - mt) : (ml + mh - EvaR[step - 1]->Mass);
-    minEx[step] = (Q0 < 0) ? -Q0 : 0;
+    const Double_t childExcitation =
+        (step + 1 < numEvaporations && ctf.residueExc[step] == 0)
+            ? minEx[step + 1]
+            : 0.0;
+    minEx[step] = std::max(0.0, Q0 + childExcitation);
     if (Log.is_open()) {
       if (step == 0)
         Log << "Q0(" << Beam->Name << "+" << Target->Name << "->"
@@ -291,6 +415,24 @@ void Simulator::SetupRun() {
             << " = " << minEx[step] << std::endl;
     }
   }
+  return kTRUE;
+}
+
+UInt_t Simulator::EventSeed(Int_t strip, ULong64_t eventIndex) const {
+  // SplitMix64 gives each (master seed, strip, event index) tuple an
+  // independent, deterministic TRandom3 seed. Event streams therefore do not
+  // depend on worker scheduling or worker count. TRandom3 treats zero as a
+  // request for nondeterministic auto-seeding, so map it to one explicitly.
+  ULong64_t value = ctf.Seed;
+  value ^= (static_cast<ULong64_t>(static_cast<UInt_t>(strip + 2)) << 32);
+  value ^= eventIndex + 0x9e3779b97f4a7c15ULL;
+  value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+  value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+  value ^= value >> 31;
+  UInt_t seed = static_cast<UInt_t>(value ^ (value >> 32));
+  if (seed == 0)
+    seed = 1;
+  return seed;
 }
 
 Int_t Simulator::run() {
@@ -299,70 +441,214 @@ Int_t Simulator::run() {
   if (ctf.Threads > 1 && workerId_ == 0)
     return runMultiThreaded();
 
-  TFile *ROOTfile = 0;
+  std::unique_ptr<TFile> rootFile;
+  TFile *ROOTfile = nullptr;
+  std::filesystem::path finalOutput;
+  std::filesystem::path temporaryOutput;
+  Bool_t outputIsTemporary = kFALSE;
+  Long64_t entriesBeforeRun = 0;
 
   SetPrintLevel(ctf.PrintOpt);
   Log << "musicsim::run() START *********************************************"
       << std::endl;
 
-  SetupRun();
+  if (!SetupRun())
+    return 0;
 
-  EnergeticsLog.open("energetics.log");
+  const TString energeticsName =
+      workerId_ == 0 ? "energetics.log"
+                     : TString::Format("energetics_w%d.log", workerId_);
+  EnergeticsLog.open(energeticsName.Data());
   CalculateCMEnergyRange();
   EnergeticsLog.close();
 
   if (!ctf.FileName.IsNull()) {
-    ROOTfile = new TFile(ctf.FileName.Data(), ctf.FileOpt.Data());
-    SimTree = InitTree(ROOTfile, ctf.FileOpt);
-
-    TDirectory *trace_dir = 0;
-    if (ROOTfile) {
-      if (ctf.FileOpt == "update" || ctf.FileOpt == "UPDATE") {
-        trace_dir = (TDirectory *)ROOTfile->Get("traces");
-        trace_dir->cd();
-      } else {
-        trace_dir = ROOTfile->mkdir("traces");
-        trace_dir->cd();
+    finalOutput = std::filesystem::path(ctf.FileName.Data());
+    temporaryOutput = finalOutput;
+    temporaryOutput += ".tmp";
+    std::error_code error;
+    if (std::filesystem::exists(temporaryOutput, error)) {
+      std::cerr << "musicsim ERROR: refusing to overwrite stale temporary "
+                   "output '"
+                << temporaryOutput.string() << "'." << std::endl;
+      return 0;
+    }
+    const Bool_t updateExisting =
+        ctf.FileOpt == "update" && std::filesystem::exists(finalOutput, error);
+    if (error) {
+      std::cerr << "musicsim ERROR: cannot inspect output path '"
+                << finalOutput.string() << "': " << error.message()
+                << std::endl;
+      return 0;
+    }
+    if (updateExisting) {
+      std::filesystem::copy_file(finalOutput, temporaryOutput,
+                                 std::filesystem::copy_options::none, error);
+      if (error) {
+        std::cerr << "musicsim ERROR: cannot stage update output: "
+                  << error.message() << std::endl;
+        return 0;
       }
+    }
+    outputIsTemporary = kTRUE;
+    rootFile.reset(TFile::Open(temporaryOutput.c_str(),
+                               updateExisting ? "UPDATE" : "RECREATE"));
+    ROOTfile = rootFile.get();
+    if (!ROOTfile || ROOTfile->IsZombie() || !ROOTfile->IsWritable()) {
+      std::cerr << "musicsim ERROR: could not create writable ROOT output '"
+                << temporaryOutput.string() << "'." << std::endl;
+      rootFile.reset();
+      std::filesystem::remove(temporaryOutput, error);
+      return 0;
+    }
+    if (updateExisting) {
+      const auto *storedControl = dynamic_cast<TObjString *>(
+          ROOTfile->Get("metadata/control_file_toml"));
+      std::ifstream currentControl(ctrlFilePath_.Data(), std::ios::binary);
+      std::ostringstream currentText;
+      if (currentControl)
+        currentText << currentControl.rdbuf();
+      if (!storedControl || !currentControl ||
+          storedControl->GetString() != currentText.str().c_str()) {
+        std::cerr << "musicsim ERROR: update output provenance does not match "
+                     "the current control file."
+                  << std::endl;
+        rootFile->Close();
+        rootFile.reset();
+        std::filesystem::remove(temporaryOutput, error);
+        return 0;
+      }
+    }
+    ROOTfile->cd();
+    SimTree = InitTree(ROOTfile, updateExisting ? "update" : "recreate");
+    if (!SimTree || !MCTree) {
+      rootFile->Close();
+      rootFile.reset();
+      std::filesystem::remove(temporaryOutput, error);
+      return 0;
+    }
+    entriesBeforeRun = SimTree->GetEntries();
+    if (updateExisting && entriesBeforeRun > 0) {
+      std::map<Int_t, std::set<ULong64_t>> existingIndices;
+      for (Long64_t entry = 0; entry < MCTree->GetEntries(); ++entry) {
+        if (MCTree->GetEntry(entry) <= 0 || requested_strip < ctf.stripFirst ||
+            requested_strip > ctf.stripLast ||
+            !existingIndices[requested_strip].insert(event_index).second) {
+          std::cerr << "musicsim ERROR: update output has invalid or duplicate "
+                       "event identities."
+                    << std::endl;
+          rootFile->Close();
+          rootFile.reset();
+          std::filesystem::remove(temporaryOutput, error);
+          return 0;
+        }
+      }
+      ULong64_t priorEventsPerStrip = 0;
+      for (Int_t strip = ctf.stripFirst; strip <= ctf.stripLast; ++strip) {
+        const auto found = existingIndices.find(strip);
+        if (found == existingIndices.end() || found->second.empty() ||
+            *found->second.begin() != 0 ||
+            *found->second.rbegin() + 1 != found->second.size() ||
+            (priorEventsPerStrip != 0 &&
+             found->second.size() != priorEventsPerStrip)) {
+          std::cerr << "musicsim ERROR: update output event indices are not a "
+                       "complete, equal per-strip sequence."
+                    << std::endl;
+          rootFile->Close();
+          rootFile.reset();
+          std::filesystem::remove(temporaryOutput, error);
+          return 0;
+        }
+        priorEventsPerStrip = found->second.size();
+      }
+      eventOffset_ = priorEventsPerStrip;
+    }
+
+    TDirectory *traceDirectory = ROOTfile->GetDirectory("traces");
+    if (!traceDirectory)
+      traceDirectory = ROOTfile->mkdir("traces");
+    if (!traceDirectory || !traceDirectory->cd()) {
+      std::cerr << "musicsim ERROR: could not create or select the ROOT "
+                   "trace directory."
+                << std::endl;
+      rootFile->Close();
+      rootFile.reset();
+      std::filesystem::remove(temporaryOutput, error);
+      return 0;
     }
     Log << "\tROOT file opened." << std::endl;
   }
 
-  if (ctf.Method == 0) {
-    // Trace TGraphs are written per event for the EVE visualization; they're
-    // wasteful in bulk MC mode where the user just wants the event tree.
-    if (ROOTfile != 0 && ctf.Update) {
-      CreateTracesAndTrajectories();
-      Log << "\tTraces and trajectories created." << std::endl;
-    }
-    // stripFirst/stripLast were validated and resolved in loadCtrlFile.
-    Log << "\tStarting simulation loop ..." << std::endl;
-    for (Int_t stpID = ctf.stripFirst; stpID <= ctf.stripLast; stpID++)
-      Simulate(stpID, ctf.NEvents, ctf.MaxTime, ctf.SimStep, ctf.Update,
-               ctf.Wait, ROOTfile);
-    Log << "\tSimulation loop ended." << std::endl;
-  } else if (ctf.Method == 1) {
-    std::cout << "musicsim warning: GenerateTraceDataBase method not ready."
-              << std::endl;
+  // Trace TGraphs are written per event for the EVE visualization; they're
+  // wasteful in bulk MC mode where the user just wants the event tree.
+  if (ROOTfile != 0 && ctf.Update) {
+    CreateTracesAndTrajectories();
+    Log << "\tTraces and trajectories created." << std::endl;
   }
+  // stripFirst/stripLast and method=0 were validated in loadCtrlFile.
+  Log << "\tStarting simulation loop ..." << std::endl;
+  for (Int_t stpID = ctf.stripFirst; stpID <= ctf.stripLast; stpID++)
+    Simulate(stpID, ctf.NEvents, ctf.MaxTime, ctf.SimStep, ctf.Update, ctf.Wait,
+             ROOTfile);
+  Log << "\tSimulation loop ended." << std::endl;
 
   if (ROOTfile && SimTree) {
     ROOTfile->cd();
-    SimTree->Write("", TObject::kSingleKey);
-    if (MCTree)
-      MCTree->Write("", TObject::kSingleKey);
+    if (ioFailed_ || SimTree->Write("", TObject::kOverwrite) <= 0 || !MCTree ||
+        MCTree->Write("", TObject::kOverwrite) <= 0 ||
+        (workerId_ == 0 && !WriteRunMetadata(ROOTfile)) ||
+        ROOTfile->TestBit(TFile::kWriteError)) {
+      std::cerr << "musicsim ERROR: failed while writing ROOT output."
+                << std::endl;
+      ROOTfile->Close();
+      rootFile.reset();
+      std::error_code error;
+      if (outputIsTemporary)
+        std::filesystem::remove(temporaryOutput, error);
+      return 0;
+    }
     ROOTfile->Close();
+    rootFile.reset();
+    std::error_code error;
+    {
+      std::unique_ptr<TFile> check(
+          TFile::Open(temporaryOutput.c_str(), "READ"));
+      TTree *events = check && !check->IsZombie()
+                          ? dynamic_cast<TTree *>(check->Get("events_MeV"))
+                          : nullptr;
+      TTree *truth = check && !check->IsZombie()
+                         ? dynamic_cast<TTree *>(check->Get("MC"))
+                         : nullptr;
+      const Long64_t expected =
+          entriesBeforeRun +
+          static_cast<Long64_t>(ctf.stripLast - ctf.stripFirst + 1) *
+              ctf.NEvents;
+      if (!events || !truth || events->GetEntries() != expected ||
+          truth->GetEntries() != expected) {
+        std::cerr << "musicsim ERROR: staged ROOT output failed validation."
+                  << std::endl;
+        std::filesystem::remove(temporaryOutput, error);
+        return 0;
+      }
+    }
+    std::filesystem::rename(temporaryOutput, finalOutput, error);
+    if (error) {
+      std::cerr << "musicsim ERROR: could not publish ROOT output atomically: "
+                << error.message() << std::endl;
+      return 0;
+    }
     Log << "\tROOT file written." << std::endl;
   }
 
-  return ctf.Update;
+  return 1;
 }
 
 Int_t Simulator::runMultiThreaded() {
   ROOT::EnableThreadSafety();
   PreWarmCatima();
 
-  SetupRun();
+  if (!SetupRun())
+    return 0;
 
   EnergeticsLog.open("energetics.log");
   CalculateCMEnergyRange();
@@ -388,17 +674,22 @@ Int_t Simulator::runMultiThreaded() {
             << (totalEvents / nThreads) << "+ events." << std::endl;
 
   std::vector<TString> workerOutputs;
+  std::vector<Int_t> workerEventCounts;
   std::vector<std::future<Int_t>> futures;
   const Int_t evPerWorker = totalEvents / nThreads;
   const Int_t extra = totalEvents % nThreads;
 
+  ULong64_t eventOffset = 0;
   for (Int_t w = 0; w < nThreads; ++w) {
     Int_t slice = evPerWorker + (w < extra ? 1 : 0);
+    const ULong64_t workerOffset = eventOffset;
+    eventOffset += static_cast<ULong64_t>(slice);
     TString out = TString::Format("%s_w%d.root", baseStem.Data(), w);
     workerOutputs.push_back(out);
+    workerEventCounts.push_back(slice);
 
-    futures.push_back(
-        std::async(std::launch::async, [ctrlPath, out, slice, w]() -> Int_t {
+    futures.push_back(std::async(
+        std::launch::async, [ctrlPath, out, slice, workerOffset, w]() -> Int_t {
           Simulator worker(w + 1); // worker ids start at 1 (0 is master)
           // loadCtrlFile takes char* (non-const); copy into a mutable buffer.
           std::vector<char> path(ctrlPath.Data(),
@@ -408,32 +699,109 @@ Int_t Simulator::runMultiThreaded() {
           worker.OverrideNEvents(slice);
           worker.OverrideOutputFile(out);
           worker.OverrideThreads(1);
+          worker.OverrideEventOffset(workerOffset);
           worker.DisableVisualization();
-          worker.SeedRandom(0xC1A55EEDULL + ULong64_t(w) * 0xDEADBEEFULL);
-          worker.run();
-          return 1;
+          return worker.run();
         }));
   }
 
   // Block until every worker completes. std::future::get re-throws any
   // exception that crossed the thread boundary.
-  for (auto &f : futures)
-    f.get();
+  for (size_t worker = 0; worker < futures.size(); ++worker) {
+    try {
+      if (futures[worker].get() == 0) {
+        std::cerr << "musicsim ERROR: worker " << worker << " failed."
+                  << std::endl;
+        return 0;
+      }
+    } catch (const std::exception &error) {
+      std::cerr << "musicsim ERROR: worker " << worker
+                << " threw an exception: " << error.what() << std::endl;
+      return 0;
+    }
+  }
+
+  const Long64_t selectedStrips =
+      static_cast<Long64_t>(ctf.stripLast - ctf.stripFirst + 1);
+  for (size_t worker = 0; worker < workerOutputs.size(); ++worker) {
+    std::unique_ptr<TFile> input(TFile::Open(workerOutputs[worker], "READ"));
+    TTree *events = input && !input->IsZombie()
+                        ? dynamic_cast<TTree *>(input->Get("events_MeV"))
+                        : nullptr;
+    TTree *truth = input && !input->IsZombie()
+                       ? dynamic_cast<TTree *>(input->Get("MC"))
+                       : nullptr;
+    const Long64_t expected = selectedStrips * workerEventCounts[worker];
+    if (!events || !truth || events->GetEntries() != expected ||
+        truth->GetEntries() != expected) {
+      std::cerr << "musicsim ERROR: worker " << worker
+                << " produced an incomplete or invalid ROOT file (expected "
+                << expected << " entries)." << std::endl;
+      return 0;
+    }
+  }
 
   std::cout << "Merging " << workerOutputs.size() << " worker outputs into "
             << baseOutput << " ..." << std::endl;
+  const std::filesystem::path finalOutput(baseOutput.Data());
+  std::filesystem::path mergeOutput = finalOutput;
+  mergeOutput += ".tmp";
+  std::error_code fileError;
+  if (std::filesystem::exists(mergeOutput, fileError)) {
+    std::cerr << "musicsim ERROR: refusing to overwrite stale temporary "
+                 "output '"
+              << mergeOutput.string() << "'." << std::endl;
+    return 0;
+  }
   TFileMerger merger(kFALSE);
-  merger.OutputFile(baseOutput.Data(), "RECREATE");
-  for (const auto &p : workerOutputs)
-    merger.AddFile(p.Data());
+  if (!merger.OutputFile(mergeOutput.c_str(), "RECREATE")) {
+    std::cerr << "musicsim ERROR: could not create merge destination."
+              << std::endl;
+    return 0;
+  }
+  for (const auto &p : workerOutputs) {
+    if (!merger.AddFile(p.Data())) {
+      std::cerr << "musicsim ERROR: could not add worker output '" << p
+                << "' to the merge." << std::endl;
+      return 0;
+    }
+  }
   Bool_t ok = merger.Merge();
   if (!ok) {
     std::cerr << "musicsim: merge failed." << std::endl;
     return 0;
   }
+  merger.CloseOutputFile();
+  {
+    std::unique_ptr<TFile> merged(TFile::Open(mergeOutput.c_str(), "UPDATE"));
+    TTree *events = merged && !merged->IsZombie()
+                        ? dynamic_cast<TTree *>(merged->Get("events_MeV"))
+                        : nullptr;
+    TTree *truth = merged && !merged->IsZombie()
+                       ? dynamic_cast<TTree *>(merged->Get("MC"))
+                       : nullptr;
+    const Long64_t expected = selectedStrips * totalEvents;
+    if (!events || !truth || events->GetEntries() != expected ||
+        truth->GetEntries() != expected || !WriteRunMetadata(merged.get()) ||
+        merged->TestBit(TFile::kWriteError)) {
+      std::cerr << "musicsim ERROR: merged output validation failed."
+                << std::endl;
+      if (merged)
+        merged->Close();
+      return 0;
+    }
+    merged->Close();
+  }
+  std::filesystem::rename(mergeOutput, finalOutput, fileError);
+  if (fileError) {
+    std::cerr << "musicsim ERROR: could not publish merged output atomically: "
+              << fileError.message() << std::endl;
+    return 0;
+  }
   for (const auto &p : workerOutputs)
     std::remove(p.Data());
   std::cout << "Multi-threaded run complete." << std::endl;
-  // Return 0 so main.cpp doesn't start the interactive ROOT event loop.
-  return 0;
+  // Report success; main.cpp separately decides whether visualization needs the
+  // interactive ROOT event loop.
+  return 1;
 }

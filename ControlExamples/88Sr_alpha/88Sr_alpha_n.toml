@@ -1,5 +1,11 @@
+[gas]
+species     = "4He"
+pressure    = 500.0 # Torr; recovered from the legacy stopping-table configuration
+temperature = 293.0 # K
+
 [beam]
 species     = "88Sr" # Use "AEl" notation, e.g. 17F where A=17 El(ement) = F
+energy      = 355.0  # Gas-entry KE in the legacy control [MeV]
 energy_fwhm = 3.5    # Beam energy FWHM [MeV]
 dedx_scale  = 1.0    # Beam stopping power scale factor
 
@@ -7,13 +13,21 @@ dedx_scale  = 1.0    # Beam stopping power scale factor
 species  = "4He"  # Target particle
 compound = "92Zr" # Compound nucleus
 
+[windows.entrance]
+thickness_mg_cm2 = -1
+
+[windows.exit]
+thickness_mg_cm2 = -1
+
 [detector]
-eloss_bins = 300   # Number of bins for y axis
-max_eloss  = 25.0  # Max y value [MeV]
-strip      = 3     # Strip where reaction takes place. Use -1 for unreacted beam
-eres       = 0.183 # Energy noise level (sigma) in each strip [MeV]
+eloss_bins      = 300   # Number of bins for y axis
+max_eloss       = 25.0  # Max y value [MeV]
+strip           = 3     # Strip where reaction takes place. Use -1 for unreacted beam
+noise_sigma_mev = 0.183 # Energy noise level (sigma) in each strip [MeV]
 
 [[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
 [reaction.step.evap]
 # Evaporated particle in reaction 0
 name  = "n"
@@ -26,11 +40,12 @@ color      = 3
 dedx_scale = 1.0
 
 [run]
-n_events  = 30                                      # Number of events simulated
-wait      = 0                                       # Wait between simulated events? 1=yes, 0=no
-update    = 0                                       # Update graphics between simulated events? 1=yes, 0=no
-max_time  = 2000.0                                  # Maximum time for an event [ns]
-method    = 0
-output    = "traces_an_st3_500Torr_lise_ATIMA.root"
-file_opt  = "recreate"
-print_opt = 1
+seed             = 12345
+events_per_strip = 30                                      # Number of events simulated
+wait             = 0                                       # Wait between simulated events? 1=yes, 0=no
+update           = 0                                       # Update graphics between simulated events? 1=yes, 0=no
+max_time         = 2000.0                                  # Maximum time for an event [ns]
+method           = 0
+output           = "traces_an_st3_500Torr_lise_ATIMA.root"
+file_opt         = "recreate"
+print_opt        = 1

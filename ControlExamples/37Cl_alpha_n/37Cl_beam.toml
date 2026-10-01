@@ -33,7 +33,7 @@ strip      = -1   # unreacted beam
 
 # Per-channel readout noise σ [MeV]. -1 on a given channel disables noise
 # there. Mutually exclusive with a scalar `eres` key in [detector].
-[detector.eres]
+[detector.noise_sigma_mev]
 Cathode = -1
 S0      = 0.05
 L1      = 0.05
@@ -71,6 +71,8 @@ R16     = 0.05
 S17     = 0.05
 
 [[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "rutherford"
 [reaction.step.evap]
 name  = "4He"
 color = 2
@@ -81,13 +83,14 @@ color      = 4
 dedx_scale = 1.0
 
 [run]
-n_events  = 100000
-threads   = 32
-wait      = 0
-update    = 0
-max_time  = 2000.0                                                           # ns
-sim_step  = 0.001                                                            # cm
-method    = 0
-output    = "/home/e-work/MUSIC/Remix_37Cl/root_files/traces_37Cl_beam.root"
-file_opt  = "recreate"
-print_opt = 0
+seed             = 12345
+events_per_strip = 100000
+threads          = 32
+wait             = 0
+update           = 0
+max_time         = 2000.0                                                           # ns
+sim_step         = 0.001                                                            # cm
+method           = 0
+output           = "/home/e-work/MUSIC/Remix_37Cl/root_files/traces_37Cl_beam.root"
+file_opt         = "recreate"
+print_opt        = 0

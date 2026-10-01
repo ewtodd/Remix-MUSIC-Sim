@@ -1,0 +1,29 @@
+Legacy converter regression fixture
+PARAMETER VALUE COMMENT
+Gas 4He quoted strings must survive
+Pressure 423 gas pressure [Torr]
+Temperature 293 gas temperature [K]
+beam 17F projectile
+Kb 39 legacy gas-surface energy
+KbFWHM 0.4 beam spread
+target 4He target
+compound 21Na compound
+EntranceMaterial Ti window material
+EntranceThickness -1 disabled
+ExitMaterial Ti window material
+ExitThickness -1 disabled
+ELossBins 100 bins
+MaxELoss 10 max loss
+strip -1 unreacted beam
+Eres 0.05 legacy percent FWHM
+NEvents 1 events per strip
+Threads 1 worker
+Wait 0 no wait
+Update 0 batch
+MaxTime 2000 maximum time
+SimStep 0.01 step
+Method 0 simulation
+FileName path\\with\"quote.root output string escaping
+FileOpt recreate mode
+PrintOpt 0 quiet
+UnknownLegacy value retained only as a comment

@@ -1,161 +1,120 @@
 #include "VavilovSampler.hpp"
 
+#include <Math/Vavilov.h>
+
 namespace music {
 
 namespace {
 
-// 64 log-spaced κ points covers [1e-3, 10] at ~0.07-decade resolution; 257
-// CDF points gives ~0.4% quantile resolution. Storage ≈ 66 kB.
 constexpr Int_t kNKappa = 64;
-constexpr Int_t kNU = 257; // odd so we include 0.5 exactly; endpoints excluded
+constexpr Int_t kNBeta2 = 17;
+constexpr Int_t kNU = 513;
 
-// Convert λ_L (Landau parameter used by VavilovAccurate) to λ_V:
-//     λ_V = κ · (λ_L + ln κ)
-// Yi & Han's convolution holds in λ_V space, so we store quantiles in λ_V.
-inline Double_t LtoV(Double_t lambdaL, Double_t kappa) {
-  return kappa * (lambdaL + std::log(kappa));
-}
-
-// Return the highest grid index i such that grid[i] <= x, plus the
-// fractional offset t ∈ [0,1] placing x between grid[i] and grid[i+1].
+// Return the lower interpolation index and fractional offset. Quantile-axis
+// extrapolation is deliberate: it avoids artificial point masses caused by
+// clamping uniform draws into an interior probability grid.
 void LerpIndex(const std::vector<Double_t> &grid, Double_t x, Int_t &i,
-               Double_t &t) {
+               Double_t &t, Bool_t extrapolate = kFALSE) {
   const Int_t n = static_cast<Int_t>(grid.size());
   if (x <= grid.front()) {
     i = 0;
-    t = 0.0;
+    t = extrapolate ? (x - grid[0]) / (grid[1] - grid[0]) : 0.0;
     return;
   }
   if (x >= grid.back()) {
     i = n - 2;
-    t = 1.0;
+    t = extrapolate ? (x - grid[n - 2]) / (grid[n - 1] - grid[n - 2]) : 1.0;
     return;
   }
-  Int_t lo = 0, hi = n - 1;
-  while (hi - lo > 1) {
-    Int_t mid = (lo + hi) / 2;
-    if (grid[mid] <= x)
-      lo = mid;
-    else
-      hi = mid;
-  }
-  i = lo;
-  t = (x - grid[lo]) / (grid[lo + 1] - grid[lo]);
+  const auto upper = std::upper_bound(grid.begin(), grid.end(), x);
+  i = static_cast<Int_t>(upper - grid.begin()) - 1;
+  t = (x - grid[i]) / (grid[i + 1] - grid[i]);
 }
 
 } // namespace
 
 const VavilovSampler &VavilovSampler::Instance() {
-  static const VavilovSampler kSingleton;
-  return kSingleton;
+  static const VavilovSampler singleton;
+  return singleton;
 }
 
 VavilovSampler::VavilovSampler() {
   log_kappa_grid_.resize(kNKappa);
+  beta2_grid_.resize(kNBeta2);
+  u_grid_.resize(kNU);
+
   const Double_t logKmin = std::log(kKappaMin);
   const Double_t logKmax = std::log(kKappaMax);
   for (Int_t i = 0; i < kNKappa; ++i)
     log_kappa_grid_[i] = logKmin + (logKmax - logKmin) * i / (kNKappa - 1);
+  for (Int_t i = 0; i < kNBeta2; ++i)
+    beta2_grid_[i] = Double_t(i) / (kNBeta2 - 1);
+  for (Int_t i = 0; i < kNU; ++i)
+    u_grid_[i] = (i + 0.5) / kNU;
 
-  // Interior CDF grid u_j = (j+1)/(kNU+1), strictly inside (0, 1) so
-  // VavilovAccurate.Quantile is well-defined.
-  u_grid_.resize(kNU);
-  for (Int_t j = 0; j < kNU; ++j)
-    u_grid_[j] = (j + 1.0) / (kNU + 1.0);
-
-  // VavilovAccurate's valid β² range is (0, 1]; use a small ε for β² = 0.
-  BuildTable(1e-6, q_b0_, mean_b0_, var_b0_);
-  BuildTable(1.0, q_b1_, mean_b1_, var_b1_);
-}
-
-void VavilovSampler::BuildTable(Double_t beta2,
-                                std::vector<std::vector<Double_t>> &q,
-                                std::vector<Double_t> &means,
-                                std::vector<Double_t> &variances) {
-  q.assign(kNKappa, std::vector<Double_t>(kNU));
-  means.assign(kNKappa, 0.0);
-  variances.assign(kNKappa, 0.0);
-
-  ROOT::Math::VavilovAccurate vav;
-  for (Int_t i = 0; i < kNKappa; ++i) {
-    const Double_t kappa = std::exp(log_kappa_grid_[i]);
-    vav.SetKappaBeta2(kappa, beta2);
-    Double_t m1 = 0.0;
-    Double_t m2 = 0.0;
-    for (Int_t j = 0; j < kNU; ++j) {
-      const Double_t lambdaL = vav.Quantile(u_grid_[j]);
-      const Double_t lambdaV = LtoV(lambdaL, kappa);
-      q[i][j] = lambdaV;
-      m1 += lambdaV;
-      m2 += lambdaV * lambdaV;
+  quantiles_.resize(size_t(kNKappa) * kNBeta2 * kNU);
+  ROOT::Math::VavilovAccurate vavilov;
+  for (Int_t ik = 0; ik < kNKappa; ++ik) {
+    const Double_t kappa = std::exp(log_kappa_grid_[ik]);
+    for (Int_t ib = 0; ib < kNBeta2; ++ib) {
+      const Double_t beta2 = beta2_grid_[ib];
+      vavilov.SetKappaBeta2(kappa, beta2);
+      const Double_t mean = ROOT::Math::Vavilov::Mean(kappa, beta2);
+      const Double_t sigma =
+          std::sqrt(ROOT::Math::Vavilov::Variance(kappa, beta2));
+      for (Int_t iu = 0; iu < kNU; ++iu) {
+        const size_t index =
+            (size_t(ik) * kNBeta2 + size_t(ib)) * kNU + size_t(iu);
+        quantiles_[index] = (vavilov.Quantile(u_grid_[iu]) - mean) / sigma;
+      }
     }
-    const Double_t mean = m1 / kNU;
-    means[i] = mean;
-    variances[i] = std::max(1e-30, m2 / kNU - mean * mean);
   }
 }
 
-Double_t VavilovSampler::QuantileAt(const std::vector<std::vector<Double_t>> &q,
-                                    Double_t kappa, Double_t u) const {
-  Int_t iK;
-  Double_t tK;
-  Int_t iU;
-  Double_t tU;
-  LerpIndex(log_kappa_grid_, std::log(kappa), iK, tK);
-  LerpIndex(u_grid_, u, iU, tU);
-  const Double_t q00 = q[iK][iU];
-  const Double_t q01 = q[iK][iU + 1];
-  const Double_t q10 = q[iK + 1][iU];
-  const Double_t q11 = q[iK + 1][iU + 1];
-  const Double_t qK0 = q00 * (1 - tU) + q01 * tU;
-  const Double_t qK1 = q10 * (1 - tU) + q11 * tU;
-  return qK0 * (1 - tK) + qK1 * tK;
-}
+Double_t VavilovSampler::StandardizedQuantile(Double_t kappa, Double_t beta2,
+                                              Double_t u) const {
+  if (!std::isfinite(kappa) || !std::isfinite(beta2) || !std::isfinite(u))
+    return 0.0;
+  kappa = std::clamp(kappa, kKappaMin, kKappaMax);
+  beta2 = std::clamp(beta2, 0.0, 1.0);
+  u = std::clamp(u, 0.0, 1.0);
+  Int_t ik = 0;
+  Int_t ib = 0;
+  Int_t iu = 0;
+  Double_t tk = 0.0;
+  Double_t tb = 0.0;
+  Double_t tu = 0.0;
+  LerpIndex(log_kappa_grid_, std::log(kappa), ik, tk);
+  LerpIndex(beta2_grid_, beta2, ib, tb);
+  LerpIndex(u_grid_, u, iu, tu, kTRUE);
 
-Double_t VavilovSampler::ScalarAt(const std::vector<Double_t> &s,
-                                  Double_t kappa) const {
-  Int_t iK;
-  Double_t tK;
-  LerpIndex(log_kappa_grid_, std::log(kappa), iK, tK);
-  return s[iK] * (1 - tK) + s[iK + 1] * tK;
+  auto at = [&](Int_t k, Int_t b, Int_t q) {
+    const size_t index = (size_t(k) * kNBeta2 + size_t(b)) * kNU + size_t(q);
+    return quantiles_[index];
+  };
+  auto alongU = [&](Int_t k, Int_t b) {
+    return at(k, b, iu) * (1.0 - tu) + at(k, b, iu + 1) * tu;
+  };
+  const Double_t q00 = alongU(ik, ib);
+  const Double_t q01 = alongU(ik, ib + 1);
+  const Double_t q10 = alongU(ik + 1, ib);
+  const Double_t q11 = alongU(ik + 1, ib + 1);
+  const Double_t q0 = q00 * (1.0 - tb) + q01 * tb;
+  const Double_t q1 = q10 * (1.0 - tb) + q11 * tb;
+  return q0 * (1.0 - tk) + q1 * tk;
 }
 
 Double_t VavilovSampler::SampleStandardized(Double_t kappa, Double_t beta2,
                                             TRandom *rng) const {
-  // Outside the Vavilov band: fall back to a standard normal. Caller scales
-  // by σ_E and adds the catima mean, recovering Bohr (κ ≫ 1) or
-  // Landau-truncated-by-clamp (κ ≪ 1) — the relevant physics at the limits.
-  if (!rng)
+  if (!rng || !std::isfinite(kappa) || !std::isfinite(beta2))
     return 0.0;
-  if (kappa <= kKappaMin || kappa >= kKappaMax)
+  if (kappa > kKappaMax)
     return rng->Gaus(0.0, 1.0);
-  beta2 = std::clamp(beta2, 0.0, 1.0);
 
-  // Yi & Han Eq. (16): Φ(κ, β²) = Φ((1−β²)κ, 0) ⋆ Φ(β²κ, 1). Independent
-  // samples summed in λ_V space.
-  const Double_t k1 = (1.0 - beta2) * kappa;
-  const Double_t k2 = beta2 * kappa;
-
-  Double_t sample_lV = 0.0;
-  Double_t mean_lV = 0.0;
-  Double_t var_lV = 0.0;
-
-  if (k1 > kKappaMin) {
-    const Double_t u = rng->Uniform();
-    sample_lV += QuantileAt(q_b0_, k1, u);
-    mean_lV += ScalarAt(mean_b0_, k1);
-    var_lV += ScalarAt(var_b0_, k1);
-  }
-  if (k2 > kKappaMin) {
-    const Double_t u = rng->Uniform();
-    sample_lV += QuantileAt(q_b1_, k2, u);
-    mean_lV += ScalarAt(mean_b1_, k2);
-    var_lV += ScalarAt(var_b1_, k2);
-  }
-
-  if (var_lV <= 0.0)
-    return 0.0;
-  return (sample_lV - mean_lV) / std::sqrt(var_lV);
+  // ROOT's accurate implementation supports kappa >= 1e-3. For still thinner
+  // steps retain its lowest-kappa (strongly Landau-like) shape instead of
+  // substituting a symmetric Gaussian.
+  return StandardizedQuantile(kappa, beta2, rng->Uniform());
 }
 
 } // namespace music

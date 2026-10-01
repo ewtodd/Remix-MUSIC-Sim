@@ -22,16 +22,18 @@ material         = "Ti"
 thickness_mg_cm2 = 0.9
 
 [detector]
-eloss_bins = 300
-max_eloss  = 5.0   # MeV
-strip      = 5     # Strip where reaction takes place
-eres       = 0.1   # % FWHM of the deposit; scalar broadcasts to all 34
-                   # anode electrodes.
+eloss_bins              = 300
+max_eloss               = 5.0 # MeV
+strip                   = 5   # Strip where reaction takes place
+resolution_fwhm_percent = 0.1 # % FWHM of the deposit; scalar broadcasts to all 34
+# anode electrodes.
 # For per-channel resolution (including the cathode) use a
-# [detector.eres] table with keys Cathode, S0, S17,
+# [detector.resolution_fwhm_percent] table with keys Cathode, S0, S17,
 # L1..L16, R1..R16 instead.
 
 [[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
 [reaction.step.evap]
 name  = "1H"
 color = 632
@@ -40,11 +42,12 @@ color = 632
 name = "20Ne"
 
 [run]
-n_events = 100
-wait     = 1
-update   = 1
-max_time = 2000.0        # ns
-sim_step = 0.001         # cm
-method   = 0
-output   = "traces.root"
-file_opt = "recreate"
+seed             = 12345
+events_per_strip = 100
+wait             = 1
+update           = 1
+max_time         = 2000.0        # ns
+sim_step         = 0.001         # cm
+method           = 0
+output           = "traces.root"
+file_opt         = "recreate"

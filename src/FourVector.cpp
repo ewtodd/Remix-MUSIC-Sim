@@ -5,9 +5,9 @@ FourVector::FourVector() {
   x[0] = x[1] = x[2] = x[3] = 0;
 }
 
-FourVector::FourVector(TString Name, Double_t x0, Double_t x1, Double_t x2,
-                       Double_t x3) {
-  SetName(Name);
+FourVector::FourVector(TString vectorName, Double_t x0, Double_t x1,
+                       Double_t x2, Double_t x3) {
+  SetName(vectorName);
   SetCoords(x0, x1, x2, x3);
 }
 
@@ -39,15 +39,15 @@ void FourVector::Boost(Double_t BetaX, Double_t BetaY, Double_t BetaZ) {
 
 Double_t FourVector::Delta(Int_t i, Int_t j) { return (i == j) ? 1.0 : 0.0; }
 
-Double_t FourVector::GetX0() { return x[0]; }
-Double_t FourVector::GetX1() { return x[1]; }
-Double_t FourVector::GetX2() { return x[2]; }
-Double_t FourVector::GetX3() { return x[3]; }
-TString FourVector::GetName() { return Name; }
+Double_t FourVector::GetX0() const { return x[0]; }
+Double_t FourVector::GetX1() const { return x[1]; }
+Double_t FourVector::GetX2() const { return x[2]; }
+Double_t FourVector::GetX3() const { return x[3]; }
+TString FourVector::GetName() const { return Name; }
 
-Double_t FourVector::GetTheta() {
-  Double_t px = GetX1();
-  Double_t py = GetX2();
+Double_t FourVector::GetTheta() const {
+  const Double_t px = GetX1();
+  const Double_t py = GetX2();
   return std::atan2(std::sqrt(px * px + py * py), GetX3());
 }
 
@@ -58,9 +58,9 @@ void FourVector::SetCoords(Double_t x0, Double_t x1, Double_t x2, Double_t x3) {
   x[3] = x3;
 }
 
-void FourVector::SetName(TString Name) { this->Name = Name; }
+void FourVector::SetName(TString vectorName) { Name = vectorName; }
 
-void FourVector::Print(std::ostream &log) {
+void FourVector::Print(std::ostream &log) const {
   log << Name << " = (" << x[0] << ", " << x[1] << ", " << x[2] << ", " << x[3]
       << ")" << std::endl;
 }
@@ -106,6 +106,6 @@ const FourVector FourVector::operator-(const FourVector &other) const {
 }
 
 // Minkowski dot product (+, −, −, −).
-Double_t FourVector::operator*(const FourVector &P) {
+Double_t FourVector::operator*(const FourVector &P) const {
   return x[0] * P.x[0] - x[1] * P.x[1] - x[2] * P.x[2] - x[3] * P.x[3];
 }

@@ -8,14 +8,10 @@
 #include <vector>
 
 namespace music {
-// Defaults to catima's compiled default config; Simulator::loadCtrlFile
-// overwrites it (inheriting low_energy from the main config, forcing a
-// straggling-capable z_effective) once a control file is parsed.
-catima::Config gStragglingConfig;
-Bool_t gStragglingEnabled = kTRUE;
-Int_t gStoppingModel = 0;
-std::string gSrimDir;
-std::string gSrimGasTag;
+std::mutex &CatimaMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
 } // namespace music
 
 namespace {
@@ -80,9 +76,11 @@ Bool_t ReadSrimTable(const std::string &path, std::vector<Double_t> &E_MeV,
 } // namespace
 
 EnergyLoss::EnergyLoss(Int_t A, Int_t Z, Double_t IonMass_MeV_per_c2,
-                       const catima::Material *gas, Float_t dEdxScale)
+                       const catima::Material *gas,
+                       const music::PhysicsConfig &physics, Float_t dEdxScale)
     : GoodELossFile(true), proj_(Double_t(A), Double_t(Z)), gas_(gas), A_(A),
-      Z_(Z), IonMass_(IonMass_MeV_per_c2), dEdxScale_(dEdxScale), TOF_(0.0) {
+      Z_(Z), IonMass_(IonMass_MeV_per_c2), dEdxScale_(dEdxScale), TOF_(0.0),
+      physics_(physics) {
   BuildTables();
 }
 
@@ -124,9 +122,13 @@ void EnergyLoss::BuildTables() {
     proj_.T = Ki / A_;
     // Mean energy loss from the default (atima14) config; straggling variance
     // from the straggling config, since atima14 returns sigma_E = 0.
-    catima::Result rMean = catima::calculate(proj_, layer);
-    catima::Result rStr =
-        catima::calculate(proj_, layer, music::gStragglingConfig);
+    catima::Result rMean;
+    catima::Result rStr;
+    {
+      std::lock_guard<std::mutex> lock(music::CatimaMutex());
+      rMean = catima::calculate(proj_, layer, physics_.mean);
+      rStr = catima::calculate(proj_, layer, physics_.straggling);
+    }
     const Double_t Eout = rMean.Eout * A_;
     const Double_t sigma_E = rStr.sigma_E * A_;
     eloss_per_cm_[i] = std::max(0.0, (Ki - Eout) / dx_ref);
@@ -138,7 +140,7 @@ void EnergyLoss::BuildTables() {
   // missing table is fatal rather than a silent fall back to catima: the
   // models differ by ~10% in helium, so quietly substituting one would
   // invalidate a dedx_scale calibrated on the other.
-  if (music::gStoppingModel == 0)
+  if (physics_.stoppingModel == 0)
     return;
   const std::string ion =
       (Z_ > 0 && Z_ < kNElem) ? (std::to_string(A_) + kElem[Z_]) : "";
@@ -148,7 +150,7 @@ void EnergyLoss::BuildTables() {
     std::exit(1);
   }
   const std::string path =
-      music::gSrimDir + "/" + ion + "_in_" + music::gSrimGasTag + ".srim";
+      physics_.srimDir + "/" + ion + "_in_" + physics_.srimGasTag + ".srim";
   std::vector<Double_t> tE, tS;
   if (!ReadSrimTable(path, tE, tS)) {
     std::cerr << "musicsim ERROR: physics.stopping = srim but no usable table "
@@ -174,7 +176,7 @@ void EnergyLoss::BuildTables() {
     // "srim" takes the table value; "mean" averages it with the catima value
     // already sitting in the slot, per ApJ 983:142 sec 2.2.
     eloss_per_cm_[i] = std::max(
-        0.0, music::gStoppingModel == 2 ? 0.5 * (eloss_per_cm_[i] + v) : v);
+        0.0, physics_.stoppingModel == 2 ? 0.5 * (eloss_per_cm_[i] + v) : v);
   }
   // One line per distinct table: EnergyLoss is constructed per particle per
   // worker, so an unguarded message would repeat hundreds of times.
@@ -184,7 +186,7 @@ void EnergyLoss::BuildTables() {
     std::lock_guard<std::mutex> lk(m);
     if (seen.insert(path).second)
       std::cout << "  [stopping] "
-                << (music::gStoppingModel == 2 ? "mean(catima, SRIM)" : "SRIM")
+                << (physics_.stoppingModel == 2 ? "mean(catima, SRIM)" : "SRIM")
                 << " table for " << ion << ": " << tE.size() << " points from "
                 << path << std::endl;
   }
@@ -243,8 +245,17 @@ Double_t EnergyLoss::GasZoverA() {
 Double_t EnergyLoss::GetFinalEnergyStraggled(Double_t InitialEnergy,
                                              Double_t PathLength,
                                              TRandom *rng) {
+  return TransportStep(InitialEnergy, PathLength, rng).finalEnergy;
+}
+
+music::EnergyStepResult EnergyLoss::TransportStep(Double_t InitialEnergy,
+                                                  Double_t PathLength,
+                                                  TRandom *rng) {
+  music::EnergyStepResult result;
+  result.finalEnergy = InitialEnergy;
+  result.distance = std::max(0.0, PathLength);
   if (PathLength <= 0.0 || InitialEnergy <= 0.0)
-    return InitialEnergy;
+    return result;
   // sigma_E for the step scales as √(dsigma²/dx · dx). dEdxScale only
   // multiplies the mean; straggling magnitude stays at catima's value.
   const Double_t dedx_per_cm = InterpAt(eloss_per_cm_, InitialEnergy);
@@ -252,7 +263,7 @@ Double_t EnergyLoss::GetFinalEnergyStraggled(Double_t InitialEnergy,
   const Double_t sigma_E = std::sqrt(std::max(0.0, sigma2_per_cm * PathLength));
   Double_t Eloss = dedx_per_cm * PathLength * dEdxScale_;
 
-  if (music::gStragglingEnabled && sigma_E > 0.0 && rng) {
+  if (physics_.stragglingEnabled && sigma_E > 0.0 && rng) {
     // κ and β² for Vavilov (Yi & Han Eqs. 1–3):
     //   ξ    = (K/2) · z² · <Z/A> · ρ·t / β²     (Landau scale, MeV)
     //   εmax = 2 mₑc² β² γ² / (1 + 2γ mₑ/M + (mₑ/M)²)
@@ -270,7 +281,24 @@ Double_t EnergyLoss::GetFinalEnergyStraggled(Double_t InitialEnergy,
       standardized = rng->Gaus(0.0, 1.0);
     } else {
       const Double_t meM = me_MeV / M;
-      const Double_t xi = 0.5 * K * Z_ * Z_ * zoa * rho_t / beta2;
+      // Match the charge prescription used to obtain sigma_E. Contributions
+      // from a mixture add by target mass fraction, including each component's
+      // own Z/A; multiplying separate <z_eff^2> and <Z/A> averages would create
+      // unphysical cross terms.
+      Double_t effectiveChargeZoverA = 0.0;
+      catima::Projectile projectile = proj_;
+      projectile.T = InitialEnergy / A_;
+      for (Int_t i = 0; gas_ && i < gas_->ncomponents(); ++i) {
+        const catima::Target target = gas_->get_element(i);
+        const Double_t zeff =
+            catima::z_effective(projectile, target, physics_.straggling);
+        if (target.A > 0.0)
+          effectiveChargeZoverA +=
+              gas_->weight_fraction(i) * zeff * zeff * target.Z / target.A;
+      }
+      if (effectiveChargeZoverA <= 0.0)
+        effectiveChargeZoverA = Double_t(Z_) * Z_ * zoa;
+      const Double_t xi = 0.5 * K * effectiveChargeZoverA * rho_t / beta2;
       const Double_t emax = 2.0 * me_MeV * beta2 * gamma * gamma /
                             (1.0 + 2.0 * gamma * meM + meM * meM);
       const Double_t kappa = (emax > 0.0) ? (xi / emax) : 0.0;
@@ -280,13 +308,20 @@ Double_t EnergyLoss::GetFinalEnergyStraggled(Double_t InitialEnergy,
     Eloss += sigma_E * standardized;
   }
 
-  // Clamp to 0 ≤ Eloss ≤ InitialEnergy: reject the residual unphysical
-  // "energy gain" tail and the through-zero tail.
+  // Passive matter cannot add energy. If the sampled step would carry the ion
+  // through zero, shorten the travelled distance using the sampled average
+  // stopping rate and deposit exactly the remaining kinetic energy.
   if (Eloss < 0.0)
     Eloss = 0.0;
-  if (Eloss > InitialEnergy)
+  if (Eloss >= InitialEnergy) {
+    if (Eloss > 0.0)
+      result.distance = PathLength * InitialEnergy / Eloss;
     Eloss = InitialEnergy;
-  return InitialEnergy - Eloss;
+    result.stopped = kTRUE;
+  }
+  result.depositedEnergy = Eloss;
+  result.finalEnergy = InitialEnergy - Eloss;
+  return result;
 }
 
 // Inverse of GetFinalEnergy via bisection (energy_out is monotonic in Ki).
@@ -322,7 +357,11 @@ Double_t EnergyLoss::GetOptimumStepSize(Double_t Energy) {
   if (Energy <= 0.0 || gas_ == nullptr)
     return 0.01;
   proj_.T = Energy / A_;
-  Double_t dEdx_per_gcm2 = catima::dedx(proj_, *gas_);
+  Double_t dEdx_per_gcm2;
+  {
+    std::lock_guard<std::mutex> lock(music::CatimaMutex());
+    dEdx_per_gcm2 = catima::dedx(proj_, *gas_, physics_.mean);
+  }
   Double_t rho = gas_->density();
   if (dEdx_per_gcm2 <= 0.0 || rho <= 0.0)
     return 0.01;

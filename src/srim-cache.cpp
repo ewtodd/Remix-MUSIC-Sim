@@ -18,14 +18,20 @@
 //
 // Table naming and location must match EnergyLoss::BuildTables exactly:
 //   <dir of run.output>/<ion>_in_<gas>_<P>Torr_<T>K.srim
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <set>
+#include <spawn.h>
 #include <string>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <toml++/toml.hpp>
 #include <vector>
+
+extern char **environ;
 
 #ifndef MUSICSIM_SRIM_TABLE_BIN
 #define MUSICSIM_SRIM_TABLE_BIN ""
@@ -68,6 +74,51 @@ std::string DirOf(const std::string &path) {
   size_t slash = path.find_last_of('/');
   return (slash == std::string::npos) ? std::string(".")
                                       : path.substr(0, slash);
+}
+
+std::string NumberArg(double value) {
+  char text[64];
+  std::snprintf(text, sizeof(text), "%g", value);
+  return text;
+}
+
+bool RunGenerator(const std::string &generator, const std::string &ion,
+                  const std::string &gas, double pressure, double temperature,
+                  const std::string &output) {
+  std::vector<std::string> args = {generator,
+                                   "--ion",
+                                   ion,
+                                   "--gas",
+                                   gas,
+                                   "--pressure",
+                                   NumberArg(pressure),
+                                   "--temp",
+                                   NumberArg(temperature),
+                                   "--out",
+                                   output};
+  std::vector<char *> argv;
+  argv.reserve(args.size() + 1);
+  for (std::string &arg : args)
+    argv.push_back(arg.data());
+  argv.push_back(nullptr);
+
+  pid_t child = -1;
+  const int spawnError = ::posix_spawnp(&child, generator.c_str(), nullptr,
+                                        nullptr, argv.data(), environ);
+  if (spawnError != 0) {
+    std::cerr << "srim-cache: cannot start generator '" << generator
+              << "': " << std::strerror(spawnError) << std::endl;
+    return false;
+  }
+  int status = 0;
+  while (::waitpid(child, &status, 0) < 0) {
+    if (errno == EINTR)
+      continue;
+    std::cerr << "srim-cache: waitpid failed: " << std::strerror(errno)
+              << std::endl;
+    return false;
+  }
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
 } // namespace
@@ -142,15 +193,12 @@ int main(int argc, char **argv) {
       kept++;
       continue;
     }
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd),
-             "'%s' --ion %s --gas %s --pressure %g --temp %g --out '%s'",
-             TableGenerator().c_str(), ion.c_str(), gas.c_str(), pressure,
-             temperature, out.c_str());
     std::cout << "srim-cache: generating " << out << std::endl;
-    if (std::system(cmd) != 0 || !FileExists(out)) {
+    const std::string generator = TableGenerator();
+    if (!RunGenerator(generator, ion, gas, pressure, temperature, out) ||
+        !FileExists(out)) {
       std::cerr << "srim-cache: FAILED to generate " << out
-                << "\n  (generator: " << TableGenerator()
+                << "\n  (generator: " << generator
                 << "; set SRIM_TABLE_BIN or build through the flake)"
                 << std::endl;
       failed++;

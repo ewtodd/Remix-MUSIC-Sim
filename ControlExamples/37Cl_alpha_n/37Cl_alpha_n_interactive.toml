@@ -29,12 +29,14 @@ material     = "Mylar"
 thickness_um = 6.0
 
 [detector]
-eloss_bins = 555  # Number of bins for y axis
-max_eloss  = 10.0 # Max y value [MeV]
-strip      = 6    # Strip where reaction takes place. Use -1 for unreacted beam
-eres       = 0.05 # Energy noise level (sigma) in each strip [MeV]
+eloss_bins      = 555  # Number of bins for y axis
+max_eloss       = 10.0 # Max y value [MeV]
+strip           = 6    # Strip where reaction takes place. Use -1 for unreacted beam
+noise_sigma_mev = 0.05 # Energy noise level (sigma) in each strip [MeV]
 
 [[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
 [reaction.step.evap]
 name  = "n"
 color = 4
@@ -45,13 +47,14 @@ color      = 3
 dedx_scale = 1.0
 
 [run]
-n_events  = 20
-threads   = 1
-wait      = 1                                 # Pause between events; double-click canvas to advance
-update    = 1                                 # Render EVE 3D view + trace canvas
-max_time  = 2000.0                            # ns
-sim_step  = 0.001                             # cm
-method    = 0
-output    = "traces_37Cl_an_interactive.root"
-file_opt  = "recreate"
-print_opt = 0
+seed             = 12345
+events_per_strip = 20
+threads          = 1
+wait             = 1                                 # Pause between events; double-click canvas to advance
+update           = 1                                 # Render EVE 3D view + trace canvas
+max_time         = 2000.0                            # ns
+sim_step         = 0.001                             # cm
+method           = 0
+output           = "traces_37Cl_an_interactive.root"
+file_opt         = "recreate"
+print_opt        = 0
