@@ -56,7 +56,7 @@ cp "$repo_dir/tests/fixtures/legacy.msc" "$temp_dir/remove.msc"
 "$converter" --remove-source "$temp_dir/remove.msc" >/dev/null
 test ! -e "$temp_dir/remove.msc" || fail '--remove-source kept its input'
 
-printf '%s\n' '[3/8] testing nuclide loaders'
+printf '%s\n' '[3/8] testing nuclide loaders (ERROR lines below are expected: malformed-input assertions)'
 "$nuclide_checks" "$temp_dir"
 
 printf '%s\n' '[4/8] validating Vavilov interpolation and limits'
