@@ -49,6 +49,10 @@
           buildPhase = ''
             make CATIMA_PREFIX=${catima} VERSION=${version} ASSETS_DIR_OUT=$out/assets \
               SRIM_TABLE_BIN=${make-srim-table}/bin/make-srim-table
+            # Regression-suite check binaries (tests/run-tests.sh). Built here
+            # so `nix build` ships them and the suite needs no make or dev
+            # shell: point *_BIN at result/bin or use its defaults.
+            make CATIMA_PREFIX=${catima} test-bins
           '';
           installPhase = ''
             mkdir -p $out/bin $out/assets
@@ -58,6 +62,10 @@
             # store path it carries; still a deliberate, occasional step, not
             # part of a simulation run.
             cp srim-cache $out/bin/
+            cp legacy-msc-to-toml $out/bin/
+            cp lib/tests/root_checks \
+               lib/tests/vavilov_statistics \
+               lib/tests/nuclide_loader $out/bin/
             cp -r assets/. $out/assets/
           '';
         };

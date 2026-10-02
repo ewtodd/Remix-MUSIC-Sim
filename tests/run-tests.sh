@@ -2,11 +2,14 @@
 set -euo pipefail
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-simulator=${MUSICSIM_BIN:-"$repo_dir/musicsim"}
-converter=${CONVERTER_BIN:-"$repo_dir/legacy-msc-to-toml"}
-root_checks=${ROOT_CHECK_BIN:-"$repo_dir/lib/tests/root_checks"}
-vavilov_checks=${VAVILOV_CHECK_BIN:-"$repo_dir/lib/tests/vavilov_statistics"}
-nuclide_checks=${NUCLIDE_CHECK_BIN:-"$repo_dir/lib/tests/nuclide_loader"}
+# Defaults target the `nix build` workflow: run `nix build` in the repo, then
+# `bash tests/run-tests.sh` with the result/ symlink in place. Override with
+# MUSICSIM_BIN / CONVERTER_BIN / *_CHECK_BIN for a make-in-dev-shell build.
+simulator=${MUSICSIM_BIN:-"$repo_dir/result/bin/musicsim"}
+converter=${CONVERTER_BIN:-"$repo_dir/result/bin/legacy-msc-to-toml"}
+root_checks=${ROOT_CHECK_BIN:-"$repo_dir/result/bin/root_checks"}
+vavilov_checks=${VAVILOV_CHECK_BIN:-"$repo_dir/result/bin/vavilov_statistics"}
+nuclide_checks=${NUCLIDE_CHECK_BIN:-"$repo_dir/result/bin/nuclide_loader"}
 temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/remix-music-tests.XXXXXX")
 trap 'test -n "${temp_dir:-}" && rm -rf -- "$temp_dir"' EXIT
 

@@ -83,8 +83,17 @@ $(NUCLIDE_CHECK): tests/nuclide_loader.cpp src/NuclideFinder.cpp \
 $(TESTDIR):
 	mkdir -p $(TESTDIR)
 
+# Build-only target for the check binaries; the nix build invokes this so
+# `nix build` ships them next to musicsim and the suite can run without make.
+test-bins: $(ROOT_CHECK) $(VAVILOV_CHECK) $(NUCLIDE_CHECK)
+
 check: all $(ROOT_CHECK) $(VAVILOV_CHECK) $(NUCLIDE_CHECK)
-	bash tests/run-tests.sh
+	MUSICSIM_BIN=$(abspath musicsim) \
+	CONVERTER_BIN=$(abspath legacy-msc-to-toml) \
+	ROOT_CHECK_BIN=$(abspath $(ROOT_CHECK)) \
+	VAVILOV_CHECK_BIN=$(abspath $(VAVILOV_CHECK)) \
+	NUCLIDE_CHECK_BIN=$(abspath $(NUCLIDE_CHECK)) \
+		bash tests/run-tests.sh
 
 strict:
 	@command -v $(CXX) >/dev/null
@@ -163,4 +172,4 @@ $(OBJDIR):
 clean:
 	rm -rf $(OBJDIR) musicsim srim-cache legacy-msc-to-toml
 
-.PHONY: all check strict sanitize-check format format-check clean
+.PHONY: all check test-bins strict sanitize-check format format-check clean

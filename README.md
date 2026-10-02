@@ -34,23 +34,25 @@ nix build
 ./result/bin/musicsim ControlExamples/37Cl_alpha_n/37Cl_alpha_n_bulk.toml
 ```
 
-For development:
+`nix build` also ships the regression-suite binaries
+(`legacy-msc-to-toml`, `root_checks`, `vavilov_statistics`, `nuclide_loader`)
+in `result/bin`. To run the suite — schema, converter, nuclide-loader,
+distribution, conservation, kinematics, boundary, reproducibility, and ROOT
+update tests — build first, then:
 
 ```bash
-nix develop
-make -j2
-make -j2 check
-make strict
-make -j2 sanitize-check
-make format-check
+bash tests/run-tests.sh
 ```
 
-`make check` builds and runs the schema, converter, nuclide-loader,
-distribution, conservation, kinematics, boundary, reproducibility, and ROOT
-update tests. `make strict` treats the repository's extended GCC warning set as
-errors. `make sanitize-check` repeats the suite under AddressSanitizer and
-UndefinedBehaviorSanitizer. `make format-check` checks C/C++ with clang-format
-and TOML with Taplo.
+It finds everything under `result/bin` by default; the `MUSICSIM_BIN`,
+`CONVERTER_BIN`, and `*_CHECK_BIN` environment variables override each path.
+
+For working on the sources inside the dev shell (`nix develop`), the Makefile
+targets are still there: `make -j2` builds by hand, `make -j2 check` runs the
+suite against the local build, `make strict` treats the repository's extended
+GCC warning set as errors, `make -j2 sanitize-check` repeats the suite under
+AddressSanitizer and UndefinedBehaviorSanitizer, and `make format-check`
+checks C/C++ with clang-format and TOML with Taplo.
 
 To validate a control without running events:
 
