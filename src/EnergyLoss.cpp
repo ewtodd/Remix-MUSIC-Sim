@@ -120,8 +120,8 @@ void EnergyLoss::BuildTables() {
     log_ki_grid_[i] = logKi;
     const Double_t Ki = std::exp(logKi);
     proj_.T = Ki / A_;
-    // Mean energy loss from the default (atima14) config; straggling variance
-    // from the straggling config, since atima14 returns sigma_E = 0.
+    // Mean loss and straggling variance come from separate configs, because the
+    // straggling charge model can differ from the mean one.
     catima::Result rMean;
     catima::Result rStr;
     {

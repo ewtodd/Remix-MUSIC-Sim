@@ -1,6 +1,7 @@
 CXX           = g++
 CATIMA_PREFIX ?= /usr/local
 VERSION       ?= dev
+CATIMA_REV    ?= unknown
 
 SRCDIR = src
 INCDIR = include
@@ -11,6 +12,14 @@ OBJDIR = lib
 # at the installed copy.
 ASSETS_DIR     ?= $(abspath assets)
 ASSETS_DIR_OUT ?= $(ASSETS_DIR)
+
+# Exact source revision for run metadata. Nix passes it, since its build tree
+# has no .git; dev builds ask git and append -dirty for uncommitted changes.
+ifeq ($(origin GIT_REV), undefined)
+GIT_REV := $(shell rev=$$(git rev-parse --short=7 HEAD 2>/dev/null) && { git diff-index --quiet HEAD -- 2>/dev/null || rev="$$rev-dirty"; } && echo "$$rev" || echo unknown)
+endif
+REVISION_FLAGS = -DMUSICSIM_GIT_REV=\"$(GIT_REV)\" \
+                 -DMUSICSIM_CATIMA_REV=\"$(CATIMA_REV)\"
 
 CXXFLAGS = $(shell root-config --cflags) -I$(INCDIR) -I$(CATIMA_PREFIX)/include \
            -DMUSICSIM_VERSION=\"$(VERSION)\" \
@@ -64,9 +73,11 @@ srim-cache: $(SRIMCACHE_SRC)
 legacy-msc-to-toml: $(CONVERTER_SRC)
 	$(CXX) -std=c++17 -Wall -Wextra -Wpedantic -o $@ $<
 
-$(ROOT_CHECK): tests/root_checks.cpp | $(TESTDIR)
+$(ROOT_CHECK): tests/root_checks.cpp src/NuclideFinder.cpp \
+		include/NuclideFinder.hpp | $(TESTDIR)
 	$(CXX) -std=c++17 -Wall -Wextra -Wpedantic $(shell root-config --cflags) \
-		-o $@ $< $(shell root-config --libs)
+		-I$(INCDIR) -o $@ tests/root_checks.cpp src/NuclideFinder.cpp \
+		$(shell root-config --libs)
 
 $(VAVILOV_CHECK): tests/vavilov_statistics.cpp src/VavilovSampler.cpp \
 		include/VavilovSampler.hpp | $(TESTDIR)
@@ -103,7 +114,7 @@ strict:
 	done
 
 $(SANITIZE_DIR)/%.o: $(SRCDIR)/%.cpp $(HEADERS) | $(SANITIZE_DIR)
-	$(CXX) $(CXXFLAGS) $(STRICT_FLAGS) $(SANITIZE_FLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(REVISION_FLAGS) $(STRICT_FLAGS) $(SANITIZE_FLAGS) -c $< -o $@
 
 $(SANITIZE_SIM): $(SANITIZE_OBJECTS)
 	$(CXX) $(SANITIZE_FLAGS) -o $@ $^ $(LIBS)
@@ -111,9 +122,13 @@ $(SANITIZE_SIM): $(SANITIZE_OBJECTS)
 $(SANITIZE_CONVERTER): $(CONVERTER_SRC) | $(SANITIZE_DIR)
 	$(CXX) -std=c++17 $(STRICT_FLAGS) $(SANITIZE_FLAGS) -o $@ $<
 
-$(SANITIZE_ROOT_CHECK): tests/root_checks.cpp | $(SANITIZE_DIR)
+$(SANITIZE_ROOT_CHECK): tests/root_checks.cpp \
+		$(SANITIZE_DIR)/NuclideFinder.o \
+		include/NuclideFinder.hpp | $(SANITIZE_DIR)
 	$(CXX) -std=c++17 $(STRICT_FLAGS) $(SANITIZE_FLAGS) \
-		$(shell root-config --cflags) -o $@ $< $(shell root-config --libs)
+		$(shell root-config --cflags) -I$(INCDIR) -o $@ \
+		tests/root_checks.cpp $(SANITIZE_DIR)/NuclideFinder.o \
+		$(shell root-config --libs)
 
 $(SANITIZE_VAVILOV_CHECK): tests/vavilov_statistics.cpp \
 		$(SANITIZE_DIR)/VavilovSampler.o include/VavilovSampler.hpp | $(SANITIZE_DIR)
@@ -166,10 +181,20 @@ format-check:
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(HEADERS) | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+# Output.o embeds the revisions; the stamp rebuilds it whenever they change.
+$(OBJDIR)/Output.o: $(SRCDIR)/Output.cpp $(HEADERS) $(OBJDIR)/revision.stamp \
+		| $(OBJDIR)
+	$(CXX) $(CXXFLAGS) $(REVISION_FLAGS) -c $< -o $@
+
+$(OBJDIR)/revision.stamp: FORCE | $(OBJDIR)
+	@echo '$(GIT_REV) $(CATIMA_REV)' | cmp -s - $@ || echo '$(GIT_REV) $(CATIMA_REV)' > $@
+
+FORCE:
+
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
 clean:
 	rm -rf $(OBJDIR) musicsim srim-cache legacy-msc-to-toml
 
-.PHONY: all check test-bins strict sanitize-check format format-check clean
+.PHONY: all check test-bins strict sanitize-check format format-check clean FORCE

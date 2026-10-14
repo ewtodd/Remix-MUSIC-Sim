@@ -24,7 +24,9 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "26.9.17";
+        version = "26.10.14";
+        # Recorded in every output's metadata; -dirty marks uncommitted changes.
+        gitRevision = self.shortRev or self.dirtyShortRev or "unknown";
         make-srim-table = srim-nix.packages.${system}.make-srim-table;
         catima = pkgs.stdenv.mkDerivation {
           pname = "catima";
@@ -48,6 +50,7 @@
           ];
           buildPhase = ''
             make CATIMA_PREFIX=${catima} VERSION=${version} ASSETS_DIR_OUT=$out/assets \
+              GIT_REV=${gitRevision} CATIMA_REV=${catima.version} \
               SRIM_TABLE_BIN=${make-srim-table}/bin/make-srim-table
             # Regression-suite check binaries (tests/run-tests.sh). Built here
             # so `nix build` ships them and the suite needs no make or dev
@@ -82,6 +85,7 @@
           ];
           shellHook = ''
             export CATIMA_PREFIX=${catima}
+            export CATIMA_REV=${catima.version}
             export MUSICSIM_VERSION=${version}
             export SRIM_TABLE_BIN=${make-srim-table}/bin/make-srim-table
             export CPLUS_INCLUDE_PATH="$PWD/include''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"

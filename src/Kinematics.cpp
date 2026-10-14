@@ -250,10 +250,10 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
       // A rejected chain is wholly absent from truth output. In particular,
       // erase angles already sampled by an earlier successful step before a
       // later step failed its threshold check.
-      theta_cm[er] = phi_cm[er] = -1.0f;
+      theta_cm[er] = phi_cm[er] = kAngleUnset;
       evap_energy[er] = residue_energy[er] = -2.0f;
-      evap_theta[er] = evap_phi[er] = -1.0f;
-      residue_theta[er] = residue_phi[er] = -1.0f;
+      evap_theta[er] = evap_phi[er] = kAngleUnset;
+      residue_theta[er] = residue_phi[er] = kAngleUnset;
     }
     return 0;
   }

@@ -148,6 +148,7 @@ void Simulator::Simulate(Int_t StpID, Int_t eventCount, Double_t MaxTime,
         Ebeam = ctf.BeamEnergy + Rdm->Gaus(0.0, ctf.KbFWHM / 2.355);
       } while (Ebeam <= 0.0);
     }
+    beam_energy_accel = static_cast<Float_t>(Ebeam);
     {
       const Double_t amu_MeV = 931.49410242;
       Int_t A_beam =

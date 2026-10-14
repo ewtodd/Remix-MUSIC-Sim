@@ -185,7 +185,7 @@ Conversion ParseLegacy(const std::filesystem::path &source) {
       {"strip", {"detector", "strip", Kind::Integer}},
       {"stripFirst", {"detector", "strip_first", Kind::Integer}},
       {"stripLast", {"detector", "strip_last", Kind::Integer}},
-      {"Eres", {"detector", "resolution_fwhm_percent", Kind::Float}},
+      {"Eres", {"detector", "noise_sigma_mev", Kind::Float}},
       {"NEvents", {"run", "events_per_strip", Kind::Integer}},
       {"Threads", {"run", "threads", Kind::Integer}},
       {"Wait", {"run", "wait", Kind::Integer}},
@@ -452,7 +452,9 @@ std::string Render(const Conversion &conversion) {
                          it->second.residue.at("name").value == beam;
     out << "[[reaction.step]]\n"
         << "residue_excitation = "
-        << TomlString(elastic || last ? "ground" : "forced")
+        << TomlString(elastic ? "ground"
+                      : last  ? "uniform"
+                              : "forced")
         << " # REVIEW: inferred by converter\n"
         << "angular_distribution = "
         << TomlString(elastic ? "rutherford" : "isotropic")
@@ -467,7 +469,7 @@ std::string Render(const Conversion &conversion) {
   }
 
   out << "[physics]\n"
-      << "z_effective = \"atima14\"\n"
+      << "z_effective = \"winger\"\n"
       << "low_energy = \"srim_95\"\n"
       << "straggling_z_effective = \"pierce_blann\"\n"
       << "straggling = true\n"

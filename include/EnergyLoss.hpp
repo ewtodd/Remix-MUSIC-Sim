@@ -90,7 +90,7 @@ private:
   Double_t gas_ZoverA_ = -1.0;
 
   // Pre-tabulated stopping power and straggling so the hot path skips catima.
-  static constexpr Int_t kNTable = 256;
+  static constexpr Int_t kNTable = 1024;
   std::vector<Double_t> log_ki_grid_;
   std::vector<Double_t> eloss_per_cm_;
   std::vector<Double_t> sigma2_per_cm_;

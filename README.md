@@ -131,7 +131,7 @@ color      = 4
 dedx_scale = 1.0
 
 [physics]
-z_effective            = "atima14"
+z_effective            = "winger"
 low_energy             = "srim_95"
 straggling_z_effective = "pierce_blann"
 straggling             = true
@@ -220,7 +220,11 @@ Each present window/degrader table must contain exactly one of
 `thickness_mg_cm2` or `thickness_um`. A zero or negative thickness disables the
 layer; a positive layer also requires `material`. Supported materials are Ti,
 Al, Havar, Kapton, and Mylar. `dedx_scale` defaults to 1 and is implemented as
-equivalent thickness, so it changes both mean loss and straggling.
+equivalent thickness, so it changes both mean loss and straggling. The beam and
+reaction-product `dedx_scale` values differ: they multiply only that particle's
+mean stopping in the gas, and its gas straggling keeps catima's variance. Gas
+pressure is measured, so those scales correct the stopping model rather than
+the amount of matter.
 
 The beam-energy path is accelerator energy plus independent Gaussian beam
 spread, then degrader, entrance window, and gas. Window/degrader output is
@@ -237,11 +241,25 @@ mean stopping powers. SRIM-backed modes require tables produced in advance:
 
 The remaining physics defaults are shown in the full example. Valid effective
 charge names are `none`, `pierce_blann`, `anthony_landorf`, `hubert`, `winger`,
-`schiwietz`, `global`, and `atima14`. `low_energy` accepts `srim_85` or
-`srim_95`. The straggling charge model cannot be `atima14`, because that catima
-path does not produce a variance. `physics.straggling = false` disables both
-gas and entrance-layer/degrader energy-loss fluctuations; detector noise is
-independent.
+and `schiwietz`. `low_energy` accepts `srim_85` or `srim_95`.
+`physics.straggling = false` disables both gas and entrance-layer/degrader
+energy-loss fluctuations; detector noise is independent.
+
+The effective charge only affects catima's mean stopping above 10 MeV/u. Below
+that, catima uses an empirical stopping fit that does not use it. Straggling
+variance uses it at every energy.
+
+`atima14` and `global` are rejected. Both need catima's optional GLOBAL
+library, which this build does not include. Without it, catima does not fail;
+it silently returns an effective charge of zero (`atima14`) or a wrong one
+(`global`). For Z <= 28 below 1000 MeV/u, and for any Z below 30 MeV/u, catima's
+`atima14` is Winger, so the default `winger` reproduces it for every MUSIC beam.
+
+Before 2026-10-14 the default was `atima14`. Mean stopping was correct below
+10 MeV/u and too low above it: -11% at 12 MeV/u, -20% at 13.75 MeV/u, -32% at
+16 MeV/u, and -53% at 20 MeV/u. Runs with any particle above 10 MeV/u in the
+gas should be redone. That includes fast light reaction products, not only the
+beam.
 
 ### Gas straggling and transport
 
@@ -254,10 +272,20 @@ built from ROOT's `Math::VavilovAccurate` and interpolated during transport.
 The table spans `kappa = 1e-3..10`; thinner steps use the lowest supported,
 Landau-like Vavilov shape, while thicker steps use the Gaussian limit. The
 distribution is standardized with ROOT's analytic moments and scaled to
-catima's step variance. Interpolation and physical loss truncation mean sampled
-moments are close to, but not mathematically identical to, the catima moments.
-Kappa uses the same effective-charge prescription as the configured
-straggling variance.
+catima's step variance. Kappa uses the same effective-charge prescription as
+the configured straggling variance.
+
+How closely the sampled moments match catima's depends on kappa:
+
+- At `kappa >= 0.01`, sampled draws have zero mean and their variance is within
+  1% of catima's. Heavy ions at the default 10 um step fall in this range (37Cl
+  and 87Rb in 400-555 Torr He are at about 0.03-1).
+- At `kappa = 1e-3`, the sampled variance is about 7% low, because the
+  Landau-like tail beyond the last table point is cut off.
+- Below `kappa = 1e-3`, the shape is frozen. A draw that would give the ion
+  energy is clamped to zero loss, so the mean loss is biased high: about +50%
+  for 5 MeV protons and +5% for 20 MeV alphas in 10 um steps. Light reaction
+  products at the default step are in this range.
 
 ### Multi-threading and output updates
 
@@ -293,9 +321,12 @@ combined with `--remove-source`.
 
 The converter escapes TOML strings and emits the strict schema. It marks
 inferred excitation/angular models with `REVIEW` comments; those choices must
-be checked before running. Legacy `Kb` is treated as accelerator energy, while
-upstream files used gas-surface energy, so window-enabled conversions also need
-manual review. Unsupported trace-database and obsolete SRIM/geometry settings
+be checked before running. An elastic first step becomes `ground` plus
+`rutherford`, any other final step `uniform`, and an intermediate step
+`forced`. Legacy `Eres` becomes `noise_sigma_mev`: every `.msc` file predates
+the percent-FWHM convention (June 2026), so its value is an absolute sigma in
+MeV. Legacy `Kb` is treated as accelerator energy, while upstream files used
+gas-surface energy, so window-enabled conversions also need manual review. Unsupported trace-database and obsolete SRIM/geometry settings
 are rejected or reported.
 
 ## ROOT output
@@ -328,19 +359,65 @@ equal-length trees. `events_MeV` has `MC` as a friend.
 | `residue_step`, `residue_stop_x/y/z`, `residue_stop_strip`, `residue_termination` | Surviving-residue identity and final state. |
 | `DeadUS_dE`, `DeadDS_dE` | Deposits in unread upstream/downstream gas regions, in MeV. |
 
-Exit-energy sentinels are `-2` for not applicable/not propagated and `-1` for a
-transported particle that did not reach the downstream exit. A literal zero
-can mean that the particle reached but stopped in the exit foil. Stop-strip
-sentinels are `-2` for not applicable and `-1` for an exit or a stop outside a
-readout strip.
+### Sentinels
+
+Every `MC` branch is reset before each event and keeps its sentinel unless the
+event produced that quantity. Two conventions run through the table: `-2`
+means not applicable (the particle or quantity does not exist in this event),
+and `-1` means the particle was transported but did not leave through the
+downstream face. Angles use `-1000`, which lies outside every valid angle.
+
+| Branch | Sentinel | Otherwise |
+| --- | --- | --- |
+| `requested_strip` | `-1`: unreacted run (`strip = -1`). | The configured vertex strip, whether or not a reaction happened. |
+| `reaction_strip` | `-1`: no reaction (unreacted run, beam ended before the vertex, or chain rejected). | Equal to `requested_strip`. |
+| `beam_energy_accel` | None. | This event's accelerator KE, including the `energy_fwhm` draw. The nominal value is in `metadata`. |
+| `beam_energy_gas` | None. `0` means the beam stopped in the degrader or entrance window. | KE entering the gas. |
+| `beam_energy_reaction` | `-2`: no reaction. | Beam KE at the vertex. |
+| `beam_energy_exit` | `-2`: beam consumed by a reaction. `-1`: transported but did not exit downstream. | KE after the exit window; `0` means it stopped in the window. |
+| `vertex_x/y/z` | `vertex_z = -1000`: no reaction. `vertex_x/y` are then `0`, which is also a valid coordinate, so test `vertex_z` or `reaction_strip`. | Reaction vertex in cm. |
+| `beam_stop_x/y/z` | `(0, 0, -1000)`: beam consumed by a reaction. | Final beam position; the crossing point for exits. |
+| `beam_stop_strip` | `-2`: beam consumed by a reaction. `-1`: stopped in a dead layer, or ended any way other than stopping. | Readout strip 0..17 where the beam stopped. |
+| `beam_termination` | None; always a termination code. Reacted events report `1`. | |
+| `evap_energy`, `residue_energy` | `-2`: the step did not happen. A rejected chain leaves every step at `-2`. | Lab KE at creation. |
+| `theta_cm`, `evap_theta`, `residue_theta` | `-1000`: the step did not happen. | Angle in degrees, in `[0, 180]`. |
+| `phi_cm`, `evap_phi`, `residue_phi` | `-1000`: the step did not happen. | Angle in degrees, in `[-180, 180]`. |
+| `evap_energy_exit` | `-2`: not transported. `-1`: transported but did not exit downstream. | KE after the exit window; neutrals keep their KE. |
+| `residue_energy_exit` | `-2` in every slot except `residue_step`; intermediate residues decay at the vertex. | As `evap_energy_exit`, for the surviving residue. |
+| `evap_stop_x/y/z`, `residue_stop_x/y/z` | `(0, 0, -1000)`: not transported. | Final position; the crossing point for exits. |
+| `evap_stop_strip`, `residue_stop_strip` | `-2`: not transported. `-1`: stopped in a dead layer, or ended any way other than stopping. | Readout strip 0..17 where the particle stopped. |
+| `evap_termination`, `residue_termination` | `0`: not transported. | Termination code. |
+| `residue_step` | `-1`: no surviving residue (no reaction). | Index of the final step, whose residue was transported. |
+| `DeadUS_dE`, `DeadDS_dE` | None; `0` is a real zero deposit. | Deposits in MeV. |
+
+How the beam fields combine for each kind of event:
+
+| Event | `beam_termination` | `beam_energy_exit` | `beam_stop_strip` | `vertex_z` / `reaction_strip` | Product fields |
+| --- | --- | --- | --- | --- | --- |
+| Reacted | `1` | `-2` | `-2` | vertex / strip | Filled; only the surviving residue has an exit state. |
+| Reached the vertex, chain rejected | Final code of the resumed beam | KE after window if `3`, else `-1` | Strip if `2`, else `-1` | `-1000` / `-1` | All sentinels. |
+| Unreacted run | Final code | KE after window if `3`, else `-1` | Strip if `2`, else `-1` | `-1000` / `-1` | All sentinels. |
+| Beam stopped before the vertex | `2` | `-1` | Strip where it stopped (`-1` in a dead layer) | `-1000` / `-1` | All sentinels. |
+| Beam escaped, timed out, or invalid | `4`/`5`, `6`, `7` | `-1` | `-1` | `-1000` / `-1` | All sentinels. |
 
 Termination codes are stored in `metadata/termination_codes` and currently
 mean: 0 not propagated, 1 reached the requested vertex, 2 stopped, 3 downstream
 exit, 4 upstream exit, 5 side exit, 6 timeout, and 7 invalid state.
 
-The `metadata` directory also stores the software version, control path, exact
-control text, resolved configuration (schema version 3), and straggling model.
-These records are part of update-file compatibility checks.
+The `metadata` directory also stores the software version, the control path,
+the exact control text as read at startup, the resolved configuration (schema
+version 4), and the straggling model.
+
+The resolved configuration records every physics default actually applied
+(`z_effective`, `low_energy`, `straggling_z_effective`, `sim_step_cm`,
+`max_time_ns`, `beam_energy_fwhm_mev`, ...). It also records `git_revision` (a
+`-dirty` suffix means uncommitted changes), `catima_revision`, and
+`catima_global`. Defaults can change between builds, so a control file alone
+does not determine the physics.
+
+An update run appends only if both the control text and the resolved
+configuration (except `total_entries`) match the file. A file is therefore
+never extended by a different build or with different defaults.
 
 ## Physics scope and limitations
 

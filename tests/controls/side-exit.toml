@@ -1,0 +1,52 @@
+[gas]
+species     = "4He"
+pressure    = 0.0
+temperature = 293.0
+
+[beam]
+species     = "98Zr"
+energy      = 400.0
+energy_fwhm = 0.0
+
+[target]
+species  = "4He"
+compound = "102Mo"
+
+[windows.entrance]
+thickness_mg_cm2 = -1.0
+
+[windows.exit]
+thickness_mg_cm2 = -1.0
+
+[detector]
+eloss_bins = 100
+max_eloss  = 30.0
+strip      = 8
+
+[[reaction.step]]
+# The proton's CM speed exceeds the CM boost, so it can leave at wide lab
+# angles; the seed is chosen so it leaves through a side face.
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
+
+[reaction.step.evap]
+name = "1H"
+
+[reaction.step.res]
+name = "101Nb"
+
+[physics]
+straggling = false
+
+[run]
+events_per_strip = 1
+threads          = 1
+wait             = 0
+update           = 0
+max_time         = 2000.0
+sim_step         = 0.01
+method           = 0
+output           = "side-exit.root"
+file_opt         = "recreate"
+print_opt        = 0
+seed             = 109

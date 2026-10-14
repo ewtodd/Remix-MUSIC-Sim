@@ -15,7 +15,7 @@ ExitThickness -1 disabled
 ELossBins 100 bins
 MaxELoss 10 max loss
 strip -1 unreacted beam
-Eres 0.05 legacy percent FWHM
+Eres 0.05 legacy absolute sigma [MeV]
 NEvents 1 events per strip
 Threads 1 worker
 Wait 0 no wait

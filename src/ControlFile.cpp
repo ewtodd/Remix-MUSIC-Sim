@@ -29,6 +29,20 @@ Int_t ParseZeffName(const std::string &name) {
   return -1;
 }
 
+// atima14 and global need catima's optional GLOBAL library, which this build
+// lacks; without it catima returns z_eff = 0 or a wrong charge, not an error.
+Bool_t NeedsCatimaGlobal(Int_t code) {
+  return code == catima::z_eff_type::atima14 ||
+         code == catima::z_eff_type::global;
+}
+
+std::string CatimaGlobalError(const std::string &key,
+                              const std::string &value) {
+  return "'" + key + "' = '" + value +
+         "' requires catima's GLOBAL library, which this build lacks; use "
+         "'winger', which is what atima14 computes below 30 MeV/u";
+}
+
 Int_t ParseLowEnergyName(const std::string &name) {
   if (name == "srim_85")
     return catima::low_energy_types::srim_85;
@@ -65,20 +79,31 @@ Int_t Simulator::loadCtrlFile(const char *fileName) {
               << std::endl;
     return 0;
   }
+  std::ifstream input(fileName, std::ios::binary);
+  if (!input) {
+    std::cerr << "musicsim ERROR: cannot read control file '" << fileName
+              << "'." << std::endl;
+    return 0;
+  }
+  std::ostringstream text;
+  text << input.rdbuf();
+  return loadCtrlText(text.str(), fileName);
+}
 
+Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
   toml::table tbl;
   try {
-    tbl = toml::parse_file(fileName);
+    tbl = toml::parse(text, std::string_view(sourcePath));
   } catch (const toml::parse_error &error) {
     std::cerr << "musicsim ERROR: failed to parse TOML control file '"
-              << fileName << "': " << error.description() << " at "
+              << sourcePath << "': " << error.description() << " at "
               << error.source().begin << std::endl;
     return 0;
   }
 
   controlFileParams next;
   music::PhysicsConfig nextPhysics;
-  nextPhysics.mean.z_effective = catima::z_eff_type::atima14;
+  nextPhysics.mean.z_effective = catima::z_eff_type::winger;
   nextPhysics.mean.low_energy = catima::low_energy_types::srim_95;
   nextPhysics.straggling = nextPhysics.mean;
   nextPhysics.straggling.z_effective = catima::z_eff_type::pierce_blann;
@@ -317,6 +342,8 @@ Int_t Simulator::loadCtrlFile(const char *fileName) {
       if (code < 0)
         errors.push_back("'physics.z_effective' has unknown value '" + *value +
                          "'");
+      else if (NeedsCatimaGlobal(code))
+        errors.push_back(CatimaGlobalError("physics.z_effective", *value));
       else
         nextPhysics.mean.z_effective = static_cast<UChar_t>(code);
     } else if (tbl.at_path("physics.z_effective")) {
@@ -336,9 +363,13 @@ Int_t Simulator::loadCtrlFile(const char *fileName) {
     if (auto value = tbl.at_path("physics.straggling_z_effective")
                          .value<std::string>()) {
       const Int_t code = ParseZeffName(*value);
-      if (code < 0 || code == catima::z_eff_type::atima14)
-        errors.push_back("'physics.straggling_z_effective' must name a "
-                         "straggling-capable catima charge model");
+      if (code < 0)
+        errors.push_back(
+            "'physics.straggling_z_effective' has unknown value '" + *value +
+            "'");
+      else if (NeedsCatimaGlobal(code))
+        errors.push_back(
+            CatimaGlobalError("physics.straggling_z_effective", *value));
       else
         nextPhysics.straggling.z_effective = static_cast<UChar_t>(code);
     } else if (tbl.at_path("physics.straggling_z_effective")) {
@@ -568,6 +599,11 @@ Int_t Simulator::loadCtrlFile(const char *fileName) {
     if (reacted && i == next.NumEvapPart - 1 && next.residueExc[i] == 0)
       errors.push_back(
           "the final reaction step cannot use residue_excitation='forced'");
+    // Later steps are decays of a moving residue, not scattering off the beam.
+    if (reacted && i > 0 && next.angularDist[i] == 1)
+      errors.push_back("'" + base +
+                       ".angular_distribution' cannot be 'rutherford' after "
+                       "step 0");
   }
 
   const std::array<TString, 7> gases = {"4He", "He",   "helium", "3He",
@@ -613,19 +649,30 @@ Int_t Simulator::loadCtrlFile(const char *fileName) {
         errors.push_back("reaction.step[" + std::to_string(i) +
                          "] does not conserve A/Z from parent '" +
                          std::string(parent.Data()) + "'");
-      if (i == 0 && NuF->GetA(next.evap[i].Data()) == targetA &&
-          NuF->GetZ(next.evap[i].Data()) == targetZ &&
-          NuF->GetA(next.res[i].Data()) == beamA &&
-          NuF->GetZ(next.res[i].Data()) == beamZ && reacted &&
+      const Int_t evapA = NuF->GetA(next.evap[i].Data());
+      const Int_t evapZ = NuF->GetZ(next.evap[i].Data());
+      const Int_t resA = NuF->GetA(next.res[i].Data());
+      const Int_t resZ = NuF->GetZ(next.res[i].Data());
+      const Bool_t elasticAsLabelled = evapA == targetA && evapZ == targetZ &&
+                                       resA == beamA && resZ == beamZ;
+      const Bool_t elasticSwapped = !elasticAsLabelled && evapA == beamA &&
+                                    evapZ == beamZ && resA == targetA &&
+                                    resZ == targetZ;
+      if (i == 0 && reacted && elasticAsLabelled &&
           (next.residueExc[i] != 1 || next.angularDist[i] != 1))
         errors.push_back("elastic step 0 requires residue_excitation='ground' "
                          "and angular_distribution='rutherford'");
+      // theta_cm is the res direction, so the Rutherford deflection is only
+      // the beam's when res is the beam-like product.
+      if (i == 0 && reacted && elasticSwapped)
+        errors.push_back("elastic step 0 must list the beam-like product as "
+                         "'res' and the target-like product as 'evap'");
       parent = next.res[i];
     }
   }
 
   if (!errors.empty()) {
-    std::cerr << "musicsim ERROR: invalid control file '" << fileName
+    std::cerr << "musicsim ERROR: invalid control file '" << sourcePath
               << "':" << JoinErrors(errors) << std::endl;
     return 0;
   }
@@ -642,7 +689,8 @@ Int_t Simulator::loadCtrlFile(const char *fileName) {
 
   ctf = std::move(next);
   physics_ = std::move(nextPhysics);
-  ctrlFilePath_ = fileName;
+  ctrlFilePath_ = sourcePath;
+  ctrlFileText_ = text;
   SeedRandom(static_cast<UInt_t>(ctf.Seed));
   return 1;
 }

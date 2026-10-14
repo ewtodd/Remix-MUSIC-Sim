@@ -254,7 +254,7 @@ void Simulator::PreWarmCatima() {
   auto warmIon = [&](Int_t A, Int_t Z) {
     if (A <= 0 || Z <= 0)
       return;
-    // Warm both the mean (default, atima14) config and the straggling config:
+    // Warm both the mean config and the straggling config:
     // EnergyLoss::BuildTables and EnergyThroughWithStraggling now query catima
     // under each. DataPoint keys on Config, so the two land in distinct cache
     // slots. Warming both avoids avoidable cache misses in worker setup; the
@@ -374,7 +374,6 @@ Bool_t Simulator::SetupRun() {
                   << " MeV at gas surface (no entrance window)";
       std::cout << std::endl;
     }
-    beam_energy_accel = static_cast<Float_t>(ctf.BeamEnergy);
   }
   SetTargetParticle(ctf.target);
   if (Log.is_open())
@@ -504,14 +503,18 @@ Int_t Simulator::run() {
     if (updateExisting) {
       const auto *storedControl = dynamic_cast<TObjString *>(
           ROOTfile->Get("metadata/control_file_toml"));
-      std::ifstream currentControl(ctrlFilePath_.Data(), std::ios::binary);
-      std::ostringstream currentText;
-      if (currentControl)
-        currentText << currentControl.rdbuf();
-      if (!storedControl || !currentControl ||
-          storedControl->GetString() != currentText.str().c_str()) {
+      const TObjString *storedResolved = dynamic_cast<TObjString *>(
+          ROOTfile->Get("metadata/resolved_configuration"));
+      // The stored configuration ends with this file's total_entries line.
+      const Bool_t sameConfiguration =
+          storedResolved &&
+          storedResolved->GetString().BeginsWith(RunConfiguration().c_str());
+      if (!storedControl ||
+          storedControl->GetString() != ctrlFileText_.c_str() ||
+          !sameConfiguration) {
         std::cerr << "musicsim ERROR: update output provenance does not match "
-                     "the current control file."
+                     "this run's control file, resolved defaults, or code "
+                     "revision."
                   << std::endl;
         rootFile->Close();
         rootFile.reset();
@@ -658,6 +661,7 @@ Int_t Simulator::runMultiThreaded() {
   const Int_t totalEvents = ctf.NEvents;
   const TString baseOutput = ctf.FileName;
   const TString ctrlPath = ctrlFilePath_;
+  const std::string ctrlText = ctrlFileText_;
 
   if (ctrlPath.IsNull()) {
     std::cerr << "musicsim: multi-threaded mode requires a control file path."
@@ -689,12 +693,10 @@ Int_t Simulator::runMultiThreaded() {
     workerEventCounts.push_back(slice);
 
     futures.push_back(std::async(
-        std::launch::async, [ctrlPath, out, slice, workerOffset, w]() -> Int_t {
+        std::launch::async,
+        [ctrlPath, ctrlText, out, slice, workerOffset, w]() -> Int_t {
           Simulator worker(w + 1); // worker ids start at 1 (0 is master)
-          // loadCtrlFile takes char* (non-const); copy into a mutable buffer.
-          std::vector<char> path(ctrlPath.Data(),
-                                 ctrlPath.Data() + ctrlPath.Length() + 1);
-          if (worker.loadCtrlFile(path.data()) == 0)
+          if (worker.loadCtrlText(ctrlText, ctrlPath.Data()) == 0)
             return 0;
           worker.OverrideNEvents(slice);
           worker.OverrideOutputFile(out);
@@ -705,21 +707,39 @@ Int_t Simulator::runMultiThreaded() {
         }));
   }
 
-  // Block until every worker completes. std::future::get re-throws any
-  // exception that crossed the thread boundary.
+  const std::filesystem::path finalOutput(baseOutput.Data());
+  std::filesystem::path mergeOutput = finalOutput;
+  mergeOutput += ".tmp";
+  std::error_code fileError;
+  // On failure, delete only what this run created: the worker ROOT files and,
+  // once created, the merge file. Worker logs stay for diagnosis.
+  Bool_t ownsMergeOutput = kFALSE;
+  auto abandon = [&]() {
+    for (size_t worker = 0; worker < workerOutputs.size(); ++worker)
+      std::remove(workerOutputs[worker].Data());
+    if (ownsMergeOutput)
+      std::filesystem::remove(mergeOutput, fileError);
+    return 0;
+  };
+
+  // Wait for every worker, even after a failure, so none publishes its file
+  // after the cleanup. std::future::get re-throws exceptions from the worker.
+  Bool_t workersOk = kTRUE;
   for (size_t worker = 0; worker < futures.size(); ++worker) {
     try {
       if (futures[worker].get() == 0) {
         std::cerr << "musicsim ERROR: worker " << worker << " failed."
                   << std::endl;
-        return 0;
+        workersOk = kFALSE;
       }
     } catch (const std::exception &error) {
       std::cerr << "musicsim ERROR: worker " << worker
                 << " threw an exception: " << error.what() << std::endl;
-      return 0;
+      workersOk = kFALSE;
     }
   }
+  if (!workersOk)
+    return abandon();
 
   const Long64_t selectedStrips =
       static_cast<Long64_t>(ctf.stripLast - ctf.stripFirst + 1);
@@ -737,39 +757,36 @@ Int_t Simulator::runMultiThreaded() {
       std::cerr << "musicsim ERROR: worker " << worker
                 << " produced an incomplete or invalid ROOT file (expected "
                 << expected << " entries)." << std::endl;
-      return 0;
+      return abandon();
     }
   }
 
   std::cout << "Merging " << workerOutputs.size() << " worker outputs into "
             << baseOutput << " ..." << std::endl;
-  const std::filesystem::path finalOutput(baseOutput.Data());
-  std::filesystem::path mergeOutput = finalOutput;
-  mergeOutput += ".tmp";
-  std::error_code fileError;
   if (std::filesystem::exists(mergeOutput, fileError)) {
     std::cerr << "musicsim ERROR: refusing to overwrite stale temporary "
                  "output '"
               << mergeOutput.string() << "'." << std::endl;
-    return 0;
+    return abandon();
   }
+  ownsMergeOutput = kTRUE;
   TFileMerger merger(kFALSE);
   if (!merger.OutputFile(mergeOutput.c_str(), "RECREATE")) {
     std::cerr << "musicsim ERROR: could not create merge destination."
               << std::endl;
-    return 0;
+    return abandon();
   }
   for (const auto &p : workerOutputs) {
     if (!merger.AddFile(p.Data())) {
       std::cerr << "musicsim ERROR: could not add worker output '" << p
                 << "' to the merge." << std::endl;
-      return 0;
+      return abandon();
     }
   }
   Bool_t ok = merger.Merge();
   if (!ok) {
     std::cerr << "musicsim: merge failed." << std::endl;
-    return 0;
+    return abandon();
   }
   merger.CloseOutputFile();
   {
@@ -788,7 +805,7 @@ Int_t Simulator::runMultiThreaded() {
                 << std::endl;
       if (merged)
         merged->Close();
-      return 0;
+      return abandon();
     }
     merged->Close();
   }
@@ -796,7 +813,7 @@ Int_t Simulator::runMultiThreaded() {
   if (fileError) {
     std::cerr << "musicsim ERROR: could not publish merged output atomically: "
               << fileError.message() << std::endl;
-    return 0;
+    return abandon();
   }
   for (const auto &p : workerOutputs)
     std::remove(p.Data());

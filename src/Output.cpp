@@ -14,6 +14,12 @@
 #ifndef MUSICSIM_VERSION
 #define MUSICSIM_VERSION "dev"
 #endif
+#ifndef MUSICSIM_GIT_REV
+#define MUSICSIM_GIT_REV "unknown"
+#endif
+#ifndef MUSICSIM_CATIMA_REV
+#define MUSICSIM_CATIMA_REV "unknown"
+#endif
 
 // Initialize the "events_MeV" tree (detector-level output; branch layout
 // mirrors the experimental "events" tree from the MUSIC EventBuilder) and the
@@ -287,9 +293,9 @@ void Simulator::ResetBranches() {
     // and disallowed-step slots aren't confused with "particle has KE=0".
     evap_energy[er] = residue_energy[er] = -2.0f;
     evap_energy_exit[er] = residue_energy_exit[er] = -2.0f;
-    theta_cm[er] = phi_cm[er] = -1;
-    evap_theta[er] = evap_phi[er] = -1;
-    residue_theta[er] = residue_phi[er] = -1;
+    theta_cm[er] = phi_cm[er] = kAngleUnset;
+    evap_theta[er] = evap_phi[er] = kAngleUnset;
+    residue_theta[er] = residue_phi[er] = kAngleUnset;
     evap_stop_x[er] = evap_stop_y[er] = 0;
     evap_stop_z[er] = -1000;
     evap_stop_strip[er] = -2;
@@ -302,6 +308,93 @@ void Simulator::ResetBranches() {
   residue_termination = static_cast<Int_t>(TerminationReason::NotPropagated);
 }
 
+namespace {
+
+const char *ZeffName(Int_t code) {
+  switch (code) {
+  case catima::z_eff_type::none:
+    return "none";
+  case catima::z_eff_type::pierce_blann:
+    return "pierce_blann";
+  case catima::z_eff_type::anthony_landorf:
+    return "anthony_landorf";
+  case catima::z_eff_type::hubert:
+    return "hubert";
+  case catima::z_eff_type::winger:
+    return "winger";
+  case catima::z_eff_type::schiwietz:
+    return "schiwietz";
+  case catima::z_eff_type::global:
+    return "global";
+  case catima::z_eff_type::atima14:
+    return "atima14";
+  }
+  return "unknown";
+}
+
+const char *LowEnergyName(Int_t code) {
+  if (code == catima::low_energy_types::srim_85)
+    return "srim_85";
+  if (code == catima::low_energy_types::srim_95)
+    return "srim_95";
+  return "unknown";
+}
+
+} // namespace
+
+// Everything that determines the simulated physics, with defaults applied, plus
+// the code revisions. Update runs append only when this matches the file.
+std::string Simulator::RunConfiguration() const {
+  auto excitationName = [](Int_t model) {
+    return model == 0 ? "forced" : model == 1 ? "ground" : "uniform";
+  };
+  auto angularName = [](Int_t model) {
+    return model == 1 ? "rutherford" : "isotropic";
+  };
+#ifdef GLOBAL
+  const char *catimaGlobal = "true";
+#else
+  const char *catimaGlobal = "false";
+#endif
+  std::ostringstream resolved;
+  resolved.precision(17);
+  resolved << "schema_version = 4" << std::endl
+           << "musicsim_version = \"" << MUSICSIM_VERSION << "\"" << std::endl
+           << "git_revision = \"" << MUSICSIM_GIT_REV << "\"" << std::endl
+           << "catima_revision = \"" << MUSICSIM_CATIMA_REV << "\"" << std::endl
+           << "catima_global = " << catimaGlobal << std::endl
+           << "master_seed = " << ctf.Seed << std::endl
+           << "events_per_strip = " << ctf.NEvents << std::endl
+           << "strip_first = " << ctf.stripFirst << std::endl
+           << "strip_last = " << ctf.stripLast << std::endl
+           << "beam_species = \"" << ctf.beamName << "\"" << std::endl
+           << "beam_energy_mev = " << ctf.BeamEnergy << std::endl
+           << "beam_energy_fwhm_mev = " << ctf.KbFWHM << std::endl
+           << "gas_species = \"" << ctf.gas << "\"" << std::endl
+           << "gas_pressure_torr = " << ctf.pressure << std::endl
+           << "gas_temperature_k = " << ctf.temperature << std::endl
+           << "z_effective = \"" << ZeffName(physics_.mean.z_effective) << "\""
+           << std::endl
+           << "low_energy = \"" << LowEnergyName(physics_.mean.low_energy)
+           << "\"" << std::endl
+           << "straggling_z_effective = \""
+           << ZeffName(physics_.straggling.z_effective) << "\"" << std::endl
+           << "straggling = " << (physics_.stragglingEnabled ? "true" : "false")
+           << std::endl
+           << "stopping_model = \""
+           << (physics_.stoppingModel == 0   ? "catima"
+               : physics_.stoppingModel == 1 ? "srim"
+                                             : "mean")
+           << "\"" << std::endl
+           << "sim_step_cm = " << ctf.SimStep << std::endl
+           << "max_time_ns = " << ctf.MaxTime << std::endl;
+  for (Int_t step = 0; step < ctf.NumEvapPart; ++step)
+    resolved << "reaction_step_" << step << " = \"" << ctf.evap[step] << " + "
+             << ctf.res[step] << "; " << excitationName(ctf.residueExc[step])
+             << "; " << angularName(ctf.angularDist[step]) << "\"" << std::endl;
+  return resolved.str();
+}
+
 Bool_t Simulator::WriteRunMetadata(TFile *ROOTfile) {
   if (!ROOTfile || ROOTfile->IsZombie() || !ROOTfile->IsWritable())
     return kFALSE;
@@ -312,42 +405,11 @@ Bool_t Simulator::WriteRunMetadata(TFile *ROOTfile) {
     return kFALSE;
   metadata->cd();
 
-  std::ifstream input(ctrlFilePath_.Data());
-  std::ostringstream source;
-  if (input)
-    source << input.rdbuf();
-
-  auto excitationName = [](Int_t model) {
-    return model == 0 ? "forced" : model == 1 ? "ground" : "uniform";
-  };
-  auto angularName = [](Int_t model) {
-    return model == 1 ? "rutherford" : "isotropic";
-  };
-  std::ostringstream resolved;
   TTree *events = dynamic_cast<TTree *>(ROOTfile->Get("events_MeV"));
-  resolved.precision(17);
-  resolved << "schema_version = 3\n"
-           << "master_seed = " << ctf.Seed << "\n"
-           << "events_per_strip = " << ctf.NEvents << "\n"
-           << "strip_first = " << ctf.stripFirst << "\n"
-           << "strip_last = " << ctf.stripLast << "\n"
-           << "total_entries = " << (events ? events->GetEntries() : 0) << "\n"
-           << "beam_species = \"" << ctf.beamName << "\"\n"
-           << "beam_energy_mev = " << ctf.BeamEnergy << "\n"
-           << "gas_species = \"" << ctf.gas << "\"\n"
-           << "gas_pressure_torr = " << ctf.pressure << "\n"
-           << "gas_temperature_k = " << ctf.temperature << "\n"
-           << "straggling = " << (physics_.stragglingEnabled ? "true" : "false")
-           << "\n"
-           << "stopping_model = \""
-           << (physics_.stoppingModel == 0   ? "catima"
-               : physics_.stoppingModel == 1 ? "srim"
-                                             : "mean")
-           << "\"\n";
-  for (Int_t step = 0; step < ctf.NumEvapPart; ++step)
-    resolved << "reaction_step_" << step << " = \"" << ctf.evap[step] << " + "
-             << ctf.res[step] << "; " << excitationName(ctf.residueExc[step])
-             << "; " << angularName(ctf.angularDist[step]) << "\"\n";
+  std::ostringstream resolved;
+  resolved << RunConfiguration()
+           << "total_entries = " << (events ? events->GetEntries() : 0)
+           << std::endl;
 
   const std::string terminationCodes =
       "0=not_propagated, 1=reached_vertex, 2=stopped, "
@@ -356,7 +418,7 @@ Bool_t Simulator::WriteRunMetadata(TFile *ROOTfile) {
   const std::vector<std::pair<const char *, std::string>> records = {
       {"musicsim_version", MUSICSIM_VERSION},
       {"control_file_path", ctrlFilePath_.Data()},
-      {"control_file_toml", source.str()},
+      {"control_file_toml", ctrlFileText_},
       {"resolved_configuration", resolved.str()},
       {"termination_codes", terminationCodes},
       {"straggling_sampler",

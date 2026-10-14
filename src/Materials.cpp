@@ -207,8 +207,8 @@ Double_t Simulator::EnergyThroughWithStraggling(Int_t A, Int_t Z,
     return Ein_MeV;
   catima::Projectile proj{Double_t(A), Double_t(Z)};
   proj.T = Ein_MeV / A;
-  // Mean energy out from the default (atima14) config; straggling sigma_E from
-  // the straggling config, since atima14 returns sigma_E = 0.
+  // Mean energy out and straggling sigma_E come from separate configs, because
+  // the straggling charge model can differ from the mean one.
   catima::Result r;
   catima::Result rStr;
   {

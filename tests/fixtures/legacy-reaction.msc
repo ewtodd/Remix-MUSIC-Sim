@@ -1,0 +1,30 @@
+Legacy converter reaction fixture
+PARAMETER VALUE COMMENT
+Gas 4He fill gas
+Pressure 400 gas pressure [Torr]
+Temperature 293 gas temperature [K]
+beam 37Cl projectile
+Kb 92 legacy gas-surface energy
+KbFWHM 0.9 beam spread
+target 4He target
+compound 41K compound
+EntranceMaterial Ti window material
+EntranceThickness -1 disabled
+ExitMaterial Ti window material
+ExitThickness -1 disabled
+ELossBins 100 bins
+MaxELoss 30 max loss
+strip 8 reaction strip
+Eres 0.05 legacy absolute sigma [MeV]
+evap0Name 1H ejectile
+res0Name 40Ar residue
+NEvents 1 events per strip
+Threads 1 worker
+Wait 0 no wait
+Update 0 batch
+MaxTime 2000 maximum time
+SimStep 0.001 step
+Method 0 simulation
+FileName legacy-reaction.root output
+FileOpt recreate mode
+PrintOpt 0 quiet

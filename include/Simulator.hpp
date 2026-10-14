@@ -53,6 +53,9 @@ public:
   Simulator &operator=(const Simulator &) = delete;
 
   Int_t loadCtrlFile(const char *fileName);
+  // Parses control text already read from sourcePath. Workers use this so the
+  // whole run uses the bytes the master read, even if the file later changes.
+  Int_t loadCtrlText(const std::string &text, const char *sourcePath);
   Int_t run();
   Bool_t WantsVisualization() const { return ctf.Update != 0; }
 
@@ -144,6 +147,7 @@ private:
   void CreateTracesAndTrajectories();
   TTree *InitTree(TFile *ROOTfile, TString FileOpt);
   void ResetBranches();
+  std::string RunConfiguration() const;
   Bool_t WriteRunMetadata(TFile *ROOTfile);
   void UpdateVisuals(Int_t event, Double_t Kbr, Double_t zr, Double_t TOF,
                      Int_t Wait = 0);
@@ -290,7 +294,7 @@ private:
   Int_t requested_strip; // configured strip for this event (-1 = beam run)
   Int_t reaction_strip;  // actual reaction strip (-1 = no reaction occurred)
   ULong64_t event_index; // per-strip event index, stable across thread counts
-  Float_t beam_energy_accel;    // KE at the accelerator (= ctf.BeamEnergy)
+  Float_t beam_energy_accel;    // this event's accelerator KE, spread included
   Float_t beam_energy_gas;      // KE at the gas surface (after entrance window)
   Float_t beam_energy_reaction; // KE at the reaction vertex
   Float_t beam_energy_exit;     // KE after the exit window (unreacted events)
@@ -309,7 +313,10 @@ private:
   Float_t *evap_energy_exit;
   Float_t *residue_energy_exit; // only [residue_step] can be a real value:
                                 // superseded residues decay, they never exit
-  Float_t *theta_cm;            // CM emission angles [deg]
+  // Angle sentinel for a step that did not happen. Outside every valid theta
+  // and phi, unlike -1, which is a legal azimuth.
+  static constexpr Float_t kAngleUnset = -1000.0f;
+  Float_t *theta_cm; // CM emission angles [deg]
   Float_t *phi_cm;
   Float_t *evap_theta; // lab angles [deg]
   Float_t *evap_phi;
@@ -348,6 +355,8 @@ private:
   // runMultiThreaded summary lines reach stdout.
   Bool_t verbose_ = true;
   TString ctrlFilePath_;
+  // The control file as read once at load; metadata and workers use this copy.
+  std::string ctrlFileText_;
   ULong64_t eventOffset_ = 0;
 
   static constexpr Double_t c = 29.9792458; // speed of light, cm/ns

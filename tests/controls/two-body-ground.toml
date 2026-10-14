@@ -1,0 +1,49 @@
+[gas]
+species     = "4He"
+pressure    = 555.0
+temperature = 293.0
+
+[beam]
+species     = "87Rb"
+energy      = 354.0
+energy_fwhm = 0.9
+
+[target]
+species  = "4He"
+compound = "91Y"
+
+[windows.entrance]
+thickness_mg_cm2 = -1.0
+
+[windows.exit]
+thickness_mg_cm2 = -1.0
+
+[detector]
+eloss_bins = 100
+max_eloss  = 30.0
+strip      = 8
+
+[[reaction.step]]
+# A production-like 87Rb(a,p)90Sr channel. Ground state, so every event's
+# proton energy is fixed by its lab angle and the beam energy at the vertex.
+residue_excitation   = "ground"
+angular_distribution = "isotropic"
+
+[reaction.step.evap]
+name = "1H"
+
+[reaction.step.res]
+name = "90Sr"
+
+[run]
+events_per_strip = 200
+threads          = 1
+wait             = 0
+update           = 0
+max_time         = 2000.0
+sim_step         = 0.001
+method           = 0
+output           = "two-body-ground.root"
+file_opt         = "recreate"
+print_opt        = 0
+seed             = 110
