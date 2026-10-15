@@ -21,5 +21,6 @@ lib/
 result
 result-*
 
-# Top-level musicsim binary from `make`
+# Top-level binaries from `make`
 /musicsim
+/talys-cache

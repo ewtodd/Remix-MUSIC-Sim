@@ -34,19 +34,21 @@ nix build
 ./result/bin/musicsim ControlExamples/37Cl_alpha_n/37Cl_alpha_n_bulk.toml
 ```
 
-`nix build` also ships the regression-suite binaries
-(`legacy-msc-to-toml`, `root_checks`, `vavilov_statistics`, `nuclide_loader`,
-`excitation_table`) in `result/bin`. To run the suite — schema, converter,
-nuclide-loader, distribution, level-table, conservation, kinematics,
-branch-weighting, boundary, reproducibility, and ROOT update tests — build
-first, then:
+`nix build` also ships `srim-cache` and `talys-cache` and the regression-suite
+binaries (`legacy-msc-to-toml`, `root_checks`, `vavilov_statistics`,
+`nuclide_loader`, `excitation_table`, `talys_tables`) in `result/bin`. To run
+the suite — schema, converter, nuclide-loader, distribution, level-table,
+conservation, kinematics, branch-weighting, boundary, reproducibility, and
+ROOT update tests — build first, then:
 
 ```bash
 bash tests/run-tests.sh
 ```
 
 It finds everything under `result/bin` by default; the `MUSICSIM_BIN`,
-`CONVERTER_BIN`, and `*_CHECK_BIN` environment variables override each path.
+`CONVERTER_BIN`, `TALYSCACHE_BIN`, and `*_CHECK_BIN` environment variables
+override each path. The suite runs `talys-cache` against a stand-in for
+TALYS, so it needs neither TALYS nor its data.
 
 For working on the sources inside the dev shell (`nix develop`), the Makefile
 targets are still there: `make -j2` builds by hand, `make -j2 check` runs the
@@ -60,6 +62,29 @@ To validate a control without running events:
 ```bash
 ./musicsim --check path/to/control.toml
 ```
+
+### Binary cache
+
+`nix build` includes TALYS for `talys-cache`, with its 8 GB nuclear-structure
+database, and builds catima and TALYS from source. TALYS's source comes from
+nds.iaea.org, which sometimes refuses automated downloads. e-desktop serves
+its Nix store as a binary cache. Another machine can fetch these from it
+instead, along with this simulator at any revision built there:
+
+- URL: `https://cache.ethanwtodd.com`
+- Signing key: `e-desktop:35K0AY3HcDOSHVQ/lklmbvmrXjIspM/LYf7yek5lyVA=`
+
+Add both to that machine's Nix configuration, for example in `nix.conf`:
+
+```ini
+extra-substituters = https://cache.ethanwtodd.com
+extra-trusted-public-keys = e-desktop:35K0AY3HcDOSHVQ/lklmbvmrXjIspM/LYf7yek5lyVA=
+```
+
+On NixOS, use `nix.settings.substituters` and `nix.settings.trusted-public-keys`.
+Do not make the flake's inputs follow another nixpkgs (for example
+`talys-nix.inputs.nixpkgs.follows`). That changes the derivation hashes, and
+the cache then has nothing to serve.
 
 ## Strict TOML control schema
 
@@ -206,7 +231,9 @@ The excitation model is selected independently for each step:
   permit the remaining configured decay chain. It is rejected on the final
   step.
 - `talys`: excitation is drawn from the level table named by `level_table`,
-  a path resolved relative to the control file's directory.
+  a path resolved relative to the control file's directory. Without
+  `level_table`, each strip uses a table TALYS computes for it (see
+  [Per-strip TALYS tables](#per-strip-talys-tables)).
 
 The angular model is also per step:
 
@@ -247,9 +274,9 @@ weight               = 0.01
 
 Branch weights are user-supplied cross-section ratios within the simulated
 acceptance (for example, Rutherford integrated above `theta_cm_min_deg`
-against the Talys inelastic cross section); the simulator does not derive
-them. A `talys` branch's weight is its cross section with the whole table
-open.
+against the Talys inelastic cross section). The simulator derives them only
+for per-strip TALYS tables, below. A `talys` branch's weight is its cross
+section with the whole table open.
 
 A level table is whitespace-separated text with `#` comments. `ground 0 w`
 and `level E_ex w` rows are point masses; `bin lo hi w` is a uniform
@@ -274,6 +301,106 @@ tables, it must instead include at least one `ground` + `rutherford` branch
 with weight `> 0`; its other branches may be inelastic. `rutherford` is valid
 only on step 0, in a branch or not: later steps are decays of a moving
 residue, not scattering off the beam.
+
+### Per-strip TALYS tables
+
+A `talys` branch without `level_table` samples, in each reaction strip, a
+table TALYS computed for that strip, and the step's weights are computed per
+strip. The step must be step 0 of an (a,a') reaction (a `4He` target listed
+as `evap`, the beam as `res`) with exactly two branches and no `weight` keys:
+
+```toml
+[[reaction.step.branch]] # elastic
+residue_excitation   = "ground"
+angular_distribution = "rutherford"
+theta_cm_min_deg     = 10.0
+
+[[reaction.step.branch]] # inelastic, one TALYS table per strip
+residue_excitation   = "talys"
+angular_distribution = "isotropic"
+```
+
+Each strip's weights, in mb, are:
+
+- elastic: TALYS's elastic cross section above that branch's
+  `theta_cm_min_deg`, shape plus compound elastic, since both leave the
+  residue in its ground state;
+- inelastic: the strip's TALYS (a,a') cross section, the sum of its table.
+
+The elastic branch also draws θ_cm from that strip's TALYS distribution
+instead of pure Rutherford, still with one random draw. TALYS tabulates it as
+a ratio to Rutherford every 2°. Within each 2° cell the ratio is held at its
+mean and the angle is exact Rutherford, so the weight is exactly the integral
+of what is sampled. Near and above the Coulomb barrier this matters at large
+angles. For 37Cl at E_cm 8.65 MeV, elastic above 60° is 0.39 of Rutherford
+and above 120° 0.17; above 10° it is within 2%.
+
+E_cm is the CM energy of the mean beam energy at the strip's centre: no
+straggling, integrated in `sim_step` slices as the transport does. The open
+fraction still applies at each vertex. The inelastic branch must be
+`isotropic`, since its weight is angle-integrated.
+
+Strips where the simulation cannot use TALYS are warned about. `talys-cache`
+prints them as it runs, and `musicsim` prints each as a `musicsim WARNING:`
+line at startup and keeps it in `metadata/warnings`:
+
+- a strip below the first excited level has no (a,a') channel, so every
+  reaction there is elastic;
+- TALYS gives no elastic angular distribution far below the barrier (all
+  zeros, from E_cm of about 0.1 MeV down), so elastic there is pure
+  Rutherford, which it is in practice;
+- a strip whose centre lies beyond the mean beam's range gets no table, and
+  any beam that straggles that far scatters elastically with Rutherford
+  angles. Its resolved-configuration line says so instead of giving weights.
+
+A beam meant to stop in the detector is the usual way to meet all three.
+
+`musicsim` only reads these tables, and stops with a message naming the
+missing one. Generate them first; like `srim-cache`, it skips tables that
+already exist:
+
+```bash
+./result/bin/talys-cache path/to/control.toml
+```
+
+`talys-cache` sets up the beam and detector exactly as `musicsim` does. It runs
+TALYS for alpha on the beam nucleus at rest, at the alpha energy with the
+strip's E_cm, for each strip's table not yet cached. Tables go in `talys/`
+under the directory of `run.output`, beside the SRIM tables. A table's file
+name ends in the MD5 of its exact TALYS input, so a change to the beam, gas,
+geometry, strips, or `[talys]` settings gives new tables, while identical
+inputs share one. Each table also records its input, and `musicsim` refuses a
+table whose recorded input is not the strip's. Run `srim-cache` first when
+`physics.stopping` needs SRIM tables, since the strip energies depend on them.
+
+A table holds the residue's population right after binary alpha emission,
+from TALYS's `outpopulation` output: discrete levels as `level` rows and
+continuum bins as `bin` rows, weights in mb, ground state excluded. Its sum
+must match TALYS's binary alpha cross section to 0.1%. Below the first excited
+level the channel is closed: there are no such rows and the weight is 0. The
+table also holds `elastic θ ratio` rows from TALYS's elastic angular
+distribution (`outangle`, `fileelastic`). TALYS's shape elastic must match
+Rutherford at the strip's E_cm to 1%, which catches a wrong frame or energy.
+
+The optional `[talys]` table configures TALYS and is an error without such a
+branch:
+
+```toml
+[talys]
+alpha_omp = 9          # default: 9 when an Atomki-V2 potential exists for the beam nucleus, else 2
+keywords  = ["bins 40"] # appended to the defaults; TALYS keeps a keyword's last value
+```
+
+`alpha_omp` 2 is McFadden-Satchler and 9 is Atomki-V2, which covers Z 26–83.
+The defaults are the MUSIC analysis's shared TALYS settings: `ldmodel 1`,
+`maxlevelstar 30`, `transpower 20`, `ecisstep 0.02`, `xseps`, `transeps`, and
+`popeps 1.e-30`, `elow 1.e-06`, `widthfluc 20`, `widthmode 1`,
+`preequilibrium n`, `bins 80`, `equidistant y`, `segment 4`. A keyword may not
+set `projectile`, `element`, `mass`, `energy`, `alphaomp`, `outpopulation`,
+`outangle`, or `fileelastic`. TALYS is `TALYS_BIN`, else the one the flake
+built in; the potentials are in `TALYS_ATOMKI_V2_DIR`, else the flake's.
+Tables are keyed by TALYS input, not by TALYS build, so delete `talys/` after
+changing TALYS.
 
 ### Layers and stopping-power models
 
@@ -469,14 +596,17 @@ exit, 4 upstream exit, 5 side exit, 6 timeout, and 7 invalid state.
 The `metadata` directory also stores the software version, the control path,
 the exact control text as read at startup, each level table as read at
 startup (`level_table_N`, with its path in `level_table_N_path`), the
-resolved configuration (schema version 5), and the straggling model. Worker
+resolved configuration (schema version 5), the straggling model, and any
+startup warnings (`warnings`, written only when there are some). Worker
 threads use these copies, so a file edited mid-run cannot reach part of the
 run.
 
 The resolved configuration records every physics default actually applied
 (`z_effective`, `low_energy`, `straggling_z_effective`, `sim_step_cm`,
 `max_time_ns`, `beam_energy_fwhm_mev`, ...), each reaction step's branches
-with their models, weights, and level-table paths and MD5s, and
+with their models, weights, and level-table paths and MD5s, each strip's
+beam energy, E_cm, computed weights, and TALYS table path and MD5
+(`reaction_step_0_strip_N`), and
 `git_revision` (a `-dirty` suffix means uncommitted changes),
 `catima_revision`, and `catima_global`. Defaults can change between builds, so
 a control file alone does not determine the physics.
@@ -501,9 +631,11 @@ run also refuses any older file; regenerate it instead.
   `1e4` MeV and clamp outside that range.
 - `forced` and `uniform` excitation are continuum models. `talys` samples
   discrete level energies and continuum bins from a precomputed table, but
-  carries no spin/parity, widths, gamma decay, or lifetimes, and the table is
-  computed at one beam energy rather than per vertex. Branch weights are
-  fixed user inputs, not energy-dependent cross sections.
+  carries no spin/parity, widths, gamma decay, or lifetimes. A `level_table`
+  is computed at one beam energy, and per-strip TALYS tables at each strip's
+  centre, not per vertex. Branch weights are fixed user inputs except with
+  per-strip tables, where they follow each strip's energy and the elastic
+  angles follow TALYS too; their inelastic angles are isotropic.
 - Detector response includes only the selected independent Gaussian noise
   model; thresholds, saturation, gain drift, correlations, digitization, and
   non-Gaussian electronics response are absent.

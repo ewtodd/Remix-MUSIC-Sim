@@ -11,6 +11,8 @@ root_checks=${ROOT_CHECK_BIN:-"$repo_dir/result/bin/root_checks"}
 vavilov_checks=${VAVILOV_CHECK_BIN:-"$repo_dir/result/bin/vavilov_statistics"}
 nuclide_checks=${NUCLIDE_CHECK_BIN:-"$repo_dir/result/bin/nuclide_loader"}
 excitation_checks=${EXCITATION_CHECK_BIN:-"$repo_dir/result/bin/excitation_table"}
+talys_checks=${TALYS_CHECK_BIN:-"$repo_dir/result/bin/talys_tables"}
+talys_cache=${TALYSCACHE_BIN:-"$repo_dir/result/bin/talys-cache"}
 temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/remix-music-tests.XXXXXX")
 trap 'test -n "${temp_dir:-}" && rm -rf -- "$temp_dir"' EXIT
 
@@ -43,6 +45,14 @@ expect_check_error invalid-branch-forced \
   "must be 'ground', 'uniform', or 'talys'"
 expect_check_error invalid-elastic-unweighted \
   'elastic step 0 requires a branch'
+expect_check_error invalid-talys-weight 'computes its weights per strip'
+expect_check_error invalid-talys-structure 'needs exactly two branches'
+expect_check_error invalid-talys-angular "must be 'isotropic' for a talys-cache"
+expect_check_error invalid-talys-step1 'is only supported on step 0'
+expect_check_error invalid-talys-steplevel 'goes in a [[reaction.step.branch]]'
+expect_check_error invalid-talys-target "needs target.species = '4He'"
+expect_check_error invalid-talys-block '[talys] is only used by talys branches'
+expect_check_error invalid-talys-keyword "sets 'energy', which talys-cache"
 expect_check_error invalid-sim-step "'run.sim_step' must be finite and > 0"
 expect_check_error invalid-atima14 "requires catima's GLOBAL library"
 expect_check_error invalid-global-straggling "requires catima's GLOBAL library"
@@ -100,8 +110,9 @@ printf '%s\n' '[3/10] testing nuclide loaders (ERROR lines below are expected: m
 printf '%s\n' '[4/10] validating Vavilov interpolation and limits'
 "$vavilov_checks"
 
-printf '%s\n' '[5/10] testing Talys level-table loading and sampling'
+printf '%s\n' '[5/10] testing level tables, TALYS output parsing, and the Rutherford integral'
 "$excitation_checks" "$repo_dir/tests/fixtures/talys-levels.tab" "$temp_dir"
+"$talys_checks" "$repo_dir/tests/fixtures"
 
 run_control() {
   local control=$1
@@ -178,6 +189,58 @@ done
 run_control talys-step
 "$root_checks" standard "$temp_dir/talys-step.root" 40
 "$root_checks" talys "$temp_dir/talys-step.root"
+# Per-strip TALYS tables: musicsim will not run without them, talys-cache
+# builds each once (with a fake TALYS here), and weights follow strip by strip.
+(cd "$temp_dir" && expect_failure "$simulator" \
+  "$repo_dir/tests/controls/talys-cache.toml")
+grep -F 'run: talys-cache' "$temp_dir/expected-failure.log" >/dev/null ||
+  fail 'musicsim ran without its per-strip TALYS tables'
+build_talys_tables() {
+  (cd "$temp_dir" && TALYS_BIN="$repo_dir/tests/fake-talys.sh" \
+    "$talys_cache" "$repo_dir/tests/controls/$1.toml" \
+    >"$temp_dir/$1-build.log" 2>&1) || {
+    sed -n '1,80p' "$temp_dir/$1-build.log" >&2
+    fail "talys-cache failed for $1"
+  }
+  grep -F "$2" "$temp_dir/$1-build.log" >/dev/null ||
+    fail "talys-cache did not report for $1: $2"
+}
+build_talys_tables talys-cache '8 generated, 0 already cached, 0 failed'
+grep -F "strip 9: no (a,a') channel open" "$temp_dir/talys-cache-build.log" \
+  >/dev/null || fail 'talys-cache did not report the closed strip'
+build_talys_tables talys-cache '0 generated, 8 already cached, 0 failed'
+run_control talys-cache
+"$root_checks" standard "$temp_dir/talys-cache.root" 3200
+"$root_checks" computed-weights "$temp_dir/talys-cache.root" 34 120
+# The fake closes (a,a') below E_cm = 7 MeV, in strip 9: musicsim warns and
+# records it.
+grep -F 'musicsim WARNING: strip 9 (E_cm' "$temp_dir/talys-cache.log" \
+  >/dev/null || fail 'musicsim did not warn about the closed strip'
+"$root_checks" metadata-contains "$temp_dir/talys-cache.root" warnings \
+  "no (a,a') channel open"
+# A table under another strip's name was made from another TALYS input.
+tables=("$temp_dir"/talys/*.tab)
+cp "${tables[0]}" "${tables[1]}"
+(cd "$temp_dir" && expect_failure "$simulator" \
+  "$repo_dir/tests/controls/talys-cache.toml")
+grep -F 'was not made from strip' "$temp_dir/expected-failure.log" \
+  >/dev/null || fail "musicsim used a table made from another strip's input"
+# A beam that stops in strip 14: strips past it get no table, and both those
+# and the closed strips are reported, printed, and recorded.
+build_talys_tables talys-cache-stops \
+  "2 generated, 0 already cached, 0 failed, 2 beyond the beam's range"
+run_control talys-cache-stops
+"$root_checks" standard "$temp_dir/talys-cache-stops.root" 16
+for warning in 'strip 15: the mean beam stops before the strip centre' \
+  'strip 16: the mean beam stops before the strip centre' \
+  'strip 13 (E_cm' 'gave no elastic angular distribution'; do
+  grep -F 'musicsim WARNING:' "$temp_dir/talys-cache-stops.log" |
+    grep -F -- "$warning" >/dev/null || fail "musicsim did not warn: $warning"
+  "$root_checks" metadata-contains "$temp_dir/talys-cache-stops.root" \
+    warnings "$warning"
+done
+"$root_checks" metadata-contains "$temp_dir/talys-cache-stops.root" \
+  resolved_configuration 'beam stops before the strip centre: elastic only'
 
 printf '%s\n' '[9/10] testing thread-count-independent events and merge output'
 run_control repro-single

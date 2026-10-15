@@ -85,12 +85,29 @@
         "type": "github"
       }
     },
+    "nixpkgs_3": {
+      "locked": {
+        "lastModified": 1791260994,
+        "narHash": "sha256-Miqqk/ammqnTUxaoCyvtwoPeLbI1ksFyLxi/CazZpWY=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "151fa4e8ddfdd8dd25d945ad94ed54a13de9f6e4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "catima-src": "catima-src",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "srim-nix": "srim-nix"
+        "srim-nix": "srim-nix",
+        "talys-nix": "talys-nix"
       }
     },
     "srim-nix": {
@@ -139,6 +156,24 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "talys-nix": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_3"
+      },
+      "locked": {
+        "lastModified": 1791388822,
+        "narHash": "sha256-ilBDHiCuRpULJX9TBBQx+cGBqlqEr1HjtUYYHXn9+qk=",
+        "owner": "ewtodd",
+        "repo": "talys-nix",
+        "rev": "a7f8ba3a78557104c3ae41083608b8765173ffad",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ewtodd",
+        "repo": "talys-nix",
         "type": "github"
       }
     }

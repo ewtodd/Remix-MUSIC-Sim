@@ -418,7 +418,7 @@ Bool_t Simulator::SetupRun() {
             << " = " << minEx[step] << std::endl;
     }
   }
-  return kTRUE;
+  return PrepareStripTables();
 }
 
 UInt_t Simulator::EventSeed(Int_t strip, ULong64_t eventIndex) const {

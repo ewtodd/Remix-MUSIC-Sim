@@ -11,6 +11,9 @@
     # "mean" read. Its nixpkgs is left alone: the wine wrapper is pinned to
     # what that flake tested.
     srim-nix.url = "github:ewtodd/SRIM-nix";
+    # TALYS, for the level tables that residue_excitation = "talys" reads.
+    # Like srim-nix, it keeps the nixpkgs that flake tested.
+    talys-nix.url = "github:ewtodd/talys-nix";
   };
   outputs =
     {
@@ -19,15 +22,18 @@
       flake-utils,
       catima-src,
       srim-nix,
+      talys-nix,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        version = "26.10.14";
+        version = "26.10.15";
         # Recorded in every output's metadata; -dirty marks uncommitted changes.
         gitRevision = self.shortRev or self.dirtyShortRev or "unknown";
         make-srim-table = srim-nix.packages.${system}.make-srim-table;
+        talys = talys-nix.packages.${system}.talys;
+        talys-potentials = talys-nix.packages.${system}.talys-atomki-v2-potentials;
         catima = pkgs.stdenv.mkDerivation {
           pname = "catima";
           version = "75d22b2";
@@ -51,7 +57,9 @@
           buildPhase = ''
             make CATIMA_PREFIX=${catima} VERSION=${version} ASSETS_DIR_OUT=$out/assets \
               GIT_REV=${gitRevision} CATIMA_REV=${catima.version} \
-              SRIM_TABLE_BIN=${make-srim-table}/bin/make-srim-table
+              SRIM_TABLE_BIN=${make-srim-table}/bin/make-srim-table \
+              TALYS_BIN=${talys}/bin/talys \
+              TALYS_ATOMKI_V2_DIR=${talys-potentials}/share/talys/atomki-v2
             # Regression-suite check binaries (tests/run-tests.sh). Built here
             # so `nix build` ships them and the suite needs no make or dev
             # shell: point *_BIN at result/bin or use its defaults.
@@ -65,11 +73,15 @@
             # store path it carries; still a deliberate, occasional step, not
             # part of a simulation run.
             cp srim-cache $out/bin/
+            # talys-cache runs TALYS for the per-strip level tables a control
+            # needs, the same deliberate pre-pass as srim-cache.
+            cp talys-cache $out/bin/
             cp legacy-msc-to-toml $out/bin/
             cp lib/tests/root_checks \
                lib/tests/vavilov_statistics \
                lib/tests/nuclide_loader \
-               lib/tests/excitation_table $out/bin/
+               lib/tests/excitation_table \
+               lib/tests/talys_tables $out/bin/
             cp -r assets/. $out/assets/
           '';
         };
@@ -83,12 +95,15 @@
             clang-tools
             taplo
             make-srim-table
+            talys
           ];
           shellHook = ''
             export CATIMA_PREFIX=${catima}
             export CATIMA_REV=${catima.version}
             export MUSICSIM_VERSION=${version}
             export SRIM_TABLE_BIN=${make-srim-table}/bin/make-srim-table
+            export TALYS_BIN=${talys}/bin/talys
+            export TALYS_ATOMKI_V2_DIR=${talys-potentials}/share/talys/atomki-v2
             export CPLUS_INCLUDE_PATH="$PWD/include''${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
             export ROOT_INCLUDE_PATH="$PWD/include:${pkgs.root}/include"
             export LD_LIBRARY_PATH="$PWD/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

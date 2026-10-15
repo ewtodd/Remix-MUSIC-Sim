@@ -45,6 +45,7 @@
 #include "ExcitationTable.hpp"
 #include "NuclideFinder.hpp"
 #include "Particle.hpp"
+#include "TalysTables.hpp"
 
 class Simulator {
 public:
@@ -56,8 +57,16 @@ public:
     Double_t weight = -1.0; // relative; normalized at load
     std::string levelTable; // resolved path; only when residueExc == 3
     music::ExcitationTable table;
+    // talys without level_table: talys-cache's table for each strip.
+    Bool_t perStrip = kFALSE;
+    std::vector<music::ExcitationTable> stripTable; // index = strip
+    // Weight per strip [mb] in a step whose weights are computed.
+    std::vector<Double_t> stripWeight; // index = strip
+    // The elastic branch of such a step: TALYS's elastic distribution.
+    std::vector<music::ElasticTable> stripElastic; // index = strip
   };
   static constexpr Int_t kMaxBranchesPerStep = 8;
+  static constexpr Int_t kReadoutStrips = 18; // strips 0..17
 
   Simulator(Int_t workerId = 0);
   ~Simulator();
@@ -74,6 +83,9 @@ public:
                const std::map<std::string, std::string> *levelTables = nullptr);
   Int_t run();
   Bool_t WantsVisualization() const { return ctf.Update != 0; }
+  // For talys-cache: sets up the beam and detector and lists the per-strip
+  // TALYS tables this control needs, without reading any.
+  Bool_t PlanTalysTables(std::vector<music::TalysRequest> &requests);
 
   // Used by the MT driver to repurpose a per-worker instance.
   void OverrideNEvents(Int_t n) { ctf.NEvents = n; }
@@ -175,6 +187,14 @@ private:
   Int_t SelectBranch(Int_t er, Double_t EneAvail);
   Bool_t SampleExcitation(const ExcitationBranch &branch, Int_t er,
                           Double_t EneAvail, Double_t &Ex);
+  // The table a talys branch samples in the strip being simulated.
+  const music::ExcitationTable &
+  BranchTable(const ExcitationBranch &branch) const;
+
+  // Per-strip TALYS tables and computed weights.
+  void StripZRange(Int_t StpID, Double_t &MinZ, Double_t &MaxZ) const;
+  Double_t MeanBeamEnergyAfter(Double_t energy, Double_t length);
+  Bool_t PrepareStripTables();
   void PrintCompoundEexc(Double_t Kb, Double_t **DeltaEB);
 
   // Lifecycle / control.
@@ -380,6 +400,14 @@ private:
   std::string ctrlFileText_;
   // Level tables as read once at load, keyed by resolved path; same use.
   std::map<std::string, std::string> levelTableText_;
+  // A worker's view of the master's tables; per-strip tables come from here.
+  const std::map<std::string, std::string> *masterTables_ = nullptr;
+  // Per-strip TALYS tables this run needs (index = strip), from SetupRun.
+  std::vector<music::TalysRequest> talysRequests_;
+  Bool_t planTalysOnly_ = kFALSE;
+  // Conditions a user must know about, printed at setup and kept in metadata.
+  std::vector<std::string> warnings_;
+  Int_t simStrip_ = -1; // strip whose events are being simulated
   ULong64_t eventOffset_ = 0;
 
   static constexpr Double_t c = 29.9792458; // speed of light, cm/ns
@@ -423,6 +451,10 @@ private:
     // one implicit branch of weight 1 built from the scalars above.
     std::array<std::vector<ExcitationBranch>, MaxNumEvapPart> branches;
     std::array<Bool_t, MaxNumEvapPart> hasBranchTables{};
+    // A step with a talys-cache branch draws by per-strip computed weights.
+    std::array<Bool_t, MaxNumEvapPart> computedWeights{};
+    Bool_t hasTalysBlock = kFALSE;
+    music::TalysSettings talys;
     Double_t BeamEnergy = std::numeric_limits<Double_t>::quiet_NaN();
     Double_t KbFWHM = 0; // MeV FWHM at the accelerator
     TString entranceMaterial = "Ti";

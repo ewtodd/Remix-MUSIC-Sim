@@ -93,8 +93,8 @@ Int_t ParseAngularName(const std::string &name) {
   return -1;
 }
 
-// `level_table` is required exactly when the model is talys. A relative path
-// is resolved against the directory holding the control file.
+// `level_table` names a talys model's table; without one, talys-cache builds
+// a table per strip. A relative path resolves against the control's directory.
 void ReadLevelTable(const toml::table &table, const std::string &path,
                     Int_t residueExc, const std::filesystem::path &controlDir,
                     std::string &levelTable, std::vector<std::string> &errors) {
@@ -110,11 +110,8 @@ void ReadLevelTable(const toml::table &table, const std::string &path,
                      ".level_table' requires residue_excitation='talys'");
     return;
   }
-  if (!present) {
-    if (residueExc == 3)
-      errors.push_back("missing required key '" + path + ".level_table'");
+  if (!present)
     return;
-  }
   const std::filesystem::path given(*value);
   levelTable =
       given.is_absolute() ? given.string() : (controlDir / given).string();
@@ -124,7 +121,7 @@ void ReadLevelTable(const toml::table &table, const std::string &path,
 // minimum-excitation chain it relies on assumes one model per step.
 void ParseBranch(const toml::table &table, const std::string &path,
                  Double_t stepThetaMin, const std::filesystem::path &controlDir,
-                 Simulator::ExcitationBranch &branch,
+                 Simulator::ExcitationBranch &branch, Bool_t &weightGiven,
                  std::vector<std::string> &errors) {
   CheckKeys(table,
             {"residue_excitation", "angular_distribution", "theta_cm_min_deg",
@@ -155,12 +152,14 @@ void ParseBranch(const toml::table &table, const std::string &path,
                      ".angular_distribution' must be 'isotropic' or "
                      "'rutherford'");
 
+  // Whether a weight is required depends on the whole step; see below.
+  weightGiven = table.contains("weight");
   const std::optional<Double_t> weight = table["weight"].value<Double_t>();
-  if (!weight)
-    errors.push_back("missing or invalid number '" + path + ".weight'");
-  else if (!std::isfinite(*weight) || *weight < 0.0)
+  if (weightGiven && !weight)
+    errors.push_back("'" + path + ".weight' must be a number");
+  else if (weightGiven && (!std::isfinite(*weight) || *weight < 0.0))
     errors.push_back("'" + path + ".weight' must be finite and >= 0");
-  else
+  else if (weightGiven)
     branch.weight = *weight;
 
   branch.thetaCmMinDeg = stepThetaMin;
@@ -177,10 +176,12 @@ void ParseBranch(const toml::table &table, const std::string &path,
 
   ReadLevelTable(table, path, branch.residueExc, controlDir, branch.levelTable,
                  errors);
+  branch.perStrip = branch.residueExc == 3 && branch.levelTable.empty();
 }
 
-// Reads a step's branch tables and normalizes their weights. Branch tables
-// replace the step-level model keys, so those must then be absent.
+// Reads a step's branch tables and normalizes their weights, unless a
+// talys-cache branch makes them per strip. Step-level model keys must be
+// absent.
 void ParseStepBranches(const toml::table &step, const std::string &base,
                        Double_t stepThetaMin,
                        const std::filesystem::path &controlDir,
@@ -204,15 +205,46 @@ void ParseStepBranches(const toml::table &step, const std::string &base,
   }
 
   Double_t totalWeight = 0.0;
+  Bool_t computed = kFALSE;
+  std::vector<Bool_t> weightGiven(tables->size(), kFALSE);
   for (size_t i = 0; i < tables->size(); ++i) {
     const std::string path = base + ".branch[" + std::to_string(i) + "]";
     Simulator::ExcitationBranch branch;
+    Bool_t given = kFALSE;
     ParseBranch(*(*tables)[i].as_table(), path, stepThetaMin, controlDir,
-                branch, errors);
+                branch, given, errors);
+    weightGiven[i] = given;
+    computed = computed || branch.perStrip;
     if (branch.weight > 0.0)
       totalWeight += branch.weight;
     branches.push_back(branch);
   }
+  if (computed) {
+    // TALYS gives the inelastic weight and the Rutherford integral the
+    // elastic one, strip by strip, so the step must be exactly that pair.
+    Int_t perStrip = 0;
+    Int_t elastic = 0;
+    for (size_t i = 0; i < branches.size(); ++i) {
+      if (weightGiven[i])
+        errors.push_back("'" + base + ".branch[" + std::to_string(i) +
+                         "].weight' cannot be set: a step with a talys-cache "
+                         "branch computes its weights per strip");
+      if (branches[i].perStrip)
+        ++perStrip;
+      else if (branches[i].residueExc == 1 && branches[i].angularDist == 1)
+        ++elastic;
+    }
+    if (branches.size() != 2 || perStrip != 1 || elastic != 1)
+      errors.push_back("'" + base +
+                       "' with a talys-cache branch needs exactly two "
+                       "branches: ground + rutherford, and talys without "
+                       "level_table");
+    return;
+  }
+  for (size_t i = 0; i < branches.size(); ++i)
+    if (!weightGiven[i])
+      errors.push_back("missing or invalid number '" + base + ".branch[" +
+                       std::to_string(i) + "].weight'");
   if (!(totalWeight > 0.0)) {
     errors.push_back("'" + base + ".branch' needs at least one weight > 0");
     return;
@@ -222,15 +254,39 @@ void ParseStepBranches(const toml::table &step, const std::string &base,
       branches[i].weight /= totalWeight;
 }
 
-// Reads a whole file as bytes; kFALSE if it cannot be opened.
-Bool_t ReadFileText(const std::string &path, std::string &text) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input)
-    return kFALSE;
-  std::ostringstream buffer;
-  buffer << input.rdbuf();
-  text = buffer.str();
-  return kTRUE;
+// Reads the optional [talys] block: the alpha optical model and extra TALYS
+// keywords for talys-cache tables.
+void ParseTalysBlock(const toml::table &talys, music::TalysSettings &settings,
+                     std::vector<std::string> &errors) {
+  CheckKeys(talys, {"alpha_omp", "keywords"}, "talys.", errors);
+  if (talys.contains("alpha_omp")) {
+    const std::optional<int64_t> omp = talys["alpha_omp"].value<int64_t>();
+    if (!omp || *omp < 1 || *omp > 9)
+      errors.push_back("'talys.alpha_omp' must be an integer in [1, 9]");
+    else
+      settings.alphaOmp = static_cast<Int_t>(*omp);
+  }
+  if (!talys.contains("keywords"))
+    return;
+  const toml::array *keywords = talys["keywords"].as_array();
+  if (!keywords) {
+    errors.push_back("'talys.keywords' must be an array of strings");
+    return;
+  }
+  for (size_t k = 0; k < keywords->size(); ++k) {
+    const std::string where = "'talys.keywords[" + std::to_string(k) + "]'";
+    const std::optional<std::string> keyword =
+        (*keywords)[k].value<std::string>();
+    if (!keyword) {
+      errors.push_back(where + " must be a string");
+      continue;
+    }
+    const std::string problem = music::TalysKeywordProblem(*keyword);
+    if (!problem.empty())
+      errors.push_back(where + " " + problem);
+    else
+      settings.keywords.push_back(*keyword);
+  }
 }
 
 } // namespace
@@ -242,7 +298,7 @@ Int_t Simulator::loadCtrlFile(const char *fileName) {
     return 0;
   }
   std::string text;
-  if (!ReadFileText(fileName, text)) {
+  if (!music::ReadFileText(fileName, text)) {
     std::cerr << "musicsim ERROR: cannot read control file '" << fileName
               << "'." << std::endl;
     return 0;
@@ -275,8 +331,14 @@ Int_t Simulator::loadCtrlText(
 
   CheckKeys(tbl,
             {"gas", "beam", "target", "windows", "detector", "reaction",
-             "physics", "run"},
+             "physics", "run", "talys"},
             "", errors);
+  if (const toml::table *talys = tbl["talys"].as_table()) {
+    next.hasTalysBlock = kTRUE;
+    ParseTalysBlock(*talys, next.talys, errors);
+  } else if (tbl["talys"]) {
+    errors.push_back("'talys' must be a table");
+  }
 
   auto nodeAt = [&](const std::string &path) { return tbl.at_path(path); };
   auto readString = [&](const std::string &path, TString &dest,
@@ -791,8 +853,39 @@ Int_t Simulator::loadCtrlText(
     implicit.thetaCmMinDeg = next.thetaCmMinDeg[i];
     implicit.weight = 1.0;
     implicit.levelTable = next.levelTable[i];
+    implicit.perStrip = implicit.residueExc == 3 && implicit.levelTable.empty();
     next.branches[i].assign(1, implicit);
   }
+  // A talys-cache table is a TALYS (a,a') run at each strip's centre energy,
+  // so it needs the beam energy at the vertex: step 0 only, beside elastic.
+  Bool_t anyPerStrip = kFALSE;
+  for (Int_t i = 0; i < next.NumEvapPart; ++i) {
+    for (size_t b = 0; b < next.branches[i].size(); ++b) {
+      const ExcitationBranch &branch = next.branches[i][b];
+      if (!branch.perStrip)
+        continue;
+      anyPerStrip = kTRUE;
+      next.computedWeights[i] = kTRUE;
+      std::string where = "reaction.step[" + std::to_string(i) + "]";
+      if (next.hasBranchTables[i])
+        where += ".branch[" + std::to_string(b) + "]";
+      if (!next.hasBranchTables[i])
+        errors.push_back("'" + where +
+                         "' needs a level_table: a talys-cache table goes in a "
+                         "[[reaction.step.branch]] beside ground + rutherford");
+      if (i != 0)
+        errors.push_back("'" + where +
+                         "': talys without level_table (a talys-cache table) "
+                         "is only supported on step 0");
+      if (branch.angularDist != 0)
+        errors.push_back("'" + where +
+                         ".angular_distribution' must be 'isotropic' for a "
+                         "talys-cache table, whose weight is angle-integrated");
+    }
+  }
+  if (next.hasTalysBlock && !anyPerStrip)
+    errors.push_back(
+        "[talys] is only used by talys branches without level_table");
   // Each table is read from disk once; workers parse the master's copy, so a
   // table edited mid-run cannot reach part of the run.
   std::map<std::string, std::string> nextTables;
@@ -816,7 +909,7 @@ Int_t Simulator::loadCtrlText(
             continue;
           }
           tableText = found->second;
-        } else if (!ReadFileText(path, tableText)) {
+        } else if (!music::ReadFileText(path, tableText)) {
           errors.push_back(where + ".level_table: cannot open level table '" +
                            path + "'");
           continue;
@@ -893,7 +986,7 @@ Int_t Simulator::loadCtrlText(
         for (size_t b = 0; b < next.branches[i].size(); ++b) {
           const ExcitationBranch &branch = next.branches[i][b];
           if (branch.residueExc == 1 && branch.angularDist == 1 &&
-              branch.weight > 0.0)
+              (branch.weight > 0.0 || next.computedWeights[i]))
             elasticBranch = kTRUE;
         }
         if (!elasticBranch)
@@ -906,6 +999,12 @@ Int_t Simulator::loadCtrlText(
       if (i == 0 && reacted && elasticSwapped)
         errors.push_back("elastic step 0 must list the beam-like product as "
                          "'res' and the target-like product as 'evap'");
+      // TALYS runs alpha on the beam nucleus and reads back that nucleus.
+      if (i == 0 && next.computedWeights[i] && (targetA != 4 || targetZ != 2))
+        errors.push_back("a talys-cache table needs target.species = '4He'");
+      if (i == 0 && next.computedWeights[i] && !elasticAsLabelled)
+        errors.push_back("a talys-cache table describes (a,a'): step 0 must "
+                         "list the target as 'evap' and the beam as 'res'");
       parent = next.res[i];
     }
   }
@@ -931,6 +1030,7 @@ Int_t Simulator::loadCtrlText(
   ctrlFilePath_ = sourcePath;
   ctrlFileText_ = text;
   levelTableText_ = std::move(nextTables);
+  masterTables_ = levelTables;
   SeedRandom(static_cast<UInt_t>(ctf.Seed));
   return 1;
 }

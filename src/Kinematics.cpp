@@ -2,13 +2,6 @@
 
 namespace {
 constexpr Double_t thresholdTolerance = 1e-9;
-
-// Share of a branch's excitation weight at or below EneAvail. Branches cannot
-// be forced, so only a talys table can be partly or wholly closed.
-Double_t OpenFraction(const Simulator::ExcitationBranch &branch,
-                      Double_t EneAvail) {
-  return branch.residueExc == 3 ? branch.table.AllowedWeight(EneAvail) : 1.0;
-}
 } // namespace
 
 void Simulator::SetInitialKinematics(Double_t Kbi) {
@@ -152,7 +145,11 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     Double_t stepTheta = theta_CM;
     Double_t stepPhi = phi_CM;
     if ((stepTheta == -1 && stepPhi == -1) || er > 0) {
-      if (branch.angularDist == 1) {
+      if (branch.angularDist == 1 && ctf.computedWeights[er]) {
+        // This strip's TALYS elastic distribution, also with one draw.
+        stepTheta =
+            branch.stripElastic[simStrip_].Sample(branch.thetaCmMinDeg, Rdm);
+      } else if (branch.angularDist == 1) {
         // Rutherford. With u = sin^2(theta/2), dsigma ~ du/u^2, so sampling u
         // on [u_min, 1] with that weight inverts in closed form:
         //     1/u = 1/u_min - r (1/u_min - 1)
@@ -323,6 +320,11 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
   return 1;
 }
 
+const music::ExcitationTable &
+Simulator::BranchTable(const ExcitationBranch &branch) const {
+  return branch.perStrip ? branch.stripTable[simStrip_] : branch.table;
+}
+
 // Draws the branch for step `er` by weight x open fraction at this EneAvail;
 // -1 when every branch is closed. A single-branch step consumes no RNG draw,
 // so branch-free controls keep their pre-branch event streams.
@@ -334,7 +336,13 @@ Int_t Simulator::SelectBranch(Int_t er, Double_t EneAvail) {
   Double_t open[kMaxBranchesPerStep];
   Double_t totalWeight = 0.0;
   for (Int_t i = 0; i < count; ++i) {
-    open[i] = branches[i].weight * OpenFraction(branches[i], EneAvail);
+    // Only a talys table can be partly or wholly closed at this EneAvail.
+    const Double_t weight = ctf.computedWeights[er]
+                                ? branches[i].stripWeight[simStrip_]
+                                : branches[i].weight;
+    open[i] = branches[i].residueExc == 3
+                  ? weight * BranchTable(branches[i]).AllowedWeight(EneAvail)
+                  : weight;
     totalWeight += open[i];
   }
   if (!(totalWeight > 0.0))
@@ -375,7 +383,7 @@ Bool_t Simulator::SampleExcitation(const ExcitationBranch &branch, Int_t er,
                                    : Rdm->Uniform(minEx[er + 1], EneAvail);
     break;
   case 3:
-    Ex = branch.table.Sample(EneAvail, Rdm, ok);
+    Ex = BranchTable(branch).Sample(EneAvail, Rdm, ok);
     break;
   default:
     return kFALSE;
@@ -398,7 +406,7 @@ void Simulator::CalculateCMEnergyRange() {
   Double_t CME_beg = Kb * mt / (mt + mb);
   CMEMax = CME_beg;
 
-  Double_t Kb_min = Beam->GetFinalEnergy(0, Kb, TotalLength);
+  Double_t Kb_min = MeanBeamEnergyAfter(Kb, TotalLength);
   Double_t CME_end = Kb_min * mt / (mt + mb);
   CMEMin = CME_end;
 
@@ -429,7 +437,7 @@ void Simulator::CalculateCMEnergyRange() {
     CME_beg = CMEMax;
     for (Int_t i = 0; i < AnodeRows; i++) {
       Double_t Kb_in = Kb;
-      Kb = Beam->GetFinalEnergy(0, Kb, AnodeDZ[i][0]);
+      Kb = MeanBeamEnergyAfter(Kb, AnodeDZ[i][0]);
       Double_t Kb_out = Kb;
       CME_end = Kb * mt / (mt + mb);
       EnergeticsLog.fill(' ');

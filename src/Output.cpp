@@ -352,15 +352,6 @@ const char *LowEnergyName(Int_t code) {
   return "unknown";
 }
 
-// Hex MD5 of the bytes, so a configuration line names a table's content.
-std::string Md5Hex(const std::string &text) {
-  TMD5 md5;
-  md5.Update(reinterpret_cast<const UChar_t *>(text.data()),
-             static_cast<UInt_t>(text.size()));
-  md5.Final();
-  return md5.AsString();
-}
-
 } // namespace
 
 // Everything that determines the simulated physics, with defaults applied, plus
@@ -425,17 +416,50 @@ std::string Simulator::RunConfiguration() const {
         resolved << "reaction_step_" << step << "_branch_" << b << " = \"";
       resolved << excitationName(branch.residueExc) << "; "
                << angularName(branch.angularDist)
-               << "; theta_cm_min_deg = " << branch.thetaCmMinDeg
-               << "; weight = " << branch.weight;
-      if (branch.residueExc == 3) {
+               << "; theta_cm_min_deg = " << branch.thetaCmMinDeg;
+      if (ctf.computedWeights[step])
+        resolved << "; weight = computed per strip";
+      else
+        resolved << "; weight = " << branch.weight;
+      if (branch.perStrip) {
+        resolved << "; talys-cache tables";
+      } else if (branch.residueExc == 3) {
         const std::map<std::string, std::string>::const_iterator table =
             levelTableText_.find(branch.levelTable);
         resolved << "; " << branch.levelTable << "; md5 = "
-                 << (table == levelTableText_.end() ? "unread"
-                                                    : Md5Hex(table->second));
+                 << (table == levelTableText_.end()
+                         ? "unread"
+                         : music::Md5Hex(table->second));
       }
       resolved << "\"" << std::endl;
     }
+  }
+  // Each strip's TALYS table and computed weights, in branch order.
+  for (size_t strip = 0; strip < talysRequests_.size(); ++strip) {
+    const music::TalysRequest &request = talysRequests_[strip];
+    if (request.strip < 0)
+      continue;
+    const std::map<std::string, std::string>::const_iterator table =
+        levelTableText_.find(request.path);
+    resolved << "reaction_step_0_strip_" << strip
+             << " = \"beam_energy_mev = " << request.beamEnergy
+             << "; ecm_mev = " << request.ecm;
+    if (request.stopped) {
+      resolved << "; beam stops before the strip centre: elastic only, pure "
+                  "Rutherford, no TALYS table\""
+               << std::endl;
+      continue;
+    }
+    resolved << "; weights_mb =";
+    for (size_t b = 0; b < ctf.branches[0].size(); ++b) {
+      const std::vector<Double_t> &weights = ctf.branches[0][b].stripWeight;
+      resolved << (b ? ", " : " ")
+               << (strip < weights.size() ? weights[strip] : -1.0);
+    }
+    resolved << "; table = " << request.path << "; md5 = "
+             << (table == levelTableText_.end() ? "unread"
+                                                : music::Md5Hex(table->second))
+             << "\"" << std::endl;
   }
   return resolved.str();
 }
@@ -468,6 +492,12 @@ Bool_t Simulator::WriteRunMetadata(TFile *ROOTfile) {
       {"termination_codes", terminationCodes},
       {"straggling_sampler",
        "ROOT::Math::VavilovAccurate quantile table; Gaussian for kappa>10"}};
+  if (!warnings_.empty()) {
+    std::ostringstream warnings;
+    for (size_t w = 0; w < warnings_.size(); ++w)
+      warnings << warnings_[w] << std::endl;
+    records.emplace_back("warnings", warnings.str());
+  }
   // Each level table's bytes as read once at load, numbered in path order.
   Int_t tableIndex = 0;
   for (std::map<std::string, std::string>::const_iterator table =

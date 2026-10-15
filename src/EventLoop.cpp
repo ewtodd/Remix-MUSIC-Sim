@@ -47,18 +47,14 @@ void Simulator::Simulate(Int_t StpID, Int_t eventCount, Double_t MaxTime,
 
   // Beam-energy bounds in the chosen strip (beam parallel to z).
   Double_t Kb_min, Kb_max, MinZ, MaxZ, MinT, MaxT;
-  MinZ = 0;
-  MaxZ = AnodeDZ[0][0];
-  for (Int_t stp = 1; stp < AnodeRows; stp++) {
-    MinZ += AnodeDZ[stp - 1][0];
-    MaxZ += AnodeDZ[stp][0];
-    if (AnodeStpID[stp][0] == StpID)
-      break;
-  }
-  Kb_max = Beam->GetFinalEnergy(0, Kb_at_gas, MinZ);
-  MinT = Beam->GetTimeOfFlight(0);
-  Kb_min = Beam->GetFinalEnergy(0, Kb_at_gas, MaxZ);
-  MaxT = Beam->GetTimeOfFlight(0);
+  StripZRange(StpID, MinZ, MaxZ);
+  simStrip_ = StpID;
+  Kb_max = MeanBeamEnergyAfter(Kb_at_gas, MinZ);
+  MinT = Beam->GetTimeOfFlight(0, static_cast<Float_t>(Kb_at_gas),
+                               static_cast<Float_t>(MinZ));
+  Kb_min = MeanBeamEnergyAfter(Kb_at_gas, MaxZ);
+  MaxT = Beam->GetTimeOfFlight(0, static_cast<Float_t>(Kb_at_gas),
+                               static_cast<Float_t>(MaxZ));
   if (PrintLevel > 0) {
     Log << "|---- Kinematic constraints for strip ";
     Log.width(3);

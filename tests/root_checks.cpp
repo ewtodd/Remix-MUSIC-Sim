@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -868,6 +870,224 @@ bool LevelTable(const char *rootPath, const char *expectedPath,
   return true;
 }
 
+// The number after `key` in `line`, e.g. "ecm_mev = " -> 8.11.
+double NumberAfter(const std::string &line, const std::string &key) {
+  const size_t at = line.find(key);
+  return at == std::string::npos ? std::nan("")
+                                 : std::atof(line.c_str() + at + key.size());
+}
+
+// Sum of a level table's weights: the third field of level rows, the fourth
+// of bin rows.
+double TableSum(const std::string &text) {
+  std::istringstream lines(text);
+  std::string line;
+  double sum = 0.0;
+  while (std::getline(lines, line)) {
+    std::istringstream fields(line);
+    std::string tag;
+    double a = 0.0, b = 0.0, c = 0.0;
+    if (!(fields >> tag) || tag[0] == '#')
+      continue;
+    if (tag == "level" && (fields >> a >> b))
+      sum += b;
+    else if (tag == "bin" && (fields >> a >> b >> c))
+      sum += c;
+  }
+  return sum;
+}
+
+// A table's elastic rows integrated against Rutherford above thetaMinDeg, in
+// units of (pi/4) k^2: cot^2(thetaMin/2) when the table has no elastic rows.
+double ElasticIntegral(const std::string &text, double thetaMinDeg) {
+  std::vector<double> theta, ratio;
+  std::istringstream lines(text);
+  std::string line;
+  while (std::getline(lines, line)) {
+    std::istringstream fields(line);
+    std::string tag;
+    double angle = 0.0, value = 0.0;
+    if ((fields >> tag) && tag == "elastic" && (fields >> angle >> value)) {
+      theta.push_back(angle);
+      ratio.push_back(value);
+    }
+  }
+  if (theta.empty()) {
+    theta = {0.0, 180.0};
+    ratio = {1.0, 1.0};
+  }
+  const double deg = TMath::Pi() / 180.0;
+  double sum = 0.0;
+  for (size_t i = 0; i + 1 < theta.size(); ++i) {
+    double a = theta[i];
+    double ra = ratio[i];
+    if (theta[i + 1] <= thetaMinDeg)
+      continue;
+    if (a < thetaMinDeg) {
+      ra += (ratio[i + 1] - ra) * (thetaMinDeg - a) / (theta[i + 1] - a);
+      a = thetaMinDeg;
+    }
+    const double ua = std::pow(std::sin(0.5 * a * deg), 2);
+    const double ub = std::pow(std::sin(0.5 * theta[i + 1] * deg), 2);
+    sum += (1.0 / ua - 1.0 / ub) * 0.5 * (ra + ratio[i + 1]);
+  }
+  return sum;
+}
+
+// Per strip: weights are the stored table's elastic integral and level sum, and
+// branches, elastic angles past 150 deg, and vertex energies follow them.
+bool ComputedWeights(const char *path, int chargeProduct, double thetaMinDeg) {
+  RootFile root = Open(path);
+  if (!root.truth)
+    return false;
+  const TObjString *resolved = dynamic_cast<TObjString *>(
+      root.file->Get("metadata/resolved_configuration"));
+  if (!resolved)
+    return Fail(std::string(path) + " has no resolved configuration");
+  std::map<std::string, std::string> tables;
+  for (int i = 0;; ++i) {
+    const std::string name = "metadata/level_table_" + std::to_string(i);
+    const TObjString *text =
+        dynamic_cast<TObjString *>(root.file->Get(name.c_str()));
+    const TObjString *tablePath =
+        dynamic_cast<TObjString *>(root.file->Get((name + "_path").c_str()));
+    if (!text || !tablePath)
+      break;
+    tables[tablePath->GetString().Data()] = text->GetString().Data();
+  }
+
+  const std::string prefix = "reaction_step_0_strip_";
+  std::map<int, double> inelasticShare;
+  std::map<int, double> centreEnergy;
+  std::map<int, double> elasticTail; // P(theta_cm > 150 deg | elastic)
+  std::istringstream lines(resolved->GetString().Data());
+  std::string line;
+  while (std::getline(lines, line)) {
+    if (line.rfind(prefix, 0) != 0)
+      continue;
+    const int strip = std::atoi(line.c_str() + prefix.size());
+    const double ecm = NumberAfter(line, "ecm_mev = ");
+    const size_t weightsAt = line.find("weights_mb = ");
+    double elastic = std::nan("");
+    double inelastic = std::nan("");
+    if (weightsAt == std::string::npos ||
+        std::sscanf(line.c_str() + weightsAt + 13, "%lf, %lf", &elastic,
+                    &inelastic) != 2)
+      return Fail("cannot read the weights in '" + line + "'");
+    const size_t tableAt = line.find("table = ") + 8;
+    const size_t md5At = line.find("; md5 = ");
+    const std::string table = line.substr(tableAt, md5At - tableAt);
+    const std::string md5Text = line.substr(md5At + 8, 32);
+    const std::map<std::string, std::string>::const_iterator stored =
+        tables.find(table);
+    if (stored == tables.end())
+      return Fail("strip " + std::to_string(strip) + " table " + table +
+                  " is not stored in the metadata");
+    const double k = chargeProduct * 1.439964548 / ecm;
+    const double expected = 10.0 * 0.25 * TMath::Pi() * k * k *
+                            ElasticIntegral(stored->second, thetaMinDeg);
+    if (!(std::fabs(elastic - expected) <= 1e-9 * expected))
+      return Fail("strip " + std::to_string(strip) + " elastic weight " +
+                  std::to_string(elastic) +
+                  " mb is not its table's elastic integral " +
+                  std::to_string(expected));
+    elasticTail[strip] = ElasticIntegral(stored->second, 150.0) /
+                         ElasticIntegral(stored->second, thetaMinDeg);
+    TMD5 md5;
+    md5.Update(reinterpret_cast<const UChar_t *>(stored->second.data()),
+               static_cast<UInt_t>(stored->second.size()));
+    md5.Final();
+    if (md5Text != md5.AsString())
+      return Fail("strip " + std::to_string(strip) + " records the wrong MD5");
+    const double sum = TableSum(stored->second);
+    if (!(std::fabs(inelastic - sum) <= 1e-9 * sum))
+      return Fail("strip " + std::to_string(strip) + " inelastic weight " +
+                  std::to_string(inelastic) + " mb is not its table's sum " +
+                  std::to_string(sum));
+    inelasticShare[strip] = inelastic / (elastic + inelastic);
+    centreEnergy[strip] = NumberAfter(line, "beam_energy_mev = ");
+  }
+  if (inelasticShare.empty())
+    return Fail(std::string(path) + " records no per-strip weights");
+
+  Int_t requested = -1;
+  Int_t reacted = -1;
+  Int_t branch[10]{};
+  root.truth->SetBranchAddress("requested_strip", &requested);
+  root.truth->SetBranchAddress("reaction_strip", &reacted);
+  root.truth->SetBranchAddress("reaction_branch", branch);
+  Float_t beamEnergy = 0.0f;
+  root.truth->SetBranchAddress("beam_energy_reaction", &beamEnergy);
+  Float_t theta[10]{};
+  root.truth->SetBranchAddress("theta_cm", theta);
+  std::map<int, std::pair<long, long>> elasticCounts; // {events, past 150}
+  std::map<int, double> energySum;
+  std::map<int, std::pair<long, long>> counts; // strip -> {events, branch 1}
+  for (Long64_t entry = 0; entry < root.truth->GetEntries(); ++entry) {
+    root.truth->GetEntry(entry);
+    if (reacted < 0)
+      return Fail("an event was rejected though its elastic branch was open");
+    ++counts[requested].first;
+    energySum[requested] += static_cast<double>(beamEnergy);
+    if (branch[0] == 0) {
+      ++elasticCounts[requested].first;
+      if (theta[0] > 150.0f)
+        ++elasticCounts[requested].second;
+    }
+    if (branch[0] == 1)
+      ++counts[requested].second;
+  }
+  for (std::map<int, double>::const_iterator share = inelasticShare.begin();
+       share != inelasticShare.end(); ++share) {
+    const std::pair<long, long> &count = counts[share->first];
+    const double n = static_cast<double>(count.first);
+    const double p = share->second;
+    const double fraction = static_cast<double>(count.second) / n;
+    if (count.first < 100 ||
+        std::fabs(fraction - p) > 5.0 * std::sqrt(p * (1.0 - p) / n))
+      return Fail("strip " + std::to_string(share->first) +
+                  " drew branch 1 in " + std::to_string(fraction) +
+                  " of events, expected " + std::to_string(p));
+    // The vertex is uniform in the strip; one strip spans ~4 MeV of beam.
+    const double meanEnergy = energySum[share->first] / n;
+    if (std::fabs(meanEnergy - centreEnergy[share->first]) > 0.15)
+      return Fail("strip " + std::to_string(share->first) +
+                  " table is for beam energy " +
+                  std::to_string(centreEnergy[share->first]) +
+                  " MeV, but its vertices average " +
+                  std::to_string(meanEnergy));
+  }
+  // Elastic angles follow each strip's table, pooled over the strips.
+  double observed = 0.0, expected = 0.0, variance = 0.0;
+  for (std::map<int, double>::const_iterator tail = elasticTail.begin();
+       tail != elasticTail.end(); ++tail) {
+    const std::pair<long, long> &count = elasticCounts[tail->first];
+    observed += static_cast<double>(count.second);
+    expected += static_cast<double>(count.first) * tail->second;
+    variance +=
+        static_cast<double>(count.first) * tail->second * (1.0 - tail->second);
+  }
+  if (std::fabs(observed - expected) > 5.0 * std::sqrt(variance))
+    return Fail(std::to_string(observed) +
+                " elastic events past 150 deg, expected " +
+                std::to_string(expected));
+  return true;
+}
+
+// metadata/<name> must exist and contain `text`.
+bool MetadataContains(const char *path, const char *name, const char *text) {
+  std::unique_ptr<TFile> file(TFile::Open(path, "READ"));
+  const TObjString *value =
+      file && !file->IsZombie()
+          ? dynamic_cast<TObjString *>(
+                file->Get((std::string("metadata/") + name).c_str()))
+          : nullptr;
+  if (!value || !value->GetString().Contains(text))
+    return Fail(std::string(path) + " metadata/" + name + " lacks '" + text +
+                "'");
+  return true;
+}
+
 bool Reproducible(const char *left, const char *right) {
   const auto a = Rows(left);
   const auto b = Rows(right);
@@ -926,6 +1146,10 @@ int main(int argc, char **argv) {
     ok = CmAngles(argv[2]);
   else if (mode == "level-table" && argc == 5)
     ok = LevelTable(argv[2], argv[3], argv[4]);
+  else if (mode == "computed-weights" && argc == 5)
+    ok = ComputedWeights(argv[2], std::stoi(argv[3]), std::stod(argv[4]));
+  else if (mode == "metadata-contains" && argc == 5)
+    ok = MetadataContains(argv[2], argv[3], argv[4]);
   else if (mode == "alter-resolved" && argc == 3)
     ok = AlterResolved(argv[2]);
   else if (mode == "two-body" && argc == 3)

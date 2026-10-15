@@ -49,10 +49,12 @@ Bool_t ExcitationTable::Load(const std::string &path, std::string &error) {
 }
 
 Bool_t ExcitationTable::Parse(const std::string &text,
-                              const std::string &source, std::string &error) {
+                              const std::string &source, std::string &error,
+                              Bool_t talysCache) {
   levels.clear();
   bins.clear();
   total = 0.0;
+  sum = 0.0;
   std::istringstream input(text);
 
   std::string line;
@@ -68,7 +70,7 @@ Bool_t ExcitationTable::Parse(const std::string &text,
     std::string token;
     while (fields >> token)
       tokens.push_back(token);
-    if (tokens.empty())
+    if (tokens.empty() || (talysCache && tokens[0] == "elastic"))
       continue;
 
     const std::string &tag = tokens[0];
@@ -116,15 +118,17 @@ Bool_t ExcitationTable::Parse(const std::string &text,
     }
   }
 
-  Double_t sum = 0.0;
   for (size_t i = 0; i < levels.size(); ++i)
     sum += levels[i].second;
   for (size_t i = 0; i < bins.size(); ++i)
     sum += bins[i][2];
   if (!(sum > 0.0)) {
-    error = "level table '" + source + "' has no positive weight";
     levels.clear();
     bins.clear();
+    sum = 0.0;
+    if (talysCache)
+      return kTRUE;
+    error = "level table '" + source + "' has no positive weight";
     return kFALSE;
   }
   for (size_t i = 0; i < levels.size(); ++i)

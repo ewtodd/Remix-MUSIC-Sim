@@ -1,0 +1,18 @@
+
+    TALYS-2.2 (Version: December 18, 2025)
+
+
+ 2. Binary non-elastic cross sections (non-exclusive)
+
+ gamma   = 2.92658E-01
+ neutron = 4.93705E+02
+ proton  = 5.33489E+01
+ deuteron= 0.00000E+00
+ triton  = 0.00000E+00
+ helium-3= 0.00000E+00
+ alpha   = 1.43531E+01
+
+ 3. Total particle production cross sections
+
+
+ The TALYS team congratulates you with this successful calculation.
