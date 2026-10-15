@@ -274,6 +274,7 @@ The dedicated physics checklist is
 - [x] Run `make strict`; require zero diagnostics under the configured warning
       set.
       > 2026-10-14 ewt: zero diagnostics.
+      > 2026-10-14 ewt correction: that was masked. The dev shell puts include/ on CPLUS_INCLUDE_PATH, so GCC treated the headers as system headers and hid FourVector's implicit copy constructor (-Wdeprecated-copy, 4 sites). The Makefile now unexports it, and FourVector defaults its copy constructor (no behavior change); strict is clean unmasked.
 - [x] Run `make -j4 sanitize-check`; require no AddressSanitizer or
       UndefinedBehaviorSanitizer report.
       > 2026-10-14 ewt: run twice, 8/8, zero reports.

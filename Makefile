@@ -7,6 +7,10 @@ SRCDIR = src
 INCDIR = include
 OBJDIR = lib
 
+# The dev shell puts include/ on CPLUS_INCLUDE_PATH, which GCC treats as system
+# headers and so hides their warnings; recipes use -I$(INCDIR) instead.
+unexport CPLUS_INCLUDE_PATH
+
 # Where the wordmark (assets/remix.txt) lives. Baked in at build so the
 # binary stays self-locating regardless of the run-time cwd; nix points it
 # at the installed copy.

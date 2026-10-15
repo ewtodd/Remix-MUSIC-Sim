@@ -24,6 +24,8 @@ public:
   void SetName(TString vectorName);
   void Print(std::ostream &log = std::cout) const;
 
+  // A copy takes the source's Name; assignment keeps the target's.
+  FourVector(const FourVector &) = default;
   FourVector &operator=(const FourVector &rhs);
   FourVector &operator+=(const FourVector &rhs);
   const FourVector operator+(const FourVector &other) const;
