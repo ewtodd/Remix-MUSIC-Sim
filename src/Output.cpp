@@ -8,6 +8,7 @@
 
 #include <TBranch.h>
 #include <TLeaf.h>
+#include <TMD5.h>
 #include <TObjArray.h>
 #include <TObjString.h>
 
@@ -86,6 +87,8 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
                                          {"residue_energy_exit", "Float_t"},
                                          {"theta_cm", "Float_t"},
                                          {"phi_cm", "Float_t"},
+                                         {"residue_excitation", "Float_t"},
+                                         {"reaction_branch", "Int_t"},
                                          {"evap_theta", "Float_t"},
                                          {"evap_phi", "Float_t"},
                                          {"residue_theta", "Float_t"},
@@ -130,9 +133,10 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     }
     for (const char *name :
          {"evap_energy", "residue_energy", "evap_energy_exit",
-          "residue_energy_exit", "theta_cm", "phi_cm", "evap_theta", "evap_phi",
-          "residue_theta", "residue_phi", "evap_stop_x", "evap_stop_y",
-          "evap_stop_z", "evap_stop_strip", "evap_termination"}) {
+          "residue_energy_exit", "theta_cm", "phi_cm", "residue_excitation",
+          "reaction_branch", "evap_theta", "evap_phi", "residue_theta",
+          "residue_phi", "evap_stop_x", "evap_stop_y", "evap_stop_z",
+          "evap_stop_strip", "evap_termination"}) {
       TLeaf *leaf = MCTree->GetLeaf(name);
       if (!leaf->GetLeafCount() ||
           std::string(leaf->GetLeafCount()->GetName()) != "n_steps") {
@@ -180,6 +184,8 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     bound &= bind(MCTree, "residue_energy_exit", residue_energy_exit);
     bound &= bind(MCTree, "theta_cm", theta_cm);
     bound &= bind(MCTree, "phi_cm", phi_cm);
+    bound &= bind(MCTree, "residue_excitation", residue_excitation);
+    bound &= bind(MCTree, "reaction_branch", reaction_branch);
     bound &= bind(MCTree, "evap_theta", evap_theta);
     bound &= bind(MCTree, "evap_phi", evap_phi);
     bound &= bind(MCTree, "residue_theta", residue_theta);
@@ -237,6 +243,10 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
                    "residue_energy_exit[n_steps]/F");
     MCTree->Branch("theta_cm", theta_cm, "theta_cm[n_steps]/F");
     MCTree->Branch("phi_cm", phi_cm, "phi_cm[n_steps]/F");
+    MCTree->Branch("residue_excitation", residue_excitation,
+                   "residue_excitation[n_steps]/F");
+    MCTree->Branch("reaction_branch", reaction_branch,
+                   "reaction_branch[n_steps]/I");
     MCTree->Branch("evap_theta", evap_theta, "evap_theta[n_steps]/F");
     MCTree->Branch("evap_phi", evap_phi, "evap_phi[n_steps]/F");
     MCTree->Branch("residue_theta", residue_theta, "residue_theta[n_steps]/F");
@@ -296,6 +306,8 @@ void Simulator::ResetBranches() {
     theta_cm[er] = phi_cm[er] = kAngleUnset;
     evap_theta[er] = evap_phi[er] = kAngleUnset;
     residue_theta[er] = residue_phi[er] = kAngleUnset;
+    residue_excitation[er] = -2.0f;
+    reaction_branch[er] = -1;
     evap_stop_x[er] = evap_stop_y[er] = 0;
     evap_stop_z[er] = -1000;
     evap_stop_strip[er] = -2;
@@ -340,13 +352,25 @@ const char *LowEnergyName(Int_t code) {
   return "unknown";
 }
 
+// Hex MD5 of the bytes, so a configuration line names a table's content.
+std::string Md5Hex(const std::string &text) {
+  TMD5 md5;
+  md5.Update(reinterpret_cast<const UChar_t *>(text.data()),
+             static_cast<UInt_t>(text.size()));
+  md5.Final();
+  return md5.AsString();
+}
+
 } // namespace
 
 // Everything that determines the simulated physics, with defaults applied, plus
 // the code revisions. Update runs append only when this matches the file.
 std::string Simulator::RunConfiguration() const {
   auto excitationName = [](Int_t model) {
-    return model == 0 ? "forced" : model == 1 ? "ground" : "uniform";
+    return model == 0   ? "forced"
+           : model == 1 ? "ground"
+           : model == 3 ? "talys"
+                        : "uniform";
   };
   auto angularName = [](Int_t model) {
     return model == 1 ? "rutherford" : "isotropic";
@@ -358,7 +382,7 @@ std::string Simulator::RunConfiguration() const {
 #endif
   std::ostringstream resolved;
   resolved.precision(17);
-  resolved << "schema_version = 4" << std::endl
+  resolved << "schema_version = 5" << std::endl
            << "musicsim_version = \"" << MUSICSIM_VERSION << "\"" << std::endl
            << "git_revision = \"" << MUSICSIM_GIT_REV << "\"" << std::endl
            << "catima_revision = \"" << MUSICSIM_CATIMA_REV << "\"" << std::endl
@@ -388,10 +412,31 @@ std::string Simulator::RunConfiguration() const {
            << "\"" << std::endl
            << "sim_step_cm = " << ctf.SimStep << std::endl
            << "max_time_ns = " << ctf.MaxTime << std::endl;
-  for (Int_t step = 0; step < ctf.NumEvapPart; ++step)
+  // Every step holds at least its one implicit branch, so one loop covers
+  // both forms; a branched step also gets one line per branch.
+  for (Int_t step = 0; step < ctf.NumEvapPart; ++step) {
     resolved << "reaction_step_" << step << " = \"" << ctf.evap[step] << " + "
-             << ctf.res[step] << "; " << excitationName(ctf.residueExc[step])
-             << "; " << angularName(ctf.angularDist[step]) << "\"" << std::endl;
+             << ctf.res[step] << "; ";
+    if (ctf.hasBranchTables[step])
+      resolved << "branches\"" << std::endl;
+    for (size_t b = 0; b < ctf.branches[step].size(); ++b) {
+      const ExcitationBranch &branch = ctf.branches[step][b];
+      if (ctf.hasBranchTables[step])
+        resolved << "reaction_step_" << step << "_branch_" << b << " = \"";
+      resolved << excitationName(branch.residueExc) << "; "
+               << angularName(branch.angularDist)
+               << "; theta_cm_min_deg = " << branch.thetaCmMinDeg
+               << "; weight = " << branch.weight;
+      if (branch.residueExc == 3) {
+        const std::map<std::string, std::string>::const_iterator table =
+            levelTableText_.find(branch.levelTable);
+        resolved << "; " << branch.levelTable << "; md5 = "
+                 << (table == levelTableText_.end() ? "unread"
+                                                    : Md5Hex(table->second));
+      }
+      resolved << "\"" << std::endl;
+    }
+  }
   return resolved.str();
 }
 
@@ -415,7 +460,7 @@ Bool_t Simulator::WriteRunMetadata(TFile *ROOTfile) {
       "0=not_propagated, 1=reached_vertex, 2=stopped, "
       "3=downstream_exit, 4=upstream_exit, 5=side_exit, 6=timeout, "
       "7=invalid_state";
-  const std::vector<std::pair<const char *, std::string>> records = {
+  std::vector<std::pair<std::string, std::string>> records = {
       {"musicsim_version", MUSICSIM_VERSION},
       {"control_file_path", ctrlFilePath_.Data()},
       {"control_file_toml", ctrlFileText_},
@@ -423,9 +468,18 @@ Bool_t Simulator::WriteRunMetadata(TFile *ROOTfile) {
       {"termination_codes", terminationCodes},
       {"straggling_sampler",
        "ROOT::Math::VavilovAccurate quantile table; Gaussian for kappa>10"}};
+  // Each level table's bytes as read once at load, numbered in path order.
+  Int_t tableIndex = 0;
+  for (std::map<std::string, std::string>::const_iterator table =
+           levelTableText_.begin();
+       table != levelTableText_.end(); ++table, ++tableIndex) {
+    const std::string name = "level_table_" + std::to_string(tableIndex);
+    records.emplace_back(name + "_path", table->first);
+    records.emplace_back(name, table->second);
+  }
   for (const auto &[name, value] : records) {
     TObjString object(value.c_str());
-    if (object.Write(name, TObject::kOverwrite) <= 0) {
+    if (object.Write(name.c_str(), TObject::kOverwrite) <= 0) {
       ROOTfile->cd();
       return kFALSE;
     }

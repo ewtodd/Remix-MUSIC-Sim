@@ -3,6 +3,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <optional>
 #include <sstream>
 #include <type_traits>
 #include <unordered_set>
@@ -71,6 +73,166 @@ std::string JoinErrors(const std::vector<std::string> &errors) {
   return out.str();
 }
 
+Int_t ParseExcitationName(const std::string &name) {
+  if (name == "forced")
+    return 0;
+  if (name == "ground")
+    return 1;
+  if (name == "uniform")
+    return 2;
+  if (name == "talys")
+    return 3;
+  return -1;
+}
+
+Int_t ParseAngularName(const std::string &name) {
+  if (name == "isotropic")
+    return 0;
+  if (name == "rutherford")
+    return 1;
+  return -1;
+}
+
+// `level_table` is required exactly when the model is talys. A relative path
+// is resolved against the directory holding the control file.
+void ReadLevelTable(const toml::table &table, const std::string &path,
+                    Int_t residueExc, const std::filesystem::path &controlDir,
+                    std::string &levelTable, std::vector<std::string> &errors) {
+  const Bool_t present = table.contains("level_table");
+  const std::optional<std::string> value =
+      table["level_table"].value<std::string>();
+  if (present && !value) {
+    errors.push_back("'" + path + ".level_table' must be a string");
+    return;
+  }
+  if (present && residueExc != 3) {
+    errors.push_back("'" + path +
+                     ".level_table' requires residue_excitation='talys'");
+    return;
+  }
+  if (!present) {
+    if (residueExc == 3)
+      errors.push_back("missing required key '" + path + ".level_table'");
+    return;
+  }
+  const std::filesystem::path given(*value);
+  levelTable =
+      given.is_absolute() ? given.string() : (controlDir / given).string();
+}
+
+// Reads one [[reaction.step.branch]] table. 'forced' is refused here: the
+// minimum-excitation chain it relies on assumes one model per step.
+void ParseBranch(const toml::table &table, const std::string &path,
+                 Double_t stepThetaMin, const std::filesystem::path &controlDir,
+                 Simulator::ExcitationBranch &branch,
+                 std::vector<std::string> &errors) {
+  CheckKeys(table,
+            {"residue_excitation", "angular_distribution", "theta_cm_min_deg",
+             "weight", "level_table"},
+            path + ".", errors);
+
+  const std::optional<std::string> excitation =
+      table["residue_excitation"].value<std::string>();
+  if (!excitation)
+    errors.push_back("missing or invalid string '" + path +
+                     ".residue_excitation'");
+  else
+    branch.residueExc = ParseExcitationName(*excitation);
+  if (excitation && branch.residueExc < 1)
+    errors.push_back("'" + path +
+                     ".residue_excitation' must be 'ground', 'uniform', or "
+                     "'talys'");
+
+  const std::optional<std::string> angular =
+      table["angular_distribution"].value<std::string>();
+  if (!angular)
+    errors.push_back("missing or invalid string '" + path +
+                     ".angular_distribution'");
+  else
+    branch.angularDist = ParseAngularName(*angular);
+  if (angular && branch.angularDist < 0)
+    errors.push_back("'" + path +
+                     ".angular_distribution' must be 'isotropic' or "
+                     "'rutherford'");
+
+  const std::optional<Double_t> weight = table["weight"].value<Double_t>();
+  if (!weight)
+    errors.push_back("missing or invalid number '" + path + ".weight'");
+  else if (!std::isfinite(*weight) || *weight < 0.0)
+    errors.push_back("'" + path + ".weight' must be finite and >= 0");
+  else
+    branch.weight = *weight;
+
+  branch.thetaCmMinDeg = stepThetaMin;
+  if (table.contains("theta_cm_min_deg")) {
+    const std::optional<Double_t> theta =
+        table["theta_cm_min_deg"].value<Double_t>();
+    if (!theta)
+      errors.push_back("'" + path + ".theta_cm_min_deg' must be a number");
+    else if (!std::isfinite(*theta) || *theta <= 0.0 || *theta >= 180.0)
+      errors.push_back("'" + path + ".theta_cm_min_deg' must be in (0, 180)");
+    else
+      branch.thetaCmMinDeg = *theta;
+  }
+
+  ReadLevelTable(table, path, branch.residueExc, controlDir, branch.levelTable,
+                 errors);
+}
+
+// Reads a step's branch tables and normalizes their weights. Branch tables
+// replace the step-level model keys, so those must then be absent.
+void ParseStepBranches(const toml::table &step, const std::string &base,
+                       Double_t stepThetaMin,
+                       const std::filesystem::path &controlDir,
+                       std::vector<Simulator::ExcitationBranch> &branches,
+                       std::vector<std::string> &errors) {
+  const toml::array *tables = step["branch"].as_array();
+  if (!tables || !tables->is_array_of_tables()) {
+    errors.push_back("'" + base + ".branch' must be an array of tables");
+    return;
+  }
+  if (step.contains("residue_excitation") ||
+      step.contains("angular_distribution"))
+    errors.push_back("'" + base +
+                     "' cannot set residue_excitation or "
+                     "angular_distribution alongside [[reaction.step.branch]]");
+  if (tables->size() > static_cast<size_t>(Simulator::kMaxBranchesPerStep)) {
+    errors.push_back("'" + base + "' has more than " +
+                     std::to_string(Simulator::kMaxBranchesPerStep) +
+                     " branches");
+    return;
+  }
+
+  Double_t totalWeight = 0.0;
+  for (size_t i = 0; i < tables->size(); ++i) {
+    const std::string path = base + ".branch[" + std::to_string(i) + "]";
+    Simulator::ExcitationBranch branch;
+    ParseBranch(*(*tables)[i].as_table(), path, stepThetaMin, controlDir,
+                branch, errors);
+    if (branch.weight > 0.0)
+      totalWeight += branch.weight;
+    branches.push_back(branch);
+  }
+  if (!(totalWeight > 0.0)) {
+    errors.push_back("'" + base + ".branch' needs at least one weight > 0");
+    return;
+  }
+  for (size_t i = 0; i < branches.size(); ++i)
+    if (branches[i].weight > 0.0)
+      branches[i].weight /= totalWeight;
+}
+
+// Reads a whole file as bytes; kFALSE if it cannot be opened.
+Bool_t ReadFileText(const std::string &path, std::string &text) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input)
+    return kFALSE;
+  std::ostringstream buffer;
+  buffer << input.rdbuf();
+  text = buffer.str();
+  return kTRUE;
+}
+
 } // namespace
 
 Int_t Simulator::loadCtrlFile(const char *fileName) {
@@ -79,18 +241,18 @@ Int_t Simulator::loadCtrlFile(const char *fileName) {
               << std::endl;
     return 0;
   }
-  std::ifstream input(fileName, std::ios::binary);
-  if (!input) {
+  std::string text;
+  if (!ReadFileText(fileName, text)) {
     std::cerr << "musicsim ERROR: cannot read control file '" << fileName
               << "'." << std::endl;
     return 0;
   }
-  std::ostringstream text;
-  text << input.rdbuf();
-  return loadCtrlText(text.str(), fileName);
+  return loadCtrlText(text, fileName);
 }
 
-Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
+Int_t Simulator::loadCtrlText(
+    const std::string &text, const char *sourcePath,
+    const std::map<std::string, std::string> *levelTables) {
   toml::table tbl;
   try {
     tbl = toml::parse(text, std::string_view(sourcePath));
@@ -101,6 +263,8 @@ Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
     return 0;
   }
 
+  const std::filesystem::path controlDir =
+      std::filesystem::path(sourcePath).parent_path();
   controlFileParams next;
   music::PhysicsConfig nextPhysics;
   nextPhysics.mean.z_effective = catima::z_eff_type::winger;
@@ -413,8 +577,12 @@ Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
         }
         CheckKeys(*step,
                   {"evap", "res", "residue_excitation", "angular_distribution",
-                   "theta_cm_min_deg"},
+                   "theta_cm_min_deg", "level_table", "branch", "weight"},
                   base + ".", errors);
+        if (step->contains("weight"))
+          errors.push_back("'" + base +
+                           ".weight' is only valid inside "
+                           "[[reaction.step.branch]]");
         auto loadProduct = [&](const char *side, TString &name, Int_t &color,
                                Float_t &scale) {
           const auto *product = (*step)[side].as_table();
@@ -449,26 +617,18 @@ Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
                     next.dEdxScaleRes[index]);
 
         if (auto value = (*step)["residue_excitation"].value<std::string>()) {
-          if (*value == "forced")
-            next.residueExc[index] = 0;
-          else if (*value == "ground")
-            next.residueExc[index] = 1;
-          else if (*value == "uniform")
-            next.residueExc[index] = 2;
-          else
-            errors.push_back(
-                "'" + base +
-                ".residue_excitation' must be 'forced', 'ground', or 'uniform'");
+          next.residueExc[index] = ParseExcitationName(*value);
+          if (next.residueExc[index] < 0)
+            errors.push_back("'" + base +
+                             ".residue_excitation' must be 'forced', "
+                             "'ground', 'uniform', or 'talys'");
         } else if ((*step)["residue_excitation"])
           errors.push_back("'" + base +
                            ".residue_excitation' must be a string");
 
         if (auto value = (*step)["angular_distribution"].value<std::string>()) {
-          if (*value == "isotropic")
-            next.angularDist[index] = 0;
-          else if (*value == "rutherford")
-            next.angularDist[index] = 1;
-          else
+          next.angularDist[index] = ParseAngularName(*value);
+          if (next.angularDist[index] < 0)
             errors.push_back(
                 "'" + base +
                 ".angular_distribution' must be 'isotropic' or 'rutherford'");
@@ -484,6 +644,13 @@ Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
             next.thetaCmMinDeg[index] >= 180.0)
           errors.push_back("'" + base +
                            ".theta_cm_min_deg' must be in (0, 180)");
+        ReadLevelTable(*step, base, next.residueExc[index], controlDir,
+                       next.levelTable[index], errors);
+        if (step->contains("branch")) {
+          next.hasBranchTables[index] = kTRUE;
+          ParseStepBranches(*step, base, next.thetaCmMinDeg[index], controlDir,
+                            next.branches[index], errors);
+        }
         ++index;
       }
       next.NumEvapPart = index;
@@ -590,10 +757,10 @@ Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
         "reacted runs require at least one complete reaction.step");
   for (Int_t i = 0; i < next.NumEvapPart; ++i) {
     const std::string base = "reaction.step[" + std::to_string(i) + "]";
-    if (reacted && next.residueExc[i] < 0)
+    if (reacted && !next.hasBranchTables[i] && next.residueExc[i] < 0)
       errors.push_back("missing required key '" + base +
                        ".residue_excitation'");
-    if (reacted && next.angularDist[i] < 0)
+    if (reacted && !next.hasBranchTables[i] && next.angularDist[i] < 0)
       errors.push_back("missing required key '" + base +
                        ".angular_distribution'");
     if (reacted && i == next.NumEvapPart - 1 && next.residueExc[i] == 0)
@@ -604,6 +771,62 @@ Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
       errors.push_back("'" + base +
                        ".angular_distribution' cannot be 'rutherford' after "
                        "step 0");
+    for (size_t b = 0; reacted && i > 0 && next.hasBranchTables[i] &&
+                       b < next.branches[i].size();
+         ++b)
+      if (next.branches[i][b].angularDist == 1)
+        errors.push_back("'" + base + ".branch[" + std::to_string(b) +
+                         "].angular_distribution' cannot be 'rutherford' "
+                         "after step 0");
+  }
+
+  // A step without branch tables samples from one implicit branch built from
+  // its step-level keys, so kinematics reads every step the same way.
+  for (Int_t i = 0; i < next.NumEvapPart; ++i) {
+    if (next.hasBranchTables[i])
+      continue;
+    ExcitationBranch implicit;
+    implicit.residueExc = next.residueExc[i];
+    implicit.angularDist = next.angularDist[i];
+    implicit.thetaCmMinDeg = next.thetaCmMinDeg[i];
+    implicit.weight = 1.0;
+    implicit.levelTable = next.levelTable[i];
+    next.branches[i].assign(1, implicit);
+  }
+  // Each table is read from disk once; workers parse the master's copy, so a
+  // table edited mid-run cannot reach part of the run.
+  std::map<std::string, std::string> nextTables;
+  for (Int_t i = 0; i < next.NumEvapPart; ++i) {
+    for (size_t b = 0; b < next.branches[i].size(); ++b) {
+      ExcitationBranch &branch = next.branches[i][b];
+      if (branch.residueExc != 3 || branch.levelTable.empty())
+        continue;
+      std::string where = "reaction.step[" + std::to_string(i) + "]";
+      if (next.hasBranchTables[i])
+        where += ".branch[" + std::to_string(b) + "]";
+      const std::string &path = branch.levelTable;
+      if (nextTables.count(path) == 0) {
+        std::string tableText;
+        if (levelTables) {
+          const std::map<std::string, std::string>::const_iterator found =
+              levelTables->find(path);
+          if (found == levelTables->end()) {
+            errors.push_back(where + ".level_table: '" + path +
+                             "' was not read by the master");
+            continue;
+          }
+          tableText = found->second;
+        } else if (!ReadFileText(path, tableText)) {
+          errors.push_back(where + ".level_table: cannot open level table '" +
+                           path + "'");
+          continue;
+        }
+        nextTables[path] = tableText;
+      }
+      std::string error;
+      if (!branch.table.Parse(nextTables[path], path, error))
+        errors.push_back(where + ".level_table: " + error);
+    }
   }
 
   const std::array<TString, 7> gases = {"4He", "He",   "helium", "3He",
@@ -658,10 +881,26 @@ Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
       const Bool_t elasticSwapped = !elasticAsLabelled && evapA == beamA &&
                                     evapZ == beamZ && resA == targetA &&
                                     resZ == targetZ;
-      if (i == 0 && reacted && elasticAsLabelled &&
+      const Bool_t elastic = i == 0 && reacted && elasticAsLabelled;
+      if (elastic && !next.hasBranchTables[i] &&
           (next.residueExc[i] != 1 || next.angularDist[i] != 1))
         errors.push_back("elastic step 0 requires residue_excitation='ground' "
                          "and angular_distribution='rutherford'");
+      // REVIEW-GATED relaxation of the audit F-12 rule: a branched elastic
+      // step may add inelastic branches but must keep a weighted elastic one.
+      if (elastic && next.hasBranchTables[i]) {
+        Bool_t elasticBranch = kFALSE;
+        for (size_t b = 0; b < next.branches[i].size(); ++b) {
+          const ExcitationBranch &branch = next.branches[i][b];
+          if (branch.residueExc == 1 && branch.angularDist == 1 &&
+              branch.weight > 0.0)
+            elasticBranch = kTRUE;
+        }
+        if (!elasticBranch)
+          errors.push_back("elastic step 0 requires a branch with "
+                           "residue_excitation='ground', "
+                           "angular_distribution='rutherford', and weight > 0");
+      }
       // theta_cm is the res direction, so the Rutherford deflection is only
       // the beam's when res is the beam-like product.
       if (i == 0 && reacted && elasticSwapped)
@@ -691,6 +930,7 @@ Int_t Simulator::loadCtrlText(const std::string &text, const char *sourcePath) {
   physics_ = std::move(nextPhysics);
   ctrlFilePath_ = sourcePath;
   ctrlFileText_ = text;
+  levelTableText_ = std::move(nextTables);
   SeedRandom(static_cast<UInt_t>(ctf.Seed));
   return 1;
 }

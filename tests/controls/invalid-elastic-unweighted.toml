@@ -1,0 +1,44 @@
+# Rejected: the elastic step's ground+rutherford branch has zero weight, so
+# the channel would be all-inelastic.
+[gas]
+species     = "4He"
+pressure    = 220.0
+temperature = 293.0
+
+[beam]
+species     = "37Cl"
+energy      = 92.0
+energy_fwhm = 0.0
+
+[target]
+species  = "4He"
+compound = "41K"
+
+[detector]
+eloss_bins  = 100
+max_eloss   = 10.0
+strip_first = 2
+strip_last  = 9
+
+[[reaction.step]]
+[reaction.step.evap]
+name = "4He"
+
+[reaction.step.res]
+name = "37Cl"
+
+[[reaction.step.branch]]
+residue_excitation   = "ground"
+angular_distribution = "rutherford"
+weight               = 0.0
+
+[[reaction.step.branch]]
+residue_excitation   = "talys"
+level_table          = "../fixtures/talys-levels.tab"
+angular_distribution = "isotropic"
+weight               = 1.0
+
+[run]
+events_per_strip = 1
+output           = "invalid.root"
+seed             = 1

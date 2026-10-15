@@ -35,10 +35,11 @@ nix build
 ```
 
 `nix build` also ships the regression-suite binaries
-(`legacy-msc-to-toml`, `root_checks`, `vavilov_statistics`, `nuclide_loader`)
-in `result/bin`. To run the suite — schema, converter, nuclide-loader,
-distribution, conservation, kinematics, boundary, reproducibility, and ROOT
-update tests — build first, then:
+(`legacy-msc-to-toml`, `root_checks`, `vavilov_statistics`, `nuclide_loader`,
+`excitation_table`) in `result/bin`. To run the suite — schema, converter,
+nuclide-loader, distribution, level-table, conservation, kinematics,
+branch-weighting, boundary, reproducibility, and ROOT update tests — build
+first, then:
 
 ```bash
 bash tests/run-tests.sh
@@ -204,6 +205,8 @@ The excitation model is selected independently for each step:
 - `forced`: an intermediate residue receives at least the excitation needed to
   permit the remaining configured decay chain. It is rejected on the final
   step.
+- `talys`: excitation is drawn from the level table named by `level_table`,
+  a path resolved relative to the control file's directory.
 
 The angular model is also per step:
 
@@ -211,8 +214,66 @@ The angular model is also per step:
 - `rutherford`: inverse-CDF Rutherford sampling above
   `theta_cm_min_deg` (default 1 degree).
 
-An elastic first step—products equal to target plus beam—is required to use
-`ground` excitation and `rutherford` angles.
+A step may instead mix models through weighted `[[reaction.step.branch]]`
+tables. Each branch requires `residue_excitation`, `angular_distribution`,
+and `weight`, and may set `theta_cm_min_deg` (default: the step's value) and
+`level_table`. A branched step must not also set `residue_excitation` or
+`angular_distribution`; `weight` is only valid inside a branch. Weights are
+relative, must be finite and `>= 0`, need at least one `> 0`, and are
+normalized at load. A step has at most 8 branches, and `forced` is not
+allowed in a branch. One branch is drawn per reacted event before its
+excitation and angles; a step without branch tables draws nothing extra, so
+its event stream is unchanged.
+
+```toml
+[[reaction.step]]
+[reaction.step.evap]
+name = "4He"
+
+[reaction.step.res]
+name = "37Cl"
+
+[[reaction.step.branch]] # elastic
+residue_excitation   = "ground"
+angular_distribution = "rutherford"
+weight               = 0.99
+
+[[reaction.step.branch]] # inelastic
+residue_excitation   = "talys"
+level_table          = "talys_levels_37Cl_aap.tab"
+angular_distribution = "isotropic"
+weight               = 0.01
+```
+
+Branch weights are user-supplied cross-section ratios within the simulated
+acceptance (for example, Rutherford integrated above `theta_cm_min_deg`
+against the Talys inelastic cross section); the simulator does not derive
+them. A `talys` branch's weight is its cross section with the whole table
+open.
+
+A level table is whitespace-separated text with `#` comments. `ground 0 w`
+and `level E_ex w` rows are point masses; `bin lo hi w` is a uniform
+continuum over `[lo, hi]` MeV with total weight `w`. Weights are relative.
+Unknown tags, `hi <= lo`, negative values, non-numeric fields, and a table
+with no positive weight are errors naming the file and line.
+
+At each vertex, only the part of a table at or below the energy available is
+open; a `bin` straddling it counts pro rata. A branch is drawn with
+probability proportional to its weight times its open fraction (always 1 for
+`ground` and `uniform`), still with one random draw, and its `E_ex` is drawn
+from the open part, so it never exceeds the energy available. As levels
+close, the inelastic share shrinks and the open branches take it up. The
+reaction is rejected, like a below-threshold step, only when every branch is
+closed, for example a step-level `talys` table with nothing open.
+
+An elastic first step—products equal to target plus beam—must list the
+target-like product as `evap` and the beam-like product as `res`, because
+`theta_cm` is the `res` direction; the swapped labelling is rejected. It is
+required to use `ground` excitation and `rutherford` angles. With branch
+tables, it must instead include at least one `ground` + `rutherford` branch
+with weight `> 0`; its other branches may be inelastic. `rutherford` is valid
+only on step 0, in a branch or not: later steps are decays of a moving
+residue, not scattering off the beam.
 
 ### Layers and stopping-power models
 
@@ -353,6 +414,7 @@ equal-length trees. `events_MeV` has `MC` as a friend.
 | `beam_stop_x/y/z`, `beam_stop_strip`, `beam_termination` | Final beam state and termination. |
 | `evap_energy[n_steps]`, `residue_energy[n_steps]` | Per-step product kinetic energies at creation. |
 | `theta_cm[n_steps]`, `phi_cm[n_steps]` | Per-step sampled center-of-mass angles in degrees. |
+| `residue_excitation[n_steps]`, `reaction_branch[n_steps]` | Per-step residue excitation at creation in MeV (`-2` when no reaction), and the index of the drawn branch (`0` for a step without branch tables, `-1` when no reaction). |
 | `evap_theta/phi[n_steps]`, `residue_theta/phi[n_steps]` | Per-step lab angles in degrees. |
 | `evap_energy_exit[n_steps]`, `evap_stop_x/y/z[n_steps]`, `evap_stop_strip[n_steps]`, `evap_termination[n_steps]` | Light-product final states. |
 | `residue_energy_exit[n_steps]` | Exit-energy slots; only the surviving residue can be populated. |
@@ -405,19 +467,26 @@ mean: 0 not propagated, 1 reached the requested vertex, 2 stopped, 3 downstream
 exit, 4 upstream exit, 5 side exit, 6 timeout, and 7 invalid state.
 
 The `metadata` directory also stores the software version, the control path,
-the exact control text as read at startup, the resolved configuration (schema
-version 4), and the straggling model.
+the exact control text as read at startup, each level table as read at
+startup (`level_table_N`, with its path in `level_table_N_path`), the
+resolved configuration (schema version 5), and the straggling model. Worker
+threads use these copies, so a file edited mid-run cannot reach part of the
+run.
 
 The resolved configuration records every physics default actually applied
 (`z_effective`, `low_energy`, `straggling_z_effective`, `sim_step_cm`,
-`max_time_ns`, `beam_energy_fwhm_mev`, ...). It also records `git_revision` (a
-`-dirty` suffix means uncommitted changes), `catima_revision`, and
-`catima_global`. Defaults can change between builds, so a control file alone
-does not determine the physics.
+`max_time_ns`, `beam_energy_fwhm_mev`, ...), each reaction step's branches
+with their models, weights, and level-table paths and MD5s, and
+`git_revision` (a `-dirty` suffix means uncommitted changes),
+`catima_revision`, and `catima_global`. Defaults can change between builds, so
+a control file alone does not determine the physics.
 
 An update run appends only if both the control text and the resolved
 configuration (except `total_entries`) match the file. A file is therefore
-never extended by a different build or with different defaults.
+never extended by a different build, with different defaults, or with an
+edited level table. Schema 5 added
+the `residue_excitation` and `reaction_branch` truth branches, so an update
+run also refuses any older file; regenerate it instead.
 
 ## Physics scope and limitations
 
@@ -430,8 +499,11 @@ never extended by a different build or with different defaults.
   source.
 - Gas stopping/variance tables cover total kinetic energy from `1e-4` to
   `1e4` MeV and clamp outside that range.
-- `forced` and `uniform` excitation are continuum models, not discrete nuclear
-  level schemes with spin/parity, widths, branching ratios, or lifetimes.
+- `forced` and `uniform` excitation are continuum models. `talys` samples
+  discrete level energies and continuum bins from a precomputed table, but
+  carries no spin/parity, widths, gamma decay, or lifetimes, and the table is
+  computed at one beam energy rather than per vertex. Branch weights are
+  fixed user inputs, not energy-dependent cross sections.
 - Detector response includes only the selected independent Gaussian noise
   model; thresholds, saturation, gain drift, correlations, digitization, and
   non-Gaussian electronics response are absent.

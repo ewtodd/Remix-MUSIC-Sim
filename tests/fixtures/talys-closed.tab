@@ -1,0 +1,3 @@
+# Hand-written test fixture: no weight lies at or below any vertex's EneAvail
+# in branches-closed.toml (6.6-8.2 MeV), so the branch is wholly closed.
+level 20.0 1.0

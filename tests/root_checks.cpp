@@ -5,6 +5,7 @@
 #include <TKey.h>
 #include <TLeaf.h>
 #include <TList.h>
+#include <TMD5.h>
 #include <TMath.h>
 #include <TObjString.h>
 #include <TTree.h>
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -52,6 +54,16 @@ RootFile Open(const char *path) {
   return result;
 }
 
+// True when `text` holds `line` as one whole line.
+bool HasLine(const TString &text, const std::string &line) {
+  std::istringstream lines(text.Data());
+  std::string current;
+  while (std::getline(lines, current))
+    if (current == line)
+      return true;
+  return false;
+}
+
 int KeyCycles(TFile *file, const char *name) {
   int count = 0;
   TIter next(file->GetListOfKeys());
@@ -86,8 +98,8 @@ bool Standard(const char *path, Long64_t expectedEntries) {
       return Fail(std::string(path) + " is missing metadata/" + record);
   const auto *resolved = dynamic_cast<TObjString *>(
       root.file->Get("metadata/resolved_configuration"));
-  if (!resolved || !resolved->GetString().Contains("schema_version = 4\n"))
-    return Fail(std::string(path) + " does not declare output schema 4");
+  if (!resolved || !HasLine(resolved->GetString(), "schema_version = 5"))
+    return Fail(std::string(path) + " does not declare output schema 5");
   // Defaults change between builds, so a run is reproducible only if the
   // resolved values and the exact code revisions are recorded.
   const Int_t nResolvedKeys = 11;
@@ -151,6 +163,8 @@ bool ProductTruthAtSentinels(TTree *truth, const std::string &label) {
   Float_t residueTheta[10]{};
   Float_t residuePhi[10]{};
   Int_t evapTermination[10]{};
+  Float_t excitation[10]{};
+  Int_t branch[10]{};
   Int_t residueStep = 0;
   Int_t residueTermination = 0;
   truth->ResetBranchAddresses();
@@ -166,6 +180,8 @@ bool ProductTruthAtSentinels(TTree *truth, const std::string &label) {
   truth->SetBranchAddress("residue_theta", residueTheta);
   truth->SetBranchAddress("residue_phi", residuePhi);
   truth->SetBranchAddress("evap_termination", evapTermination);
+  truth->SetBranchAddress("residue_excitation", excitation);
+  truth->SetBranchAddress("reaction_branch", branch);
   truth->SetBranchAddress("residue_step", &residueStep);
   truth->SetBranchAddress("residue_termination", &residueTermination);
   truth->GetEntry(0);
@@ -177,7 +193,8 @@ bool ProductTruthAtSentinels(TTree *truth, const std::string &label) {
         theta[step] != kAngleUnset || phi[step] != kAngleUnset ||
         evapTheta[step] != kAngleUnset || evapPhi[step] != kAngleUnset ||
         residueTheta[step] != kAngleUnset || residuePhi[step] != kAngleUnset ||
-        evapTermination[step] != 0)
+        evapTermination[step] != 0 || excitation[step] != -2.0f ||
+        branch[step] != -1)
       return Fail(label + " retained partial-chain truth");
   if (residueStep != -1 || residueTermination != 0)
     return Fail(label + " retained a residue transport state");
@@ -472,6 +489,93 @@ bool MultiStepReconstruction(const char *path) {
   return true;
 }
 
+// branches*.toml: an (a,a') step with an elastic branch 0 (ground, Rutherford)
+// and a Talys branch 1 (isotropic), drawn with `expectedFraction` for branch 1.
+// The elastic branch is open at every vertex, so every event must react.
+bool Branches(const char *path, double expectedFraction) {
+  RootFile root = Open(path);
+  if (!root.truth)
+    return false;
+  Int_t reacted = -1;
+  Float_t beamEnergy = 0.0f;
+  Float_t evapEnergy[10]{};
+  Float_t residueEnergy[10]{};
+  Float_t excitation[10]{};
+  Float_t theta[10]{};
+  Int_t branch[10]{};
+  root.truth->SetBranchAddress("reaction_strip", &reacted);
+  root.truth->SetBranchAddress("beam_energy_reaction", &beamEnergy);
+  root.truth->SetBranchAddress("evap_energy", evapEnergy);
+  root.truth->SetBranchAddress("residue_energy", residueEnergy);
+  root.truth->SetBranchAddress("residue_excitation", excitation);
+  root.truth->SetBranchAddress("theta_cm", theta);
+  root.truth->SetBranchAddress("reaction_branch", branch);
+
+  Long64_t counts[2] = {0, 0};
+  double thetaSum[2] = {0.0, 0.0};
+  for (Long64_t entry = 0; entry < root.truth->GetEntries(); ++entry) {
+    root.truth->GetEntry(entry);
+    if (reacted < 0)
+      return Fail("an event was rejected though its elastic branch was open");
+    if (branch[0] != 0 && branch[0] != 1)
+      return Fail("a reacted event has no valid branch");
+    if (branch[0] == 0 && excitation[0] != 0.0f)
+      return Fail("the elastic branch left the residue excited");
+    if (branch[0] == 1 && !(excitation[0] > 0.0f))
+      return Fail("the Talys branch left the residue in its ground state");
+    // Elastic or inelastic scattering has Q = 0: beam KE = KE out + E_ex.
+    const double balance = static_cast<double>(beamEnergy) -
+                           static_cast<double>(evapEnergy[0]) -
+                           static_cast<double>(residueEnergy[0]) -
+                           static_cast<double>(excitation[0]);
+    if (std::fabs(balance) > 1e-3)
+      return Fail("(a,a') step does not conserve energy: off by " +
+                  std::to_string(balance) + " MeV");
+    ++counts[branch[0]];
+    thetaSum[branch[0]] += static_cast<double>(theta[0]);
+  }
+
+  const double total = static_cast<double>(counts[0] + counts[1]);
+  if (counts[0] == 0 || total < 100.0)
+    return Fail("too few events on the elastic branch");
+  // At an expected fraction of 0, sigma is 0: a closed branch is never drawn.
+  const double fraction = static_cast<double>(counts[1]) / total;
+  const double sigma =
+      std::sqrt(expectedFraction * (1.0 - expectedFraction) / total);
+  if (std::fabs(fraction - expectedFraction) > 5.0 * sigma)
+    return Fail("branch 1 drawn in " + std::to_string(fraction) +
+                " of events, expected " + std::to_string(expectedFraction));
+  // Rutherford from 1 degree is strongly forward; isotropic averages 90.
+  const double elasticTheta = thetaSum[0] / static_cast<double>(counts[0]);
+  const double talysTheta =
+      counts[1] > 0 ? thetaSum[1] / static_cast<double>(counts[1]) : 90.0;
+  if (elasticTheta > 45.0 || std::fabs(talysTheta - 90.0) > 10.0)
+    return Fail("branch angular models were not applied per branch");
+  return true;
+}
+
+// talys-step.toml: a step-level talys model on every reacted event, with
+// E_ex inside the fixture's support (0, 6] MeV.
+bool Talys(const char *path) {
+  RootFile root = Open(path);
+  if (!root.truth)
+    return false;
+  Int_t reacted = -1;
+  Float_t excitation[10]{};
+  Int_t branch[10]{};
+  root.truth->SetBranchAddress("reaction_strip", &reacted);
+  root.truth->SetBranchAddress("residue_excitation", excitation);
+  root.truth->SetBranchAddress("reaction_branch", branch);
+  for (Long64_t entry = 0; entry < root.truth->GetEntries(); ++entry) {
+    root.truth->GetEntry(entry);
+    if (reacted < 0)
+      return Fail("a step-level talys event did not react");
+    if (branch[0] != 0 || !(excitation[0] > 0.0f) || excitation[0] > 6.0f)
+      return Fail("step-level talys excitation is off the table support");
+  }
+  return root.truth->GetEntries() > 0;
+}
+
 struct BoundaryRecord {
   Float_t exitEnergy = 0.0f;
   Float_t z = 0.0f;
@@ -689,6 +793,81 @@ bool ControlText(const char *rootPath, const char *controlPath) {
   return true;
 }
 
+// Prints each event's per-step CM angles, ordered by event identity. They are
+// pure functions of the RNG draws, so they pin the reaction's draw order.
+bool CmAngles(const char *path) {
+  RootFile root = Open(path);
+  if (!root.truth)
+    return false;
+  Int_t steps = 0;
+  Float_t theta[10]{};
+  Float_t phi[10]{};
+  root.truth->SetBranchAddress("n_steps", &steps);
+  root.truth->SetBranchAddress("theta_cm", theta);
+  root.truth->SetBranchAddress("phi_cm", phi);
+  std::map<EventKey, std::vector<std::string>> events;
+  for (Long64_t entry = 0; entry < root.truth->GetEntries(); ++entry) {
+    root.truth->GetEntry(entry);
+    const EventKey key{
+        static_cast<Int_t>(
+            root.truth->GetLeaf("requested_strip")->GetValueLong64()),
+        static_cast<ULong64_t>(
+            root.truth->GetLeaf("event_index")->GetValueLong64())};
+    std::vector<std::string> &lines = events[key];
+    for (Int_t step = 0; step < steps; ++step) {
+      std::ostringstream line;
+      line << std::setprecision(9) << key.first << ' ' << key.second << ' '
+           << step << ' ' << static_cast<double>(theta[step]) << ' '
+           << static_cast<double>(phi[step]);
+      lines.push_back(line.str());
+    }
+  }
+  for (std::map<EventKey, std::vector<std::string>>::const_iterator event =
+           events.begin();
+       event != events.end(); ++event)
+    for (size_t i = 0; i < event->second.size(); ++i)
+      std::cout << event->second[i] << std::endl;
+  return !events.empty();
+}
+
+// Level table 0 in the metadata must hold the bytes of `tablePath` under the
+// resolved `expectedPath`, and the resolved configuration must carry its MD5.
+bool LevelTable(const char *rootPath, const char *expectedPath,
+                const char *tablePath) {
+  std::unique_ptr<TFile> file(TFile::Open(rootPath, "READ"));
+  if (!file || file->IsZombie())
+    return Fail(std::string("cannot open ") + rootPath);
+  const TObjString *text =
+      dynamic_cast<TObjString *>(file->Get("metadata/level_table_0"));
+  const TObjString *path =
+      dynamic_cast<TObjString *>(file->Get("metadata/level_table_0_path"));
+  const TObjString *resolved =
+      dynamic_cast<TObjString *>(file->Get("metadata/resolved_configuration"));
+  if (!text || !path || !resolved || file->Get("metadata/level_table_1"))
+    return Fail(std::string(rootPath) + " does not record exactly one table");
+  std::ifstream input(tablePath, std::ios::binary);
+  if (!input)
+    return Fail(std::string("cannot read ") + tablePath);
+  std::ostringstream expected;
+  expected << input.rdbuf();
+  if (std::string(text->GetString().Data()) != expected.str())
+    return Fail(std::string(rootPath) +
+                " stores table text that differs from " + tablePath);
+  if (std::string(path->GetString().Data()) != expectedPath)
+    return Fail(std::string(rootPath) + " records table path " +
+                path->GetString().Data() + ", expected " + expectedPath);
+  TMD5 md5;
+  md5.Update(reinterpret_cast<const UChar_t *>(expected.str().data()),
+             static_cast<UInt_t>(expected.str().size()));
+  md5.Final();
+  const std::string line =
+      std::string(expectedPath) + "; md5 = " + md5.AsString();
+  if (!resolved->GetString().Contains(line.c_str()))
+    return Fail(std::string(rootPath) + " resolved configuration lacks '" +
+                line + "'");
+  return true;
+}
+
 bool Reproducible(const char *left, const char *right) {
   const auto a = Rows(left);
   const auto b = Rows(right);
@@ -728,6 +907,10 @@ int main(int argc, char **argv) {
     ok = StoppedBeforeVertex(argv[2], std::stoi(argv[3]));
   else if (mode == "side-exit" && argc == 3)
     ok = SideExit(argv[2]);
+  else if (mode == "branches" && argc == 4)
+    ok = Branches(argv[2], std::stod(argv[3]));
+  else if (mode == "talys" && argc == 3)
+    ok = Talys(argv[2]);
   else if (mode == "boundary" && argc == 4) {
     const auto coarse = Boundary(argv[2]);
     const auto fine = Boundary(argv[3]);
@@ -739,6 +922,10 @@ int main(int argc, char **argv) {
     ok = Reproducible(argv[2], argv[3]);
   else if (mode == "control-text" && argc == 4)
     ok = ControlText(argv[2], argv[3]);
+  else if (mode == "cm-angles" && argc == 3)
+    ok = CmAngles(argv[2]);
+  else if (mode == "level-table" && argc == 5)
+    ok = LevelTable(argv[2], argv[3], argv[4]);
   else if (mode == "alter-resolved" && argc == 3)
     ok = AlterResolved(argv[2]);
   else if (mode == "two-body" && argc == 3)

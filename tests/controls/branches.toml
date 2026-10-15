@@ -1,0 +1,61 @@
+[gas]
+species     = "4He"
+pressure    = 220.0
+temperature = 293.0
+
+[beam]
+species     = "37Cl"
+energy      = 92.0
+energy_fwhm = 0.0
+
+[target]
+species  = "4He"
+compound = "41K"
+
+[windows.entrance]
+thickness_mg_cm2 = -1.0
+
+[windows.exit]
+thickness_mg_cm2 = -1.0
+
+[detector]
+eloss_bins  = 100
+max_eloss   = 10.0
+strip_first = 2
+strip_last  = 9
+
+# (a,a'): an elastic branch plus a Talys-table inelastic branch. The weights
+# are relative (3:1) and normalized at load.
+[[reaction.step]]
+[reaction.step.evap]
+name = "4He"
+
+[reaction.step.res]
+name = "37Cl"
+
+[[reaction.step.branch]]
+residue_excitation   = "ground"
+angular_distribution = "rutherford"
+weight               = 3.0
+
+[[reaction.step.branch]]
+residue_excitation   = "talys"
+level_table          = "../fixtures/talys-levels.tab"
+angular_distribution = "isotropic"
+weight               = 1.0
+
+[physics]
+straggling = false
+
+[run]
+events_per_strip = 100
+threads          = 2
+wait             = 0
+update           = 0
+max_time         = 2000.0
+sim_step         = 0.01
+method           = 0
+output           = "branches.root"
+file_opt         = "recreate"
+print_opt        = 0
+seed             = 105

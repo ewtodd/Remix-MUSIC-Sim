@@ -8,6 +8,7 @@
 #include <future>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -41,11 +42,23 @@
 #include "catima/catima.h"
 #include "catima/config.h"
 
+#include "ExcitationTable.hpp"
 #include "NuclideFinder.hpp"
 #include "Particle.hpp"
 
 class Simulator {
 public:
+  // One weighted excitation + angular model choice within a reaction step.
+  struct ExcitationBranch {
+    Int_t residueExc = -1;  // 0 forced, 1 ground, 2 uniform, 3 talys
+    Int_t angularDist = -1; // 0 isotropic, 1 rutherford
+    Double_t thetaCmMinDeg = 1.0;
+    Double_t weight = -1.0; // relative; normalized at load
+    std::string levelTable; // resolved path; only when residueExc == 3
+    music::ExcitationTable table;
+  };
+  static constexpr Int_t kMaxBranchesPerStep = 8;
+
   Simulator(Int_t workerId = 0);
   ~Simulator();
 
@@ -55,7 +68,10 @@ public:
   Int_t loadCtrlFile(const char *fileName);
   // Parses control text already read from sourcePath. Workers use this so the
   // whole run uses the bytes the master read, even if the file later changes.
-  Int_t loadCtrlText(const std::string &text, const char *sourcePath);
+  // Workers also pass the master's level tables, so no table is read twice.
+  Int_t
+  loadCtrlText(const std::string &text, const char *sourcePath,
+               const std::map<std::string, std::string> *levelTables = nullptr);
   Int_t run();
   Bool_t WantsVisualization() const { return ctf.Update != 0; }
 
@@ -156,6 +172,9 @@ private:
   void SetInitialKinematics(Double_t Kbi);
   Int_t SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
                               Double_t theta_CM = -1, Double_t phi_CM = -1);
+  Int_t SelectBranch(Int_t er, Double_t EneAvail);
+  Bool_t SampleExcitation(const ExcitationBranch &branch, Int_t er,
+                          Double_t EneAvail, Double_t &Ex);
   void PrintCompoundEexc(Double_t Kb, Double_t **DeltaEB);
 
   // Lifecycle / control.
@@ -318,7 +337,9 @@ private:
   static constexpr Float_t kAngleUnset = -1000.0f;
   Float_t *theta_cm; // CM emission angles [deg]
   Float_t *phi_cm;
-  Float_t *evap_theta; // lab angles [deg]
+  Float_t *residue_excitation; // residue E_ex at creation [MeV]
+  Int_t *reaction_branch;      // selected branch per step (-1 = none)
+  Float_t *evap_theta;         // lab angles [deg]
   Float_t *evap_phi;
   Float_t *residue_theta;
   Float_t *residue_phi;
@@ -357,6 +378,8 @@ private:
   TString ctrlFilePath_;
   // The control file as read once at load; metadata and workers use this copy.
   std::string ctrlFileText_;
+  // Level tables as read once at load, keyed by resolved path; same use.
+  std::map<std::string, std::string> levelTableText_;
   ULong64_t eventOffset_ = 0;
 
   static constexpr Double_t c = 29.9792458; // speed of light, cm/ns
@@ -388,12 +411,18 @@ private:
     std::array<Float_t, MaxNumEvapPart> dEdxScaleEvap{};
     std::array<Int_t, MaxNumEvapPart> colorEvap{};
     // Per-step residue excitation: 0 = explicitly forced, 1 = ground,
-    // 2 = uniform. -1 means not supplied and is rejected for reacted runs.
+    // 2 = uniform, 3 = talys. -1 means not supplied and is rejected for
+    // reacted runs, or that the step uses [[reaction.step.branch]] tables.
     std::array<Int_t, MaxNumEvapPart> residueExc{};
     // Per-step angular distribution: 0 = isotropic, 1 = Rutherford; -1 means
     // not supplied and is rejected for reacted runs.
     std::array<Int_t, MaxNumEvapPart> angularDist{};
     std::array<Double_t, MaxNumEvapPart> thetaCmMinDeg{};
+    std::array<std::string, MaxNumEvapPart> levelTable;
+    // The models kinematics samples from. A step without branch tables gets
+    // one implicit branch of weight 1 built from the scalars above.
+    std::array<std::vector<ExcitationBranch>, MaxNumEvapPart> branches;
+    std::array<Bool_t, MaxNumEvapPart> hasBranchTables{};
     Double_t BeamEnergy = std::numeric_limits<Double_t>::quiet_NaN();
     Double_t KbFWHM = 0; // MeV FWHM at the accelerator
     TString entranceMaterial = "Ti";

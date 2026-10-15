@@ -1,5 +1,16 @@
 #include "Simulator.hpp"
 
+namespace {
+constexpr Double_t thresholdTolerance = 1e-9;
+
+// Share of a branch's excitation weight at or below EneAvail. Branches cannot
+// be forced, so only a talys table can be partly or wholly closed.
+Double_t OpenFraction(const Simulator::ExcitationBranch &branch,
+                      Double_t EneAvail) {
+  return branch.residueExc == 3 ? branch.table.AllowedWeight(EneAvail) : 1.0;
+}
+} // namespace
+
 void Simulator::SetInitialKinematics(Double_t Kbi) {
   Double_t mb = Beam->Mass;
   Double_t pb = std::sqrt(2 * mb * Kbi * (1 + Kbi / (2 * mb)));
@@ -109,7 +120,6 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
       Log << "Max energy avail.=" << EneAvail << " MeV" << std::endl;
     }
 
-    constexpr Double_t thresholdTolerance = 1e-9;
     if (EneAvail < -thresholdTolerance) {
       if (PrintLevel > 0)
         Log << "Reaction step " << er << " is below threshold." << std::endl;
@@ -118,44 +128,35 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     }
     EneAvail = std::max(0.0, EneAvail);
 
-    Double_t Ex = 0;
-    switch (ctf.residueExc[er]) {
-    case 1:
-      Ex = 0.0;
-      break;
-    case 2:
-      Ex = Rdm->Uniform(0.0, EneAvail);
-      break;
-    case 0:
-      if (er + 1 >= numEvaporations ||
-          EneAvail + thresholdTolerance < minEx[er + 1]) {
-        reactionAllowed = kFALSE;
-        break;
-      }
-      // A forced intermediate residue carries at least the invariant-mass
-      // excess required by the rest of the configured decay chain.
-      Ex = minEx[er + 1] >= EneAvail ? EneAvail
-                                     : Rdm->Uniform(minEx[er + 1], EneAvail);
-      break;
-    default:
+    // The branch is drawn before any excitation or angle draw.
+    const Int_t branchIndex = SelectBranch(er, EneAvail);
+    if (branchIndex < 0) {
+      if (PrintLevel > 0)
+        Log << "Reaction step " << er << " has no open branch." << std::endl;
       reactionAllowed = kFALSE;
       break;
     }
-    if (!reactionAllowed)
+    const ExcitationBranch &branch = ctf.branches[er][branchIndex];
+    Double_t Ex = 0;
+    if (!SampleExcitation(branch, er, EneAvail, Ex)) {
+      reactionAllowed = kFALSE;
       break;
+    }
 
     EvaR[er]->SetExcEnergy(Ex);
+    reaction_branch[er] = branchIndex;
+    residue_excitation[er] = static_cast<Float_t>(Ex);
 
     // For the first step, honour user-specified angles; for later steps,
     // randomise. Uniform on the unit sphere → cos(θ) uniform on [-1, 1].
     Double_t stepTheta = theta_CM;
     Double_t stepPhi = phi_CM;
     if ((stepTheta == -1 && stepPhi == -1) || er > 0) {
-      if (ctf.angularDist[er] == 1) {
+      if (branch.angularDist == 1) {
         // Rutherford. With u = sin^2(theta/2), dsigma ~ du/u^2, so sampling u
         // on [u_min, 1] with that weight inverts in closed form:
         //     1/u = 1/u_min - r (1/u_min - 1)
-        Double_t hmin = std::sin(0.5 * ctf.thetaCmMinDeg[er] * pi / 180.0);
+        Double_t hmin = std::sin(0.5 * branch.thetaCmMinDeg * pi / 180.0);
         Double_t umin = hmin * hmin;
         Double_t r = Rdm->Uniform(0.0, 1.0);
         Double_t inv = 1.0 / umin - r * (1.0 / umin - 1.0);
@@ -172,6 +173,7 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     phi_cm[er] = static_cast<Float_t>(stepPhi * 180.0 / pi);
 
     if (PrintLevel > 0) {
+      Log << "branch=" << branchIndex << std::endl;
       Log << "Ex(" << EvaR[er]->Name << ")=" << Ex
           << " MeV\ntheta_cm=" << stepTheta * 180 / pi
           << "\nphi_cm=" << stepPhi * 180 / pi << std::endl;
@@ -251,6 +253,8 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
       // erase angles already sampled by an earlier successful step before a
       // later step failed its threshold check.
       theta_cm[er] = phi_cm[er] = kAngleUnset;
+      residue_excitation[er] = -2.0f;
+      reaction_branch[er] = -1;
       evap_energy[er] = residue_energy[er] = -2.0f;
       evap_theta[er] = evap_phi[er] = kAngleUnset;
       residue_theta[er] = residue_phi[er] = kAngleUnset;
@@ -317,6 +321,66 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
   }
 
   return 1;
+}
+
+// Draws the branch for step `er` by weight x open fraction at this EneAvail;
+// -1 when every branch is closed. A single-branch step consumes no RNG draw,
+// so branch-free controls keep their pre-branch event streams.
+Int_t Simulator::SelectBranch(Int_t er, Double_t EneAvail) {
+  const std::vector<ExcitationBranch> &branches = ctf.branches[er];
+  const Int_t count = static_cast<Int_t>(branches.size());
+  if (count <= 1)
+    return 0;
+  Double_t open[kMaxBranchesPerStep];
+  Double_t totalWeight = 0.0;
+  for (Int_t i = 0; i < count; ++i) {
+    open[i] = branches[i].weight * OpenFraction(branches[i], EneAvail);
+    totalWeight += open[i];
+  }
+  if (!(totalWeight > 0.0))
+    return -1;
+  Double_t pick = Rdm->Uniform(0.0, totalWeight);
+  Int_t lastOpen = 0;
+  for (Int_t i = 0; i < count; ++i) {
+    if (open[i] <= 0.0)
+      continue;
+    if (pick < open[i])
+      return i;
+    pick -= open[i];
+    lastOpen = i;
+  }
+  // Rounding can leave pick at the very top of the cumulative weight.
+  return lastOpen;
+}
+
+// Samples the step-`er` residue excitation for the selected branch. Returns
+// kFALSE when the branch admits no excitation at this EneAvail.
+Bool_t Simulator::SampleExcitation(const ExcitationBranch &branch, Int_t er,
+                                   Double_t EneAvail, Double_t &Ex) {
+  Bool_t ok = kTRUE;
+  switch (branch.residueExc) {
+  case 1:
+    Ex = 0.0;
+    break;
+  case 2:
+    Ex = Rdm->Uniform(0.0, EneAvail);
+    break;
+  case 0:
+    if (er + 1 >= numEvaporations ||
+        EneAvail + thresholdTolerance < minEx[er + 1])
+      return kFALSE;
+    // A forced intermediate residue carries at least the invariant-mass
+    // excess required by the rest of the configured decay chain.
+    Ex = minEx[er + 1] >= EneAvail ? EneAvail
+                                   : Rdm->Uniform(minEx[er + 1], EneAvail);
+    break;
+  case 3:
+    Ex = branch.table.Sample(EneAvail, Rdm, ok);
+    break;
+  default:
+    return kFALSE;
+  }
+  return ok;
 }
 
 // Non-relativistic CM-energy ranges, per strip. Used to estimate the kinematic

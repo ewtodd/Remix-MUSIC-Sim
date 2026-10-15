@@ -1,0 +1,6 @@
+# Hand-written test fixture in the Talys level-table format; not Talys output.
+# Illustrative inelastic shape: three discrete levels plus one continuum bin.
+level 1.727 0.40
+level 3.086 0.25
+level 3.104 0.10   # weights are relative; they sum to 1 here for readability
+bin   4.00  6.00  0.25

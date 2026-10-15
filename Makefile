@@ -43,6 +43,7 @@ TESTDIR = $(OBJDIR)/tests
 ROOT_CHECK = $(TESTDIR)/root_checks
 VAVILOV_CHECK = $(TESTDIR)/vavilov_statistics
 NUCLIDE_CHECK = $(TESTDIR)/nuclide_loader
+EXCITATION_CHECK = $(TESTDIR)/excitation_table
 SANITIZE_DIR = $(TESTDIR)/sanitize
 SANITIZE_OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(SANITIZE_DIR)/%.o)
 # GCC 15's sanitizer passes are pathologically slow on the generated nuclide
@@ -55,6 +56,7 @@ SANITIZE_CONVERTER = $(SANITIZE_DIR)/legacy-msc-to-toml
 SANITIZE_ROOT_CHECK = $(SANITIZE_DIR)/root_checks
 SANITIZE_VAVILOV_CHECK = $(SANITIZE_DIR)/vavilov_statistics
 SANITIZE_NUCLIDE_CHECK = $(SANITIZE_DIR)/nuclide_loader
+SANITIZE_EXCITATION_CHECK = $(SANITIZE_DIR)/excitation_table
 CPP_FORMAT_FILES = $(sort $(wildcard $(INCDIR)/*.hpp $(SRCDIR)/*.cpp tests/*.cpp))
 TOML_FORMAT_FILES = $(sort basic.toml $(wildcard ControlExamples/*/*.toml tests/controls/*.toml))
 CLANG_FORMAT_STYLE = {BasedOnStyle: LLVM, BreakStringLiterals: false}
@@ -95,19 +97,26 @@ $(NUCLIDE_CHECK): tests/nuclide_loader.cpp src/NuclideFinder.cpp \
 		-I$(INCDIR) -o $@ tests/nuclide_loader.cpp src/NuclideFinder.cpp \
 		$(shell root-config --libs)
 
+$(EXCITATION_CHECK): tests/excitation_table.cpp src/ExcitationTable.cpp \
+		include/ExcitationTable.hpp | $(TESTDIR)
+	$(CXX) -std=c++17 -Wall -Wextra -Wpedantic $(shell root-config --cflags) \
+		-I$(INCDIR) -o $@ tests/excitation_table.cpp src/ExcitationTable.cpp \
+		$(shell root-config --libs)
+
 $(TESTDIR):
 	mkdir -p $(TESTDIR)
 
 # Build-only target for the check binaries; the nix build invokes this so
 # `nix build` ships them next to musicsim and the suite can run without make.
-test-bins: $(ROOT_CHECK) $(VAVILOV_CHECK) $(NUCLIDE_CHECK)
+test-bins: $(ROOT_CHECK) $(VAVILOV_CHECK) $(NUCLIDE_CHECK) $(EXCITATION_CHECK)
 
-check: all $(ROOT_CHECK) $(VAVILOV_CHECK) $(NUCLIDE_CHECK)
+check: all $(ROOT_CHECK) $(VAVILOV_CHECK) $(NUCLIDE_CHECK) $(EXCITATION_CHECK)
 	MUSICSIM_BIN=$(abspath musicsim) \
 	CONVERTER_BIN=$(abspath legacy-msc-to-toml) \
 	ROOT_CHECK_BIN=$(abspath $(ROOT_CHECK)) \
 	VAVILOV_CHECK_BIN=$(abspath $(VAVILOV_CHECK)) \
 	NUCLIDE_CHECK_BIN=$(abspath $(NUCLIDE_CHECK)) \
+	EXCITATION_CHECK_BIN=$(abspath $(EXCITATION_CHECK)) \
 		bash tests/run-tests.sh
 
 strict:
@@ -149,12 +158,20 @@ $(SANITIZE_NUCLIDE_CHECK): tests/nuclide_loader.cpp \
 		tests/nuclide_loader.cpp $(SANITIZE_DIR)/NuclideFinder.o \
 		$(shell root-config --libs)
 
+$(SANITIZE_EXCITATION_CHECK): tests/excitation_table.cpp \
+		$(SANITIZE_DIR)/ExcitationTable.o \
+		include/ExcitationTable.hpp | $(SANITIZE_DIR)
+	$(CXX) -std=c++17 $(STRICT_FLAGS) $(SANITIZE_FLAGS) \
+		$(shell root-config --cflags) -I$(INCDIR) -o $@ \
+		tests/excitation_table.cpp $(SANITIZE_DIR)/ExcitationTable.o \
+		$(shell root-config --libs)
+
 $(SANITIZE_DIR):
 	mkdir -p $(SANITIZE_DIR)
 
 sanitize-check: $(SANITIZE_SIM) $(SANITIZE_CONVERTER) \
 		$(SANITIZE_ROOT_CHECK) $(SANITIZE_VAVILOV_CHECK) \
-		$(SANITIZE_NUCLIDE_CHECK)
+		$(SANITIZE_NUCLIDE_CHECK) $(SANITIZE_EXCITATION_CHECK)
 	ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	MUSICSIM_BIN=$(abspath $(SANITIZE_SIM)) \
@@ -162,6 +179,7 @@ sanitize-check: $(SANITIZE_SIM) $(SANITIZE_CONVERTER) \
 	ROOT_CHECK_BIN=$(abspath $(SANITIZE_ROOT_CHECK)) \
 	VAVILOV_CHECK_BIN=$(abspath $(SANITIZE_VAVILOV_CHECK)) \
 	NUCLIDE_CHECK_BIN=$(abspath $(SANITIZE_NUCLIDE_CHECK)) \
+	EXCITATION_CHECK_BIN=$(abspath $(SANITIZE_EXCITATION_CHECK)) \
 		bash tests/run-tests.sh
 
 format:

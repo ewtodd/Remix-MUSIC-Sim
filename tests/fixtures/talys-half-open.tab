@@ -1,0 +1,4 @@
+# Hand-written test fixture: half the weight lies above every vertex's
+# EneAvail in branches-partial.toml (6.6-8.2 MeV), so its open fraction is 0.5.
+level  1.0 0.5
+level 20.0 0.5

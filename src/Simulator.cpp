@@ -39,6 +39,8 @@ Simulator::Simulator(Int_t workerId) {
   residue_energy_exit = new Float_t[maxEvaporations];
   theta_cm = new Float_t[maxEvaporations];
   phi_cm = new Float_t[maxEvaporations];
+  residue_excitation = new Float_t[maxEvaporations];
+  reaction_branch = new Int_t[maxEvaporations];
   evap_theta = new Float_t[maxEvaporations];
   evap_phi = new Float_t[maxEvaporations];
   residue_theta = new Float_t[maxEvaporations];
@@ -116,6 +118,8 @@ Simulator::~Simulator() {
   delete[] residue_energy_exit;
   delete[] theta_cm;
   delete[] phi_cm;
+  delete[] residue_excitation;
+  delete[] reaction_branch;
   delete[] evap_theta;
   delete[] evap_phi;
   delete[] residue_theta;
@@ -513,8 +517,8 @@ Int_t Simulator::run() {
           storedControl->GetString() != ctrlFileText_.c_str() ||
           !sameConfiguration) {
         std::cerr << "musicsim ERROR: update output provenance does not match "
-                     "this run's control file, resolved defaults, or code "
-                     "revision."
+                     "this run's control file, level tables, resolved "
+                     "defaults, or code revision."
                   << std::endl;
         rootFile->Close();
         rootFile.reset();
@@ -662,6 +666,7 @@ Int_t Simulator::runMultiThreaded() {
   const TString baseOutput = ctf.FileName;
   const TString ctrlPath = ctrlFilePath_;
   const std::string ctrlText = ctrlFileText_;
+  const std::map<std::string, std::string> levelTables = levelTableText_;
 
   if (ctrlPath.IsNull()) {
     std::cerr << "musicsim: multi-threaded mode requires a control file path."
@@ -694,9 +699,10 @@ Int_t Simulator::runMultiThreaded() {
 
     futures.push_back(std::async(
         std::launch::async,
-        [ctrlPath, ctrlText, out, slice, workerOffset, w]() -> Int_t {
+        [ctrlPath, ctrlText, levelTables, out, slice, workerOffset,
+         w]() -> Int_t {
           Simulator worker(w + 1); // worker ids start at 1 (0 is master)
-          if (worker.loadCtrlText(ctrlText, ctrlPath.Data()) == 0)
+          if (worker.loadCtrlText(ctrlText, ctrlPath.Data(), &levelTables) == 0)
             return 0;
           worker.OverrideNEvents(slice);
           worker.OverrideOutputFile(out);

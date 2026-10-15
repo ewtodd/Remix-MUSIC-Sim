@@ -68,7 +68,8 @@
             cp legacy-msc-to-toml $out/bin/
             cp lib/tests/root_checks \
                lib/tests/vavilov_statistics \
-               lib/tests/nuclide_loader $out/bin/
+               lib/tests/nuclide_loader \
+               lib/tests/excitation_table $out/bin/
             cp -r assets/. $out/assets/
           '';
         };
