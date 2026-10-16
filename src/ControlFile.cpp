@@ -66,6 +66,17 @@ void CheckKeys(const toml::table &table,
   }
 }
 
+// Z of an element symbol ("Y"), from the mass table's names; -1 if unknown.
+Int_t ElementZ(NuclideFinder &finder, const std::string &symbol) {
+  for (Int_t i = 0; i < finder.GetArraySize(); ++i) {
+    const std::string name = finder.GetName(i);
+    const size_t letters = name.find_first_not_of("0123456789");
+    if (letters != std::string::npos && name.substr(letters) == symbol)
+      return finder.GetZ(i);
+  }
+  return -1;
+}
+
 std::string JoinErrors(const std::vector<std::string> &errors) {
   std::ostringstream out;
   for (const auto &error : errors)
@@ -93,8 +104,8 @@ Int_t ParseAngularName(const std::string &name) {
   return -1;
 }
 
-// `level_table` names a talys model's table; without one, talys-cache builds
-// a table per strip. A relative path resolves against the control's directory.
+// `level_table` is required exactly when the model is talys. A relative path
+// is resolved against the directory holding the control file.
 void ReadLevelTable(const toml::table &table, const std::string &path,
                     Int_t residueExc, const std::filesystem::path &controlDir,
                     std::string &levelTable, std::vector<std::string> &errors) {
@@ -110,8 +121,13 @@ void ReadLevelTable(const toml::table &table, const std::string &path,
                      ".level_table' requires residue_excitation='talys'");
     return;
   }
-  if (!present)
+  if (!present) {
+    if (residueExc == 3)
+      errors.push_back("missing required key '" + path +
+                       ".level_table' (for TALYS's channels per strip, use "
+                       "reaction.talys_class)");
     return;
+  }
   const std::filesystem::path given(*value);
   levelTable =
       given.is_absolute() ? given.string() : (controlDir / given).string();
@@ -121,7 +137,7 @@ void ReadLevelTable(const toml::table &table, const std::string &path,
 // minimum-excitation chain it relies on assumes one model per step.
 void ParseBranch(const toml::table &table, const std::string &path,
                  Double_t stepThetaMin, const std::filesystem::path &controlDir,
-                 Simulator::ExcitationBranch &branch, Bool_t &weightGiven,
+                 Simulator::ExcitationBranch &branch,
                  std::vector<std::string> &errors) {
   CheckKeys(table,
             {"residue_excitation", "angular_distribution", "theta_cm_min_deg",
@@ -152,14 +168,12 @@ void ParseBranch(const toml::table &table, const std::string &path,
                      ".angular_distribution' must be 'isotropic' or "
                      "'rutherford'");
 
-  // Whether a weight is required depends on the whole step; see below.
-  weightGiven = table.contains("weight");
   const std::optional<Double_t> weight = table["weight"].value<Double_t>();
-  if (weightGiven && !weight)
-    errors.push_back("'" + path + ".weight' must be a number");
-  else if (weightGiven && (!std::isfinite(*weight) || *weight < 0.0))
+  if (!weight)
+    errors.push_back("missing or invalid number '" + path + ".weight'");
+  else if (!std::isfinite(*weight) || *weight < 0.0)
     errors.push_back("'" + path + ".weight' must be finite and >= 0");
-  else if (weightGiven)
+  else
     branch.weight = *weight;
 
   branch.thetaCmMinDeg = stepThetaMin;
@@ -176,12 +190,10 @@ void ParseBranch(const toml::table &table, const std::string &path,
 
   ReadLevelTable(table, path, branch.residueExc, controlDir, branch.levelTable,
                  errors);
-  branch.perStrip = branch.residueExc == 3 && branch.levelTable.empty();
 }
 
-// Reads a step's branch tables and normalizes their weights, unless a
-// talys-cache branch makes them per strip. Step-level model keys must be
-// absent.
+// Reads a step's branch tables and normalizes their weights. Branch tables
+// replace the step-level model keys, so those must then be absent.
 void ParseStepBranches(const toml::table &step, const std::string &base,
                        Double_t stepThetaMin,
                        const std::filesystem::path &controlDir,
@@ -205,46 +217,15 @@ void ParseStepBranches(const toml::table &step, const std::string &base,
   }
 
   Double_t totalWeight = 0.0;
-  Bool_t computed = kFALSE;
-  std::vector<Bool_t> weightGiven(tables->size(), kFALSE);
   for (size_t i = 0; i < tables->size(); ++i) {
     const std::string path = base + ".branch[" + std::to_string(i) + "]";
     Simulator::ExcitationBranch branch;
-    Bool_t given = kFALSE;
     ParseBranch(*(*tables)[i].as_table(), path, stepThetaMin, controlDir,
-                branch, given, errors);
-    weightGiven[i] = given;
-    computed = computed || branch.perStrip;
+                branch, errors);
     if (branch.weight > 0.0)
       totalWeight += branch.weight;
     branches.push_back(branch);
   }
-  if (computed) {
-    // TALYS gives the inelastic weight and the Rutherford integral the
-    // elastic one, strip by strip, so the step must be exactly that pair.
-    Int_t perStrip = 0;
-    Int_t elastic = 0;
-    for (size_t i = 0; i < branches.size(); ++i) {
-      if (weightGiven[i])
-        errors.push_back("'" + base + ".branch[" + std::to_string(i) +
-                         "].weight' cannot be set: a step with a talys-cache "
-                         "branch computes its weights per strip");
-      if (branches[i].perStrip)
-        ++perStrip;
-      else if (branches[i].residueExc == 1 && branches[i].angularDist == 1)
-        ++elastic;
-    }
-    if (branches.size() != 2 || perStrip != 1 || elastic != 1)
-      errors.push_back("'" + base +
-                       "' with a talys-cache branch needs exactly two "
-                       "branches: ground + rutherford, and talys without "
-                       "level_table");
-    return;
-  }
-  for (size_t i = 0; i < branches.size(); ++i)
-    if (!weightGiven[i])
-      errors.push_back("missing or invalid number '" + base + ".branch[" +
-                       std::to_string(i) + "].weight'");
   if (!(totalWeight > 0.0)) {
     errors.push_back("'" + base + ".branch' needs at least one weight > 0");
     return;
@@ -254,17 +235,37 @@ void ParseStepBranches(const toml::table &step, const std::string &base,
       branches[i].weight /= totalWeight;
 }
 
-// Reads the optional [talys] block: the alpha optical model and extra TALYS
-// keywords for talys-cache tables.
+// Reads the optional [talys] block: the alpha optical model, extra TALYS
+// keywords for talys-cache tables, and the class channels' thresholds.
 void ParseTalysBlock(const toml::table &talys, music::TalysSettings &settings,
                      std::vector<std::string> &errors) {
-  CheckKeys(talys, {"alpha_omp", "keywords"}, "talys.", errors);
+  CheckKeys(talys,
+            {"alpha_omp", "keywords", "min_channel_fraction", "min_channel_mb"},
+            "talys.", errors);
   if (talys.contains("alpha_omp")) {
     const std::optional<int64_t> omp = talys["alpha_omp"].value<int64_t>();
     if (!omp || *omp < 1 || *omp > 9)
       errors.push_back("'talys.alpha_omp' must be an integer in [1, 9]");
     else
       settings.alphaOmp = static_cast<Int_t>(*omp);
+  }
+  if (talys.contains("min_channel_fraction")) {
+    const std::optional<Double_t> fraction =
+        talys["min_channel_fraction"].value<Double_t>();
+    if (!fraction || !std::isfinite(*fraction) || *fraction < 0.0 ||
+        *fraction >= 1.0)
+      errors.push_back("'talys.min_channel_fraction' must be a number in "
+                       "[0, 1)");
+    else
+      settings.minChannelFraction = *fraction;
+  }
+  if (talys.contains("min_channel_mb")) {
+    const std::optional<Double_t> mb =
+        talys["min_channel_mb"].value<Double_t>();
+    if (!mb || !std::isfinite(*mb) || *mb < 0.0)
+      errors.push_back("'talys.min_channel_mb' must be a finite number >= 0");
+    else
+      settings.minChannelMb = *mb;
   }
   if (!talys.contains("keywords"))
     return;
@@ -620,10 +621,44 @@ Int_t Simulator::loadCtrlText(
   }
 
   if (const auto *reaction = tbl["reaction"].as_table()) {
-    CheckKeys(*reaction, {"step"}, "reaction.", errors);
+    CheckKeys(*reaction,
+              {"step", "talys_class", "theta_cm_min_deg", "residue_dedx_scale",
+               "evap_dedx_scale"},
+              "reaction.", errors);
+    const Bool_t classGiven = reaction->contains("talys_class");
+    if (const std::optional<std::string> name =
+            (*reaction)["talys_class"].value<std::string>())
+      next.talysClass = *name;
+    else if (classGiven)
+      errors.push_back("'reaction.talys_class' must be a string");
+    const char *classKeys[3] = {"theta_cm_min_deg", "residue_dedx_scale",
+                                "evap_dedx_scale"};
+    Double_t classValues[3] = {next.classThetaCmMinDeg, 1.0, 1.0};
+    for (Int_t k = 0; k < 3; ++k) {
+      if (!reaction->contains(classKeys[k]))
+        continue;
+      const std::string where = std::string("'reaction.") + classKeys[k] + "'";
+      const std::optional<Double_t> value =
+          (*reaction)[classKeys[k]].value<Double_t>();
+      if (!classGiven)
+        errors.push_back(where + " is only used with reaction.talys_class");
+      else if (!value || !std::isfinite(*value) || *value <= 0.0)
+        errors.push_back(where + " must be a finite number > 0");
+      else
+        classValues[k] = *value;
+    }
+    if (classValues[0] >= 180.0)
+      errors.push_back("'reaction.theta_cm_min_deg' must be in (0, 180)");
+    next.classThetaCmMinDeg = classValues[0];
+    next.classResidueDedxScale = static_cast<Float_t>(classValues[1]);
+    next.classEvapDedxScale = static_cast<Float_t>(classValues[2]);
     const auto stepsNode = tbl.at_path("reaction.step");
     const auto *steps = stepsNode.as_array();
-    if (!steps) {
+    if (classGiven) {
+      if (stepsNode)
+        errors.push_back("'reaction.step' cannot be combined with "
+                         "reaction.talys_class, whose chains come from TALYS");
+    } else if (!steps) {
       errors.push_back("'reaction.step' must be an array of tables");
     } else if (steps->size() > controlFileParams::MaxNumEvapPart) {
       errors.push_back("reaction has more than 10 steps");
@@ -814,7 +849,7 @@ Int_t Simulator::loadCtrlText(
     errors.push_back("visual updates are not supported with run.threads > 1");
 
   const Bool_t reacted = next.stripFirst >= 0;
-  if (reacted && next.NumEvapPart == 0)
+  if (reacted && next.NumEvapPart == 0 && next.talysClass.IsNull())
     errors.push_back(
         "reacted runs require at least one complete reaction.step");
   for (Int_t i = 0; i < next.NumEvapPart; ++i) {
@@ -853,39 +888,18 @@ Int_t Simulator::loadCtrlText(
     implicit.thetaCmMinDeg = next.thetaCmMinDeg[i];
     implicit.weight = 1.0;
     implicit.levelTable = next.levelTable[i];
-    implicit.perStrip = implicit.residueExc == 3 && implicit.levelTable.empty();
     next.branches[i].assign(1, implicit);
   }
-  // A talys-cache table is a TALYS (a,a') run at each strip's centre energy,
-  // so it needs the beam energy at the vertex: step 0 only, beside elastic.
-  Bool_t anyPerStrip = kFALSE;
-  for (Int_t i = 0; i < next.NumEvapPart; ++i) {
-    for (size_t b = 0; b < next.branches[i].size(); ++b) {
-      const ExcitationBranch &branch = next.branches[i][b];
-      if (!branch.perStrip)
-        continue;
-      anyPerStrip = kTRUE;
-      next.computedWeights[i] = kTRUE;
-      std::string where = "reaction.step[" + std::to_string(i) + "]";
-      if (next.hasBranchTables[i])
-        where += ".branch[" + std::to_string(b) + "]";
-      if (!next.hasBranchTables[i])
-        errors.push_back("'" + where +
-                         "' needs a level_table: a talys-cache table goes in a "
-                         "[[reaction.step.branch]] beside ground + rutherford");
-      if (i != 0)
-        errors.push_back("'" + where +
-                         "': talys without level_table (a talys-cache table) "
-                         "is only supported on step 0");
-      if (branch.angularDist != 0)
-        errors.push_back("'" + where +
-                         ".angular_distribution' must be 'isotropic' for a "
-                         "talys-cache table, whose weight is angle-integrated");
-    }
-  }
-  if (next.hasTalysBlock && !anyPerStrip)
-    errors.push_back(
-        "[talys] is only used by talys branches without level_table");
+  // A class run's chains come from talys-cache's table at each strip's centre
+  // energy, so it needs a reacted run, an alpha target, and no event display.
+  const Bool_t talysClass = !next.talysClass.IsNull();
+  if (next.hasTalysBlock && !talysClass)
+    errors.push_back("[talys] is only used with reaction.talys_class");
+  if (talysClass && !reacted)
+    errors.push_back("reaction.talys_class needs a reacted run "
+                     "(detector.strip >= 0 or a strip range)");
+  if (talysClass && next.Update)
+    errors.push_back("reaction.talys_class does not support run.update = 1");
   // Each table is read from disk once; workers parse the master's copy, so a
   // table edited mid-run cannot reach part of the run.
   std::map<std::string, std::string> nextTables;
@@ -986,7 +1000,7 @@ Int_t Simulator::loadCtrlText(
         for (size_t b = 0; b < next.branches[i].size(); ++b) {
           const ExcitationBranch &branch = next.branches[i][b];
           if (branch.residueExc == 1 && branch.angularDist == 1 &&
-              (branch.weight > 0.0 || next.computedWeights[i]))
+              branch.weight > 0.0)
             elasticBranch = kTRUE;
         }
         if (!elasticBranch)
@@ -999,13 +1013,21 @@ Int_t Simulator::loadCtrlText(
       if (i == 0 && reacted && elasticSwapped)
         errors.push_back("elastic step 0 must list the beam-like product as "
                          "'res' and the target-like product as 'evap'");
-      // TALYS runs alpha on the beam nucleus and reads back that nucleus.
-      if (i == 0 && next.computedWeights[i] && (targetA != 4 || targetZ != 2))
-        errors.push_back("a talys-cache table needs target.species = '4He'");
-      if (i == 0 && next.computedWeights[i] && !elasticAsLabelled)
-        errors.push_back("a talys-cache table describes (a,a'): step 0 must "
-                         "list the target as 'evap' and the beam as 'res'");
       parent = next.res[i];
+    }
+    // TALYS runs alpha on the beam nucleus, and the class is an element its
+    // residues can reach; elastic is in the beam's class only.
+    if (talysClass) {
+      next.classZ = ElementZ(*NuF, next.talysClass.Data());
+      if (targetA != 4 || targetZ != 2)
+        errors.push_back("reaction.talys_class needs target.species = '4He'");
+      if (next.classZ < 1 || next.classZ > beamZ + targetZ)
+        errors.push_back("'reaction.talys_class' = '" +
+                         std::string(next.talysClass.Data()) +
+                         "' is not an element at or below the compound's");
+      if (tbl.at_path("reaction.theta_cm_min_deg") && next.classZ != beamZ)
+        errors.push_back("'reaction.theta_cm_min_deg' sets the elastic "
+                         "cut, but elastic is only in the beam's class");
     }
   }
 

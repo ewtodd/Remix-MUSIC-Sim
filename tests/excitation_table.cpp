@@ -135,6 +135,41 @@ Bool_t CheckOneDraw(const music::ExcitationTable &table) {
   return kTRUE;
 }
 
+// A floor cuts the table from below as EneAvail does from above: a level at
+// the floor is kept, a straddling bin counts pro rata, and floor 0 draws as
+// the unfloored form does.
+Bool_t CheckFloor(const music::ExcitationTable &table) {
+  if (!Near(table.AllowedWeight(3.086, 20.0), 0.60, 1e-12) ||
+      !Near(table.AllowedWeight(5.0, 20.0), 0.125, 1e-12) ||
+      !Near(table.AllowedWeight(3.0, 5.0), 0.475, 1e-12))
+    return Fail("floored allowed weights are wrong");
+  Double_t lowest = -1.0;
+  if (!table.LowestAbove(0.0, lowest) || lowest != 1.727 ||
+      !table.LowestAbove(1.8, lowest) || lowest != 3.086 ||
+      !table.LowestAbove(4.5, lowest) || lowest != 4.5 ||
+      table.LowestAbove(6.0, lowest))
+    return Fail("LowestAbove does not find the lowest state above a floor");
+  TRandom3 floored(15);
+  TRandom3 plain(15);
+  TRandom3 rng(16);
+  Double_t binSum = 0.0;
+  const Int_t count = 100000;
+  for (Int_t i = 0; i < count; ++i) {
+    Bool_t okFloored = kFALSE, okPlain = kFALSE, ok = kFALSE;
+    if (table.Sample(0.0, 5.0, &floored, okFloored) !=
+            table.Sample(5.0, &plain, okPlain) ||
+        okFloored != okPlain)
+      return Fail("a zero floor changed a draw");
+    const Double_t ex = table.Sample(5.0, 20.0, &rng, ok);
+    if (!ok || ex < 5.0 || ex > 6.0)
+      return Fail("a floored sample left [floor, the bin's top]");
+    binSum += ex;
+  }
+  if (!Near(binSum / count, 5.5, 0.01))
+    return Fail("floored bin samples are not uniform over [5, 6]");
+  return kTRUE;
+}
+
 void WriteTable(const std::filesystem::path &path,
                 const std::vector<std::string> &lines) {
   std::ofstream output(path);
@@ -205,7 +240,7 @@ int main(int argc, char **argv) {
   music::ExcitationTable table;
   const Bool_t ok = CheckLoad(argv[1], table) && CheckFullRange(table) &&
                     CheckTruncation(table) && CheckNoAllowedWeight(table) &&
-                    CheckOneDraw(table) && CheckUnsortedRows(argv[2]) &&
-                    CheckRejects(argv[2]);
+                    CheckOneDraw(table) && CheckFloor(table) &&
+                    CheckUnsortedRows(argv[2]) && CheckRejects(argv[2]);
   return ok ? 0 : 1;
 }

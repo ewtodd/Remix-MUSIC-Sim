@@ -1,5 +1,7 @@
-// talys-cache <control.toml>: runs TALYS for each per-strip level table the
-// control needs that is not cached yet; musicsim only reads the tables.
+// talys-cache <control.toml>: runs TALYS for each per-strip table a
+// talys_class control needs that is not cached yet, then makes the SRIM tables
+// of the class's products if the stopping model reads them. musicsim only
+// reads the tables.
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -8,6 +10,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <sys/wait.h>
@@ -15,6 +19,8 @@
 #include <vector>
 
 #include "Simulator.hpp"
+#include "SrimGenerator.hpp"
+#include "TalysCascade.hpp"
 #include "TalysTables.hpp"
 
 #ifndef MUSICSIM_TALYS_BIN
@@ -143,13 +149,24 @@ Bool_t BuildTable(const std::string &talys, const music::TalysRequest &request,
     return kFALSE;
   }
 
-  // The population file is absent when no binary channel is open; the (a,a)
-  // elastic file is aa*ang.L00 (aX*ang.L00 holds other channels).
-  std::string talysOut, populationPath, population, elasticPath, angular;
-  if (!music::ReadFileText(work + "/talys.out", talysOut) ||
-      !OutputFile(work, "populationE", ".out", populationPath, error) ||
-      (!populationPath.empty() &&
-       !music::ReadFileText(populationPath, population)) ||
+  // The population file (gigabytes with outdecay) is absent when no binary
+  // channel is open; the (a,a) elastic file is aa*ang.L00.
+  std::string talysOut, populationPath, elasticPath, angular;
+  if (!music::ReadFileText(work + "/talys.out", talysOut)) {
+    error = "cannot read '" + work + "/talys.out'";
+    return kFALSE;
+  }
+  // TALYS exits with status 0 after its own errors, so require its sign-off.
+  if (talysOut.find("successful calculation") == std::string::npos) {
+    const size_t failure = talysOut.find("TALYS-error");
+    error =
+        failure == std::string::npos
+            ? std::string("TALYS did not finish")
+            : talysOut.substr(failure, talysOut.find('\n', failure) - failure);
+    error += "; see " + work;
+    return kFALSE;
+  }
+  if (!OutputFile(work, "populationE", ".out", populationPath, error) ||
       !OutputFile(work, "aa", "ang.L00", elasticPath, error) ||
       elasticPath.empty() || !music::ReadFileText(elasticPath, angular)) {
     if (error.empty())
@@ -157,43 +174,53 @@ Bool_t BuildTable(const std::string &talys, const music::TalysRequest &request,
     error += "; see " + work;
     return kFALSE;
   }
-  std::string rows, elasticRows;
-  Double_t sigma = 0.0;
+  // TALYS's projectile is the alpha: the compound is the beam nucleus + 2p2n.
+  music::Cascade cascade;
+  std::vector<music::CascadeChannel> channels;
+  std::map<std::string, Double_t> exclusive;
+  Double_t gammaFirst = 0.0;
+  if (!populationPath.empty()) {
+    std::ifstream population(populationPath);
+    if (!music::ReadCascade(population, request.Z + 2,
+                            request.A - request.Z + 2, cascade, error) ||
+        !music::ExclusiveCrossSections(talysOut, exclusive, gammaFirst,
+                                       error)) {
+      error += "; see " + work;
+      return kFALSE;
+    }
+    channels = music::CascadeChannels(cascade);
+  } else if (!music::ExclusiveCrossSections(talysOut, exclusive, gammaFirst,
+                                            error)) {
+    exclusive.clear(); // nothing open, and TALYS printed no channels
+    gammaFirst = 0.0;
+  }
+  std::string elasticRows;
   Bool_t rutherfordOnly = kFALSE;
-  // TALYS's projectile is the alpha, Z = 2.
-  if (!music::TalysLevelRows(talysOut, population, request.Z, request.A, rows,
-                             sigma, error) ||
+  if (!music::CheckChannels(channels, exclusive, gammaFirst, error) ||
       !music::TalysElasticRows(angular, request.Z, 2, request.ecm, elasticRows,
                                rutherfordOnly, error)) {
     error += "; see " + work;
     return kFALSE;
   }
-  if (sigma == 0.0)
-    std::cout << "talys-cache: strip " << request.strip
-              << ": no (a,a') channel open at E_cm = " << request.ecm
-              << " MeV, so its reactions will all be elastic" << std::endl;
   if (rutherfordOnly)
     std::cout << "talys-cache: strip " << request.strip
               << ": TALYS gave no elastic angular distribution at E_cm = "
               << request.ecm << " MeV; elastic will be pure Rutherford"
               << std::endl;
 
-  char sigmaLine[96];
-  std::snprintf(sigmaLine, sizeof(sigmaLine), "# sigma_inelastic_mb = %.9e",
-                sigma);
   std::ostringstream text;
-  text << "# talys-cache level table: residue excitation after binary alpha "
-          "emission, weights in mb"
+  text << "# talys-cache table: TALYS's exclusive channels in emission order, "
+          "each residue's excitation per step, weights in mb"
        << std::endl
        << "# " << TalysVersion(talysOut) << std::endl
-       << sigmaLine << std::endl
        << (rutherfordOnly
                ? "# elastic: TALYS gave no angular distribution; "
                  "pure Rutherford"
                : "# elastic: TALYS shape + compound elastic over Rutherford "
                  "by theta_cm [deg]")
        << std::endl
-       << music::TalysDeckComment(request.deck) << rows << elasticRows;
+       << music::TalysDeckComment(request.deck)
+       << music::ChannelTableRows(cascade, channels) << elasticRows;
   const std::string staged = request.path + ".tmp." + pid;
   {
     std::ofstream output(staged, std::ios::binary);
@@ -227,8 +254,7 @@ int main(int argc, char **argv) {
     return 1;
   if (requests.empty()) {
     std::cout << "talys-cache: " << argv[1]
-              << " has no talys branch without level_table; nothing to do"
-              << std::endl;
+              << " has no reaction.talys_class; nothing to do" << std::endl;
     return 0;
   }
 
@@ -238,8 +264,7 @@ int main(int argc, char **argv) {
     const music::TalysRequest &request = requests[r];
     if (request.stopped) {
       std::cout << "talys-cache: strip " << request.strip
-                << ": the mean beam stops before the strip centre; no table, "
-                   "and any reaction there will be elastic"
+                << ": the mean beam stops before the strip centre; no table"
                 << std::endl;
       ++stopped;
       continue;
@@ -266,5 +291,26 @@ int main(int argc, char **argv) {
   if (stopped > 0)
     std::cout << ", " << stopped << " beyond the beam's range";
   std::cout << std::endl;
-  return failed ? 1 : 0;
+  if (failed)
+    return 1;
+
+  // Only the tables name the class's products, so a stopping model that reads
+  // SRIM gets their tables here rather than from srim-cache.
+  std::vector<std::string> products;
+  if (!simulator.ChannelProducts(products))
+    return 1;
+  std::string dir, gas;
+  Double_t pressure = 0.0, temperature = 0.0;
+  if (!simulator.SrimTableSpec(dir, gas, pressure, temperature))
+    return 0;
+  std::set<std::string> ions;
+  for (size_t p = 0; p < products.size(); ++p)
+    if (music::IsSrimIon(products[p]))
+      ions.insert(products[p]);
+  const music::SrimCounts counts = music::EnsureSrimTables(
+      "talys-cache", ions, gas, pressure, temperature, dir);
+  std::cout << "talys-cache: stopping tables for the class's products: "
+            << counts.built << " generated, " << counts.kept
+            << " already cached, " << counts.failed << " failed" << std::endl;
+  return counts.failed ? 1 : 0;
 }

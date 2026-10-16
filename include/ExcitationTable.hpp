@@ -16,19 +16,25 @@ struct ExcitationTable {
   std::vector<std::pair<Double_t, Double_t>> levels; // {E_ex, weight}
   std::vector<std::array<Double_t, 3>> bins;         // {lo, hi, weight}
   Double_t total = 0.0; // sum of all weights; 1 after a successful Parse
-  Double_t sum = 0.0;   // weights as written; mb in talys-cache tables
 
-  // Validates and normalizes `text`, or empties the table and names the bad
-  // line. A talysCache table may be empty; ElasticTable reads `elastic` rows.
+  // Validates and normalizes table text read from `source`. On failure returns
+  // kFALSE, leaves the table empty, and names source and line in `error`.
   Bool_t Parse(const std::string &text, const std::string &source,
-               std::string &error, Bool_t talysCache = kFALSE);
+               std::string &error);
   // Reads the file at `path`, then parses it as above.
   Bool_t Load(const std::string &path, std::string &error);
   // Table weight at or below EneAvail; a bin straddling it counts pro rata.
   Double_t AllowedWeight(Double_t EneAvail) const;
+  // The same, for weight in [floor, EneAvail].
+  Double_t AllowedWeight(Double_t floor, Double_t EneAvail) const;
   // Samples E_ex from the table truncated to [0, EneAvail] and renormalized,
   // using exactly one RNG draw. With no weight there, ok = kFALSE, no draw.
   Double_t Sample(Double_t EneAvail, TRandom *rng, Bool_t &ok) const;
+  // The same, truncated to [floor, EneAvail].
+  Double_t Sample(Double_t floor, Double_t EneAvail, TRandom *rng,
+                  Bool_t &ok) const;
+  // The lowest E_ex at or above floor with weight; kFALSE if there is none.
+  Bool_t LowestAbove(Double_t floor, Double_t &Ex) const;
 };
 } // namespace music
 

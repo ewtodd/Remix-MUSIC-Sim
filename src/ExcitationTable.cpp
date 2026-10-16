@@ -19,15 +19,15 @@ Bool_t ParseNumber(const std::string &token, Double_t &value) {
   return consumed == token.size() && std::isfinite(value);
 }
 
-// Weight of the part of `bin` that lies at or below EneAvail.
-Double_t ClippedBinWeight(const std::array<Double_t, 3> &bin,
+// Weight of the part of `bin` that lies in [floor, EneAvail].
+Double_t ClippedBinWeight(const std::array<Double_t, 3> &bin, Double_t floor,
                           Double_t EneAvail) {
-  const Double_t lo = bin[0];
+  const Double_t lo = std::max(bin[0], floor);
   const Double_t hi = bin[1];
-  if (lo >= EneAvail)
+  if (lo >= EneAvail || lo >= hi)
     return 0.0;
   const Double_t top = std::min(hi, EneAvail);
-  return bin[2] * (top - lo) / (hi - lo);
+  return bin[2] * (top - lo) / (hi - bin[0]);
 }
 
 } // namespace
@@ -49,12 +49,10 @@ Bool_t ExcitationTable::Load(const std::string &path, std::string &error) {
 }
 
 Bool_t ExcitationTable::Parse(const std::string &text,
-                              const std::string &source, std::string &error,
-                              Bool_t talysCache) {
+                              const std::string &source, std::string &error) {
   levels.clear();
   bins.clear();
   total = 0.0;
-  sum = 0.0;
   std::istringstream input(text);
 
   std::string line;
@@ -70,7 +68,7 @@ Bool_t ExcitationTable::Parse(const std::string &text,
     std::string token;
     while (fields >> token)
       tokens.push_back(token);
-    if (tokens.empty() || (talysCache && tokens[0] == "elastic"))
+    if (tokens.empty())
       continue;
 
     const std::string &tag = tokens[0];
@@ -118,17 +116,15 @@ Bool_t ExcitationTable::Parse(const std::string &text,
     }
   }
 
+  Double_t sum = 0.0;
   for (size_t i = 0; i < levels.size(); ++i)
     sum += levels[i].second;
   for (size_t i = 0; i < bins.size(); ++i)
     sum += bins[i][2];
   if (!(sum > 0.0)) {
+    error = "level table '" + source + "' has no positive weight";
     levels.clear();
     bins.clear();
-    sum = 0.0;
-    if (talysCache)
-      return kTRUE;
-    error = "level table '" + source + "' has no positive weight";
     return kFALSE;
   }
   for (size_t i = 0; i < levels.size(); ++i)
@@ -140,18 +136,28 @@ Bool_t ExcitationTable::Parse(const std::string &text,
 }
 
 Double_t ExcitationTable::AllowedWeight(Double_t EneAvail) const {
+  return AllowedWeight(0.0, EneAvail);
+}
+
+Double_t ExcitationTable::AllowedWeight(Double_t floor,
+                                        Double_t EneAvail) const {
   Double_t allowed = 0.0;
   for (size_t i = 0; i < levels.size(); ++i)
-    if (levels[i].first <= EneAvail)
+    if (levels[i].first >= floor && levels[i].first <= EneAvail)
       allowed += levels[i].second;
   for (size_t i = 0; i < bins.size(); ++i)
-    allowed += ClippedBinWeight(bins[i], EneAvail);
+    allowed += ClippedBinWeight(bins[i], floor, EneAvail);
   return allowed;
 }
 
 Double_t ExcitationTable::Sample(Double_t EneAvail, TRandom *rng,
                                  Bool_t &ok) const {
-  const Double_t allowed = AllowedWeight(EneAvail);
+  return Sample(0.0, EneAvail, rng, ok);
+}
+
+Double_t ExcitationTable::Sample(Double_t floor, Double_t EneAvail,
+                                 TRandom *rng, Bool_t &ok) const {
+  const Double_t allowed = AllowedWeight(floor, EneAvail);
   ok = allowed > 0.0;
   if (!ok)
     return 0.0;
@@ -162,7 +168,7 @@ Double_t ExcitationTable::Sample(Double_t EneAvail, TRandom *rng,
   for (size_t i = 0; i < levels.size(); ++i) {
     const Double_t energy = levels[i].first;
     const Double_t weight = levels[i].second;
-    if (energy > EneAvail || weight <= 0.0)
+    if (energy < floor || energy > EneAvail || weight <= 0.0)
       continue;
     if (u < weight)
       return energy;
@@ -170,10 +176,10 @@ Double_t ExcitationTable::Sample(Double_t EneAvail, TRandom *rng,
     lastAllowed = energy;
   }
   for (size_t i = 0; i < bins.size(); ++i) {
-    const Double_t weight = ClippedBinWeight(bins[i], EneAvail);
+    const Double_t weight = ClippedBinWeight(bins[i], floor, EneAvail);
     if (weight <= 0.0)
       continue;
-    const Double_t lo = bins[i][0];
+    const Double_t lo = std::max(bins[i][0], floor);
     const Double_t top = std::min(bins[i][1], EneAvail);
     if (u < weight)
       return lo + (top - lo) * (u / weight);
@@ -182,6 +188,23 @@ Double_t ExcitationTable::Sample(Double_t EneAvail, TRandom *rng,
   }
   // Rounding can leave u at the very top of the CDF.
   return lastAllowed;
+}
+
+Bool_t ExcitationTable::LowestAbove(Double_t floor, Double_t &Ex) const {
+  Bool_t found = kFALSE;
+  for (size_t i = 0; i < levels.size(); ++i)
+    if (levels[i].second > 0.0 && levels[i].first >= floor &&
+        (!found || levels[i].first < Ex)) {
+      Ex = levels[i].first;
+      found = kTRUE;
+    }
+  for (size_t i = 0; i < bins.size(); ++i)
+    if (bins[i][2] > 0.0 && bins[i][1] > floor &&
+        (!found || std::max(bins[i][0], floor) < Ex)) {
+      Ex = std::max(bins[i][0], floor);
+      found = kTRUE;
+    }
+  return found;
 }
 
 } // namespace music

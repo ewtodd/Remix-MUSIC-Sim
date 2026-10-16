@@ -1,5 +1,4 @@
 run87Rb.sh
-srim-cache
 run37Cl.sh
 37Cl_beam.toml
 
@@ -24,3 +23,8 @@ result-*
 # Top-level binaries from `make`
 /musicsim
 /talys-cache
+/srim-cache
+/legacy-msc-to-toml
+
+# Working plans; the review checklists in checks/ are committed
+/PLAN-*.md

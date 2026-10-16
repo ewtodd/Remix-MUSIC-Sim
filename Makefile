@@ -68,6 +68,7 @@ SANITIZE_NUCLIDE_CHECK = $(SANITIZE_DIR)/nuclide_loader
 SANITIZE_EXCITATION_CHECK = $(SANITIZE_DIR)/excitation_table
 SANITIZE_TALYS_CHECK = $(SANITIZE_DIR)/talys_tables
 SANITIZE_TALYSCACHE = $(SANITIZE_DIR)/talys-cache
+SANITIZE_SRIMCACHE = $(SANITIZE_DIR)/srim-cache
 CPP_FORMAT_FILES = $(sort $(wildcard $(INCDIR)/*.hpp $(SRCDIR)/*.cpp tests/*.cpp))
 TOML_FORMAT_FILES = $(sort basic.toml $(wildcard ControlExamples/*/*.toml tests/controls/*.toml))
 CLANG_FORMAT_STYLE = {BasedOnStyle: LLVM, BreakStringLiterals: false}
@@ -80,11 +81,11 @@ all: musicsim srim-cache talys-cache legacy-msc-to-toml
 musicsim: $(OBJECTS)
 	$(CXX) -o $@ $(OBJECTS) $(LIBS)
 
-# The SRIM table generator srim-cache drives: nix passes SRIM-nix's
-# make-srim-table store path; empty means whatever is on PATH at run time.
+# The SRIM table generator srim-cache and talys-cache drive: nix passes
+# SRIM-nix's make-srim-table store path; empty means whatever is on PATH.
 SRIM_TABLE_BIN ?=
 
-srim-cache: $(SRIMCACHE_SRC)
+srim-cache: $(SRIMCACHE_SRC) $(INCDIR)/SrimGenerator.hpp
 	$(CXX) $(CXXFLAGS) -DMUSICSIM_SRIM_TABLE_BIN='"$(SRIM_TABLE_BIN)"' -o $@ $<
 
 # The TALYS that talys-cache runs: nix passes talys-nix's store path; empty
@@ -92,7 +93,8 @@ srim-cache: $(SRIMCACHE_SRC)
 TALYS_BIN ?=
 
 talys-cache: $(TALYSCACHE_SRC) $(HEADERS) $(LIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) -DMUSICSIM_TALYS_BIN='"$(TALYS_BIN)"' -o $@ \
+	$(CXX) $(CXXFLAGS) -DMUSICSIM_TALYS_BIN='"$(TALYS_BIN)"' \
+		-DMUSICSIM_SRIM_TABLE_BIN='"$(SRIM_TABLE_BIN)"' -o $@ \
 		$(TALYSCACHE_SRC) $(LIB_OBJECTS) $(LIBS)
 
 legacy-msc-to-toml: $(CONVERTER_SRC)
@@ -122,11 +124,12 @@ $(EXCITATION_CHECK): tests/excitation_table.cpp src/ExcitationTable.cpp \
 		-I$(INCDIR) -o $@ tests/excitation_table.cpp src/ExcitationTable.cpp \
 		$(shell root-config --libs)
 
-$(TALYS_CHECK): tests/talys_tables.cpp src/TalysTables.cpp src/ExcitationTable.cpp \
+$(TALYS_CHECK): tests/talys_tables.cpp src/TalysTables.cpp src/TalysCascade.cpp \
+		src/ExcitationTable.cpp include/TalysCascade.hpp \
 		include/TalysTables.hpp include/ExcitationTable.hpp | $(TESTDIR)
 	$(CXX) -std=c++17 -Wall -Wextra -Wpedantic $(shell root-config --cflags) \
 		-I$(INCDIR) -o $@ tests/talys_tables.cpp src/TalysTables.cpp \
-		src/ExcitationTable.cpp \
+		src/TalysCascade.cpp src/ExcitationTable.cpp \
 		$(shell root-config --libs)
 
 $(TESTDIR):
@@ -147,6 +150,7 @@ check: all $(ROOT_CHECK) $(VAVILOV_CHECK) $(NUCLIDE_CHECK) $(EXCITATION_CHECK) \
 	EXCITATION_CHECK_BIN=$(abspath $(EXCITATION_CHECK)) \
 	TALYS_CHECK_BIN=$(abspath $(TALYS_CHECK)) \
 	TALYSCACHE_BIN=$(abspath talys-cache) \
+	SRIMCACHE_BIN=$(abspath srim-cache) \
 		bash tests/run-tests.sh
 
 strict:
@@ -197,19 +201,24 @@ $(SANITIZE_EXCITATION_CHECK): tests/excitation_table.cpp \
 		$(shell root-config --libs)
 
 $(SANITIZE_TALYS_CHECK): tests/talys_tables.cpp $(SANITIZE_DIR)/TalysTables.o \
-		$(SANITIZE_DIR)/ExcitationTable.o \
+		$(SANITIZE_DIR)/ExcitationTable.o $(SANITIZE_DIR)/TalysCascade.o \
 		include/TalysTables.hpp | $(SANITIZE_DIR)
 	$(CXX) -std=c++17 $(STRICT_FLAGS) $(SANITIZE_FLAGS) \
 		$(shell root-config --cflags) -I$(INCDIR) -o $@ \
 		tests/talys_tables.cpp $(SANITIZE_DIR)/TalysTables.o \
-		$(SANITIZE_DIR)/ExcitationTable.o \
+		$(SANITIZE_DIR)/ExcitationTable.o $(SANITIZE_DIR)/TalysCascade.o \
 		$(shell root-config --libs)
 
 $(SANITIZE_TALYSCACHE): $(TALYSCACHE_SRC) \
 		$(filter-out $(SANITIZE_DIR)/main.o,$(SANITIZE_OBJECTS)) | $(SANITIZE_DIR)
 	$(CXX) $(CXXFLAGS) $(STRICT_FLAGS) $(SANITIZE_FLAGS) \
-		-DMUSICSIM_TALYS_BIN='"$(TALYS_BIN)"' -o $@ $(TALYSCACHE_SRC) \
+		-DMUSICSIM_TALYS_BIN='"$(TALYS_BIN)"' \
+		-DMUSICSIM_SRIM_TABLE_BIN='"$(SRIM_TABLE_BIN)"' -o $@ $(TALYSCACHE_SRC) \
 		$(filter-out $(SANITIZE_DIR)/main.o,$(SANITIZE_OBJECTS)) $(LIBS)
+
+$(SANITIZE_SRIMCACHE): $(SRIMCACHE_SRC) $(INCDIR)/SrimGenerator.hpp | $(SANITIZE_DIR)
+	$(CXX) $(CXXFLAGS) $(STRICT_FLAGS) $(SANITIZE_FLAGS) \
+		-DMUSICSIM_SRIM_TABLE_BIN='"$(SRIM_TABLE_BIN)"' -o $@ $(SRIMCACHE_SRC)
 
 $(SANITIZE_DIR):
 	mkdir -p $(SANITIZE_DIR)
@@ -217,7 +226,7 @@ $(SANITIZE_DIR):
 sanitize-check: $(SANITIZE_SIM) $(SANITIZE_CONVERTER) \
 		$(SANITIZE_ROOT_CHECK) $(SANITIZE_VAVILOV_CHECK) \
 		$(SANITIZE_NUCLIDE_CHECK) $(SANITIZE_EXCITATION_CHECK) \
-		$(SANITIZE_TALYS_CHECK) $(SANITIZE_TALYSCACHE)
+		$(SANITIZE_TALYS_CHECK) $(SANITIZE_TALYSCACHE) $(SANITIZE_SRIMCACHE)
 	ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
 	UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 	MUSICSIM_BIN=$(abspath $(SANITIZE_SIM)) \
@@ -228,6 +237,7 @@ sanitize-check: $(SANITIZE_SIM) $(SANITIZE_CONVERTER) \
 	EXCITATION_CHECK_BIN=$(abspath $(SANITIZE_EXCITATION_CHECK)) \
 	TALYS_CHECK_BIN=$(abspath $(SANITIZE_TALYS_CHECK)) \
 	TALYSCACHE_BIN=$(abspath $(SANITIZE_TALYSCACHE)) \
+	SRIMCACHE_BIN=$(abspath $(SANITIZE_SRIMCACHE)) \
 		bash tests/run-tests.sh
 
 format:

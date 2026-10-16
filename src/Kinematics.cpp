@@ -2,6 +2,13 @@
 
 namespace {
 constexpr Double_t thresholdTolerance = 1e-9;
+
+// Share of a branch's excitation weight at or below EneAvail. Branches cannot
+// be forced, so only a talys table can be partly or wholly closed.
+Double_t OpenFraction(const Simulator::ExcitationBranch &branch,
+                      Double_t EneAvail) {
+  return branch.residueExc == 3 ? branch.table.AllowedWeight(EneAvail) : 1.0;
+}
 } // namespace
 
 void Simulator::SetInitialKinematics(Double_t Kbi) {
@@ -77,6 +84,28 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     Compound->Print(Log);
   }
 
+  // A class event draws its channel first, then runs that channel's chain
+  // in the leading slots; the rest hold idle particles.
+  Int_t steps = numEvaporations;
+  Int_t chosen = -1;
+  const ReactionChannel *channel = nullptr;
+  if (!channels_.empty()) {
+    chosen = SelectChannel(std::sqrt(Ptot * Ptot));
+    if (chosen < 0) {
+      if (PrintLevel > 0)
+        Log << "No channel of the class is open." << std::endl;
+      reactionAllowed = kFALSE;
+      steps = 0;
+    } else {
+      channel = &channels_[chosen];
+      steps = static_cast<Int_t>(channel->res.size());
+      for (Int_t k = 0; k < numEvaporations; ++k) {
+        EvaP[k] = k < steps ? channel->evapParticle[k] : idleSlots_[k].first;
+        EvaR[k] = k < steps ? channel->resParticle[k] : idleSlots_[k].second;
+      }
+    }
+  }
+
   // Build the chain transactionally. Products stay non-propagating until every
   // configured step succeeds, so a late failure cannot leave a half-reaction
   // alongside a resumed incident beam.
@@ -90,7 +119,7 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
   TString reacstr = Beam->Name + "(" + Target->Name + "," + EvaP[0]->Name +
                     ")" + EvaR[0]->Name;
   Log << "numEvaporations = " << numEvaporations << std::endl;
-  for (Int_t er = 0; er < numEvaporations; er++) {
+  for (Int_t er = 0; er < steps; er++) {
     Double_t ml = EvaP[er]->Mass;
     Double_t mh = EvaR[er]->Mass;
     Double_t Q0 =
@@ -121,19 +150,40 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     }
     EneAvail = std::max(0.0, EneAvail);
 
-    // The branch is drawn before any excitation or angle draw.
-    const Int_t branchIndex = SelectBranch(er, EneAvail);
-    if (branchIndex < 0) {
-      if (PrintLevel > 0)
-        Log << "Reaction step " << er << " has no open branch." << std::endl;
-      reactionAllowed = kFALSE;
-      break;
-    }
-    const ExcitationBranch &branch = ctf.branches[er][branchIndex];
+    // The branch is drawn before any excitation or angle draw. A class step
+    // samples its own table above the floor that lets the chain finish.
+    Int_t branchIndex = 0;
+    Int_t angular = 0; // 0 isotropic, 1 Rutherford, 2 TALYS elastic
+    Double_t thetaMinDeg = 1.0;
     Double_t Ex = 0;
-    if (!SampleExcitation(branch, er, EneAvail, Ex)) {
-      reactionAllowed = kFALSE;
-      break;
+    if (channel && channel->emitted.empty()) {
+      angular = 2;
+      thetaMinDeg = ctf.classThetaCmMinDeg;
+    } else if (channel) {
+      Bool_t sampled = kTRUE;
+      Ex = channel->stripSteps[simStrip_][er].Sample(
+          channel->stripFloor[simStrip_][er], EneAvail, Rdm, sampled);
+      if (!sampled) {
+        if (PrintLevel > 0)
+          Log << "Reaction step " << er << " has no open state." << std::endl;
+        reactionAllowed = kFALSE;
+        break;
+      }
+    } else {
+      branchIndex = SelectBranch(er, EneAvail);
+      if (branchIndex < 0) {
+        if (PrintLevel > 0)
+          Log << "Reaction step " << er << " has no open branch." << std::endl;
+        reactionAllowed = kFALSE;
+        break;
+      }
+      const ExcitationBranch &branch = ctf.branches[er][branchIndex];
+      if (!SampleExcitation(branch, er, EneAvail, Ex)) {
+        reactionAllowed = kFALSE;
+        break;
+      }
+      angular = branch.angularDist;
+      thetaMinDeg = branch.thetaCmMinDeg;
     }
 
     EvaR[er]->SetExcEnergy(Ex);
@@ -145,15 +195,14 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     Double_t stepTheta = theta_CM;
     Double_t stepPhi = phi_CM;
     if ((stepTheta == -1 && stepPhi == -1) || er > 0) {
-      if (branch.angularDist == 1 && ctf.computedWeights[er]) {
+      if (angular == 2) {
         // This strip's TALYS elastic distribution, also with one draw.
-        stepTheta =
-            branch.stripElastic[simStrip_].Sample(branch.thetaCmMinDeg, Rdm);
-      } else if (branch.angularDist == 1) {
+        stepTheta = stripElastic_[simStrip_].Sample(thetaMinDeg, Rdm);
+      } else if (angular == 1) {
         // Rutherford. With u = sin^2(theta/2), dsigma ~ du/u^2, so sampling u
         // on [u_min, 1] with that weight inverts in closed form:
         //     1/u = 1/u_min - r (1/u_min - 1)
-        Double_t hmin = std::sin(0.5 * branch.thetaCmMinDeg * pi / 180.0);
+        Double_t hmin = std::sin(0.5 * thetaMinDeg * pi / 180.0);
         Double_t umin = hmin * hmin;
         Double_t r = Rdm->Uniform(0.0, 1.0);
         Double_t inv = 1.0 / umin - r * (1.0 / umin - 1.0);
@@ -259,14 +308,16 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
     return 0;
   }
 
+  // Slots past the chain stay idle; only the last residue is transported.
   for (Int_t er = 0; er < numEvaporations; ++er) {
-    EvaP[er]->DoNotPropagate = false;
-    EvaR[er]->DoNotPropagate = (er != numEvaporations - 1);
+    EvaP[er]->DoNotPropagate = er >= steps;
+    EvaR[er]->DoNotPropagate = (er != steps - 1);
   }
+  reaction_channel = channel ? chosen : 0;
 
   // Fill the reaction-kinematics branches.
   Kbr = Beam->GetKE();
-  for (Int_t er = 0; er < numEvaporations; er++) {
+  for (Int_t er = 0; er < steps; er++) {
     residue_energy[er] = static_cast<Float_t>(EvaR[er]->GetKE());
     evap_energy[er] = static_cast<Float_t>(EvaP[er]->GetKE());
     evap_theta[er] = static_cast<Float_t>(EvaP[er]->GetTheta() * 180.0 / pi);
@@ -320,11 +371,6 @@ Int_t Simulator::SetReactionKinematics(Double_t Kbr, Double_t zr, Double_t tof,
   return 1;
 }
 
-const music::ExcitationTable &
-Simulator::BranchTable(const ExcitationBranch &branch) const {
-  return branch.perStrip ? branch.stripTable[simStrip_] : branch.table;
-}
-
 // Draws the branch for step `er` by weight x open fraction at this EneAvail;
 // -1 when every branch is closed. A single-branch step consumes no RNG draw,
 // so branch-free controls keep their pre-branch event streams.
@@ -336,13 +382,7 @@ Int_t Simulator::SelectBranch(Int_t er, Double_t EneAvail) {
   Double_t open[kMaxBranchesPerStep];
   Double_t totalWeight = 0.0;
   for (Int_t i = 0; i < count; ++i) {
-    // Only a talys table can be partly or wholly closed at this EneAvail.
-    const Double_t weight = ctf.computedWeights[er]
-                                ? branches[i].stripWeight[simStrip_]
-                                : branches[i].weight;
-    open[i] = branches[i].residueExc == 3
-                  ? weight * BranchTable(branches[i]).AllowedWeight(EneAvail)
-                  : weight;
+    open[i] = branches[i].weight * OpenFraction(branches[i], EneAvail);
     totalWeight += open[i];
   }
   if (!(totalWeight > 0.0))
@@ -383,7 +423,7 @@ Bool_t Simulator::SampleExcitation(const ExcitationBranch &branch, Int_t er,
                                    : Rdm->Uniform(minEx[er + 1], EneAvail);
     break;
   case 3:
-    Ex = BranchTable(branch).Sample(EneAvail, Rdm, ok);
+    Ex = branch.table.Sample(EneAvail, Rdm, ok);
     break;
   default:
     return kFALSE;

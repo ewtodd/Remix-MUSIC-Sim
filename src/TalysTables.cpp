@@ -28,36 +28,6 @@ Bool_t ParseNumber(const std::string &token, Double_t &value) {
   return consumed == token.size() && std::isfinite(value);
 }
 
-// The number after a YANDF header line's last colon, e.g. "#     Z: 17".
-Bool_t ValueAfterColon(const std::string &line, Double_t &value) {
-  const size_t colon = line.find_last_of(':');
-  if (colon == std::string::npos)
-    return kFALSE;
-  std::istringstream rest(line.substr(colon + 1));
-  std::string token;
-  return (rest >> token) && ParseNumber(token, value);
-}
-
-Bool_t StartsWith(const std::string &line, const char *prefix) {
-  return line.rfind(prefix, 0) == 0;
-}
-
-// TALYS's binary non-elastic alpha cross section [mb] from its main output.
-Bool_t BinaryAlpha(const std::string &talysOut, Double_t &sigma) {
-  const size_t section = talysOut.find("Binary non-elastic cross sections");
-  if (section == std::string::npos)
-    return kFALSE;
-  std::istringstream input(talysOut.substr(section));
-  std::string line;
-  while (std::getline(input, line)) {
-    std::istringstream fields(line);
-    std::string name, equals, value;
-    if ((fields >> name >> equals >> value) && name == "alpha" && equals == "=")
-      return ParseNumber(value, sigma) && sigma >= 0.0;
-  }
-  return kFALSE;
-}
-
 } // namespace
 
 namespace music {
@@ -86,7 +56,7 @@ std::string TalysKeywordProblem(const std::string &keyword) {
     return "sets alphaomp; use talys.alpha_omp";
   if (name == "projectile" || name == "element" || name == "mass" ||
       name == "energy" || name == "outpopulation" || name == "outangle" ||
-      name == "fileelastic")
+      name == "fileelastic" || name == "channels" || name == "outdecay")
     return "sets '" + name + "', which talys-cache controls";
   return "";
 }
@@ -129,7 +99,9 @@ std::string TalysDeck(Int_t Z, Int_t A, Double_t alphaLabMeV, Int_t alphaOmp,
     deck << keywords[i] << std::endl;
   deck << "outpopulation y" << std::endl
        << "outangle y" << std::endl
-       << "fileelastic y" << std::endl;
+       << "fileelastic y" << std::endl
+       << "channels y" << std::endl
+       << "outdecay y" << std::endl;
   return deck.str();
 }
 
@@ -141,124 +113,6 @@ std::string TalysDeckComment(const std::string &deck) {
   while (std::getline(lines, line))
     comment << "#   " << line << std::endl;
   return comment.str();
-}
-
-Bool_t TalysLevelRows(const std::string &talysOut,
-                      const std::string &population, Int_t Z, Int_t A,
-                      std::string &rows, Double_t &sigmaMb,
-                      std::string &error) {
-  rows.clear();
-  sigmaMb = 0.0;
-  if (talysOut.find("congratulates you with this successful calculation") ==
-      std::string::npos) {
-    error = "TALYS did not finish";
-    return kFALSE;
-  }
-  Double_t binaryAlpha = 0.0;
-  if (!BinaryAlpha(talysOut, binaryAlpha)) {
-    error = "no binary alpha cross section in the TALYS output";
-    return kFALSE;
-  }
-  if (binaryAlpha == 0.0)
-    return kTRUE;
-
-  // The first quantity block of the residue's section holds the population
-  // right after binary emission: discrete levels 0..NL, then continuum bins.
-  std::istringstream input(population);
-  std::string line;
-  Bool_t inResidual = kFALSE, found = kFALSE;
-  Int_t sectionZ = -1, sectionA = -1, quantities = 0, levelCount = -1;
-  Double_t binSize = -1.0, value = 0.0;
-  std::vector<Int_t> index;
-  std::vector<Double_t> energy, weight;
-  while (std::getline(input, line)) {
-    if (StartsWith(line, "# header:")) {
-      if (found)
-        break;
-      inResidual = kFALSE;
-      sectionZ = sectionA = levelCount = -1;
-      quantities = 0;
-      binSize = -1.0;
-    } else if (StartsWith(line, "#   residual:")) {
-      inResidual = kTRUE;
-    } else if (inResidual && StartsWith(line, "#     Z:")) {
-      if (ValueAfterColon(line, value))
-        sectionZ = static_cast<Int_t>(value);
-    } else if (inResidual && StartsWith(line, "#     A:")) {
-      if (ValueAfterColon(line, value))
-        sectionA = static_cast<Int_t>(value);
-      inResidual = kFALSE;
-    } else if (StartsWith(line, "#     number of discrete levels (NL):")) {
-      if (ValueAfterColon(line, value))
-        levelCount = static_cast<Int_t>(value);
-    } else if (StartsWith(line, "#     continuum bin size [MeV]:")) {
-      if (ValueAfterColon(line, value))
-        binSize = value;
-    } else if (StartsWith(line, "#   quantity:")) {
-      ++quantities;
-      if (found)
-        break;
-    } else if (!line.empty() && line[0] != '#' && sectionZ == Z &&
-               sectionA == A && quantities == 1) {
-      std::istringstream fields(line);
-      std::string tokens[3];
-      Double_t row = 0.0, ex = 0.0, pop = 0.0;
-      if (!(fields >> tokens[0] >> tokens[1] >> tokens[2]) ||
-          !ParseNumber(tokens[0], row) || !ParseNumber(tokens[1], ex) ||
-          !ParseNumber(tokens[2], pop) || ex < 0.0 || pop < 0.0) {
-        error = "malformed population row '" + line + "'";
-        return kFALSE;
-      }
-      found = kTRUE;
-      index.push_back(static_cast<Int_t>(row));
-      energy.push_back(ex);
-      weight.push_back(pop);
-    }
-  }
-  if (!found || levelCount < 0) {
-    error = "no population of Z=" + std::to_string(Z) +
-            " A=" + std::to_string(A) + " in the TALYS population file";
-    return kFALSE;
-  }
-
-  std::ostringstream text;
-  Double_t sum = 0.0, lastLevel = -1.0;
-  char formatted[128];
-  for (size_t i = 0; i < index.size(); ++i) {
-    if (index[i] == levelCount)
-      lastLevel = energy[i];
-    if (index[i] < 1)
-      continue; // gamma-then-alpha feeding of the ground state
-    if (index[i] <= levelCount) {
-      std::snprintf(formatted, sizeof(formatted), "level %.6f %.9e", energy[i],
-                    weight[i]);
-    } else {
-      // Rows give bin centres; the first bin starts at the last level.
-      const Double_t lo = energy[i] - 0.5 * binSize;
-      if (!(binSize > 0.0) || (index[i] == levelCount + 1 && lastLevel >= 0.0 &&
-                               std::fabs(lo - lastLevel) > 1e-4)) {
-        error = "continuum bins do not start at the last discrete level";
-        return kFALSE;
-      }
-      std::snprintf(formatted, sizeof(formatted), "bin %.6f %.6f %.9e", lo,
-                    energy[i] + 0.5 * binSize, weight[i]);
-    }
-    sum += weight[i];
-    if (weight[i] > 0.0)
-      text << formatted << std::endl;
-  }
-  if (std::fabs(sum - binaryAlpha) > 1e-3 * binaryAlpha) {
-    char numbers[160];
-    std::snprintf(numbers, sizeof(numbers),
-                  "residue population %.6e mb does not match TALYS's binary "
-                  "alpha cross section %.6e mb",
-                  sum, binaryAlpha);
-    error = numbers;
-    return kFALSE;
-  }
-  rows = text.str();
-  sigmaMb = sum;
-  return kTRUE;
 }
 
 Double_t RutherfordAboveMb(Int_t Z1, Int_t Z2, Double_t ecm,

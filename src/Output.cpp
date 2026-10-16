@@ -66,6 +66,7 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     const std::vector<Field> mcFields = {{"n_steps", "Int_t"},
                                          {"requested_strip", "Int_t"},
                                          {"reaction_strip", "Int_t"},
+                                         {"reaction_channel", "Int_t"},
                                          {"event_index", "ULong64_t"},
                                          {"beam_energy_accel", "Float_t"},
                                          {"beam_energy_gas", "Float_t"},
@@ -163,6 +164,7 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     bound &= bind(MCTree, "n_steps", &n_steps);
     bound &= bind(MCTree, "requested_strip", &requested_strip);
     bound &= bind(MCTree, "reaction_strip", &reaction_strip);
+    bound &= bind(MCTree, "reaction_channel", &reaction_channel);
     bound &= bind(MCTree, "event_index", &event_index);
     bound &= bind(MCTree, "beam_energy_accel", &beam_energy_accel);
     bound &= bind(MCTree, "beam_energy_gas", &beam_energy_gas);
@@ -217,6 +219,7 @@ TTree *Simulator::InitTree(TFile *ROOTfile, TString FileOpt) {
     MCTree->Branch("n_steps", &n_steps, "n_steps/I");
     MCTree->Branch("requested_strip", &requested_strip, "requested_strip/I");
     MCTree->Branch("reaction_strip", &reaction_strip, "reaction_strip/I");
+    MCTree->Branch("reaction_channel", &reaction_channel, "reaction_channel/I");
     MCTree->Branch("event_index", &event_index, "event_index/l");
     MCTree->Branch("beam_energy_accel", &beam_energy_accel,
                    "beam_energy_accel/F");
@@ -288,6 +291,7 @@ void Simulator::ResetBranches() {
   n_steps = numEvaporations;
   requested_strip = -1;
   reaction_strip = -1;
+  reaction_channel = -1;
   event_index = 0;
   beam_energy_gas = beam_energy_reaction = 0;
   beam_energy_exit = -2.0f; // N/A unless overwritten on unreacted-beam events
@@ -373,7 +377,7 @@ std::string Simulator::RunConfiguration() const {
 #endif
   std::ostringstream resolved;
   resolved.precision(17);
-  resolved << "schema_version = 5" << std::endl
+  resolved << "schema_version = 6" << std::endl
            << "musicsim_version = \"" << MUSICSIM_VERSION << "\"" << std::endl
            << "git_revision = \"" << MUSICSIM_GIT_REV << "\"" << std::endl
            << "catima_revision = \"" << MUSICSIM_CATIMA_REV << "\"" << std::endl
@@ -416,14 +420,9 @@ std::string Simulator::RunConfiguration() const {
         resolved << "reaction_step_" << step << "_branch_" << b << " = \"";
       resolved << excitationName(branch.residueExc) << "; "
                << angularName(branch.angularDist)
-               << "; theta_cm_min_deg = " << branch.thetaCmMinDeg;
-      if (ctf.computedWeights[step])
-        resolved << "; weight = computed per strip";
-      else
-        resolved << "; weight = " << branch.weight;
-      if (branch.perStrip) {
-        resolved << "; talys-cache tables";
-      } else if (branch.residueExc == 3) {
+               << "; theta_cm_min_deg = " << branch.thetaCmMinDeg
+               << "; weight = " << branch.weight;
+      if (branch.residueExc == 3) {
         const std::map<std::string, std::string>::const_iterator table =
             levelTableText_.find(branch.levelTable);
         resolved << "; " << branch.levelTable << "; md5 = "
@@ -434,34 +433,86 @@ std::string Simulator::RunConfiguration() const {
       resolved << "\"" << std::endl;
     }
   }
-  // Each strip's TALYS table and computed weights, in branch order.
+  if (ctf.talysClass.IsNull())
+    return resolved.str();
+  resolved << "talys_class = \"" << ctf.talysClass << "\"" << std::endl
+           << "min_channel_fraction = " << ctf.talys.minChannelFraction
+           << std::endl
+           << "min_channel_mb = " << ctf.talys.minChannelMb << std::endl
+           << "theta_cm_min_deg = " << ctf.classThetaCmMinDeg << std::endl
+           << "residue_dedx_scale = " << ctf.classResidueDedxScale << std::endl
+           << "evap_dedx_scale = " << ctf.classEvapDedxScale << std::endl;
+  for (size_t ch = 0; ch < channels_.size(); ++ch)
+    resolved << "reaction_channel_" << ch << " = \""
+             << ChannelDescription(channels_[ch]) << "\"" << std::endl;
+  // Each strip's TALYS table and channel cross sections, in channel order.
   for (size_t strip = 0; strip < talysRequests_.size(); ++strip) {
     const music::TalysRequest &request = talysRequests_[strip];
     if (request.strip < 0)
       continue;
     const std::map<std::string, std::string>::const_iterator table =
         levelTableText_.find(request.path);
-    resolved << "reaction_step_0_strip_" << strip
+    resolved << "talys_strip_" << strip
              << " = \"beam_energy_mev = " << request.beamEnergy
              << "; ecm_mev = " << request.ecm;
     if (request.stopped) {
-      resolved << "; beam stops before the strip centre: elastic only, pure "
-                  "Rutherford, no TALYS table\""
-               << std::endl;
+      resolved << "; beam stops before the strip centre: no TALYS table, "
+               << (channels_.empty() || !channels_[0].emitted.empty()
+                       ? "no reaction"
+                       : "elastic only, pure Rutherford")
+               << "\"" << std::endl;
       continue;
     }
-    resolved << "; weights_mb =";
-    for (size_t b = 0; b < ctf.branches[0].size(); ++b) {
-      const std::vector<Double_t> &weights = ctf.branches[0][b].stripWeight;
-      resolved << (b ? ", " : " ")
-               << (strip < weights.size() ? weights[strip] : -1.0);
-    }
-    resolved << "; table = " << request.path << "; md5 = "
+    resolved << "; channels_mb =";
+    for (size_t ch = 0; ch < channels_.size(); ++ch)
+      resolved << (ch ? ", " : " ") << channels_[ch].stripSigma[strip];
+    resolved << "; dropped_mb = "
+             << (strip < stripDroppedMb_.size() ? stripDroppedMb_[strip] : 0.0)
+             << "; table = " << request.path << "; md5 = "
              << (table == levelTableText_.end() ? "unread"
                                                 : music::Md5Hex(table->second))
              << "\"" << std::endl;
   }
   return resolved.str();
+}
+
+// The reaction a channel is and its chain, e.g. "87Rb(a,2n)89Y: 1n + 90Y,
+// then 1n + 89Y".
+std::string
+Simulator::ChannelDescription(const ReactionChannel &channel) const {
+  std::string label = channel.emitted.empty() ? "a" : "";
+  for (size_t k = 0; k < channel.emitted.size(); ++k) {
+    size_t run = 1;
+    while (k + run < channel.emitted.size() &&
+           channel.emitted[k + run] == channel.emitted[k])
+      ++run;
+    label += (run > 1 ? std::to_string(run) : "") +
+             std::string(1, channel.emitted[k]);
+    k += run - 1;
+  }
+  if (channel.emitted == "a")
+    label = "a'";
+  std::string text = std::string(ctf.beamName.Data()) + "(a," + label + ")" +
+                     channel.resParticle.back()->Name.Data();
+  text += channel.emitted.empty() ? " elastic: " : ": ";
+  for (size_t k = 0; k < channel.res.size(); ++k)
+    text += std::string(k ? ", then " : "") +
+            channel.evapParticle[k]->Name.Data() + " + " +
+            channel.resParticle[k]->Name.Data();
+  return text;
+}
+
+// Each reaction_channel value and what it means.
+std::string Simulator::ChannelLegend() const {
+  std::ostringstream legend;
+  legend << "-1 = no reaction" << std::endl;
+  if (channels_.empty()) {
+    legend << "0 = the configured reaction steps" << std::endl;
+    return legend.str();
+  }
+  for (size_t ch = 0; ch < channels_.size(); ++ch)
+    legend << ch << " = " << ChannelDescription(channels_[ch]) << std::endl;
+  return legend.str();
 }
 
 Bool_t Simulator::WriteRunMetadata(TFile *ROOTfile) {
@@ -490,6 +541,7 @@ Bool_t Simulator::WriteRunMetadata(TFile *ROOTfile) {
       {"control_file_toml", ctrlFileText_},
       {"resolved_configuration", resolved.str()},
       {"termination_codes", terminationCodes},
+      {"channels", ChannelLegend()},
       {"straggling_sampler",
        "ROOT::Math::VavilovAccurate quantile table; Gaussian for kappa>10"}};
   if (!warnings_.empty()) {

@@ -1,0 +1,52 @@
+[gas]
+species     = "4He"
+pressure    = 220.0
+temperature = 293.0
+
+[beam]
+species     = "37Cl"
+energy      = 135.5
+energy_fwhm = 0.0
+
+[target]
+species  = "4He"
+compound = "41K"
+
+[windows.entrance]
+thickness_mg_cm2 = -1.0
+
+[windows.exit]
+thickness_mg_cm2 = -1.0
+
+[detector]
+eloss_bins  = 100
+max_eloss   = 10.0
+strip_first = 0
+strip_last  = 5
+
+# talys-class with SRIM stopping: talys-cache makes the stopping tables of the
+# products its TALYS tables name (a fake SRIM in the suite). A 2% threshold
+# drops (a,g), 1% of the class.
+[reaction]
+talys_class = "K"
+
+[physics]
+straggling = false
+stopping   = "srim"
+
+[run]
+events_per_strip = 20
+threads          = 2
+wait             = 0
+update           = 0
+max_time         = 2000.0
+sim_step         = 0.01
+method           = 0
+output           = "talys-class-srim.root"
+file_opt         = "recreate"
+print_opt        = 0
+seed             = 114
+
+[talys]
+keywords             = ["bins 40"]
+min_channel_fraction = 0.02

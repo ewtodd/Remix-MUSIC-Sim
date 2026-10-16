@@ -24,9 +24,12 @@ max_eloss   = 10.0
 strip_first = 2
 strip_last  = 9
 
-# (a,a') with per-strip TALYS tables from talys-cache (a fake TALYS in the
-# suite). Weights are computed per strip: Rutherford above 120 degrees for the
-# elastic branch, the table's cross section for the inelastic one.
+# (a,a'): an elastic branch plus a Talys-table inelastic branch. The weights
+# are relative (3:1) and normalized at load.
+# residue_dedx_scale is a class key; steps set dedx_scale on res.
+[reaction]
+residue_dedx_scale = 1.1
+
 [[reaction.step]]
 [reaction.step.evap]
 name = "4He"
@@ -37,27 +40,26 @@ name = "37Cl"
 [[reaction.step.branch]]
 residue_excitation   = "ground"
 angular_distribution = "rutherford"
-theta_cm_min_deg     = 120.0
+weight               = 3.0
 
 [[reaction.step.branch]]
 residue_excitation   = "talys"
-angular_distribution = "rutherford"
+level_table          = "../fixtures/talys-levels.tab"
+angular_distribution = "isotropic"
+weight               = 1.0
 
 [physics]
 straggling = false
 
 [run]
-events_per_strip = 400
+events_per_strip = 100
 threads          = 2
 wait             = 0
 update           = 0
 max_time         = 2000.0
 sim_step         = 0.01
 method           = 0
-output           = "talys-cache.root"
+output           = "branches.root"
 file_opt         = "recreate"
 print_opt        = 0
-seed             = 111
-
-[talys]
-keywords = ["bins 40"]
+seed             = 105

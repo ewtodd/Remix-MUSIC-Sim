@@ -6,7 +6,7 @@ temperature = 293.0
 [beam]
 species     = "37Cl"
 energy      = 30.0
-energy_fwhm = 0.0
+energy_fwhm = 6.0
 
 [target]
 species  = "4He"
@@ -24,29 +24,18 @@ max_eloss   = 10.0
 strip_first = 13
 strip_last  = 16
 
-# The talys-cache control with a beam that stops in strip 14: strips 13-14
-# have no (a,a') channel open, and 15-16 lie beyond the beam's range.
-[[reaction.step]]
-[reaction.step.evap]
-name = "4He"
-
-[reaction.step.res]
-name = "37Cl"
-
-[[reaction.step.branch]]
-residue_excitation   = "ground"
-angular_distribution = "rutherford"
-theta_cm_min_deg     = 120.0
-
-[[reaction.step.branch]]
-residue_excitation   = "talys"
-angular_distribution = "isotropic"
+# The aa class with a beam that stops in strip 14 on average: strips 13-14
+# have no (a,a') channel open, and 15-16 lie beyond the mean beam's range, but
+# the 6 MeV spread still takes some beam there to scatter elastically.
+[reaction]
+talys_class      = "Cl"
+theta_cm_min_deg = 120.0
 
 [physics]
 straggling = false
 
 [run]
-events_per_strip = 4
+events_per_strip = 200
 threads          = 2
 wait             = 0
 update           = 0

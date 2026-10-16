@@ -57,13 +57,19 @@ public:
     Double_t weight = -1.0; // relative; normalized at load
     std::string levelTable; // resolved path; only when residueExc == 3
     music::ExcitationTable table;
-    // talys without level_table: talys-cache's table for each strip.
-    Bool_t perStrip = kFALSE;
-    std::vector<music::ExcitationTable> stripTable; // index = strip
-    // Weight per strip [mb] in a step whose weights are computed.
-    std::vector<Double_t> stripWeight; // index = strip
-    // The elastic branch of such a step: TALYS's elastic distribution.
-    std::vector<music::ElasticTable> stripElastic; // index = strip
+  };
+  // One TALYS exclusive channel of a talys_class reaction, or its elastic
+  // part (emitted empty). Per-strip vectors are indexed by strip.
+  struct ReactionChannel {
+    std::string emitted;                            // TALYS order: "nn", "gn"
+    std::vector<std::pair<Int_t, Int_t>> evap, res; // (Z, A) per step
+    std::vector<Particle *> evapParticle, resParticle; // owned elsewhere
+    std::vector<Double_t> stripSigma;                  // [mb]
+    std::vector<std::vector<music::ExcitationTable>> stripSteps;
+    // Lowest step excitation from which the rest of the chain can happen.
+    std::vector<std::vector<Double_t>> stripFloor;
+    // Step 0's table weight above its floor: the open fraction's denominator.
+    std::vector<Double_t> stripOpen;
   };
   static constexpr Int_t kMaxBranchesPerStep = 8;
   static constexpr Int_t kReadoutStrips = 18; // strips 0..17
@@ -86,6 +92,13 @@ public:
   // For talys-cache: sets up the beam and detector and lists the per-strip
   // TALYS tables this control needs, without reading any.
   Bool_t PlanTalysTables(std::vector<music::TalysRequest> &requests);
+  // After PlanTalysTables and the tables are built: the charged products
+  // (e.g. "89Y", "1H") of the class channels the run will simulate.
+  Bool_t ChannelProducts(std::vector<std::string> &ions);
+  // Where this run's SRIM tables live and their gas state; kFALSE when the
+  // stopping model reads none.
+  Bool_t SrimTableSpec(std::string &dir, std::string &gas, Double_t &pressure,
+                       Double_t &temperature) const;
 
   // Used by the MT driver to repurpose a per-worker instance.
   void OverrideNEvents(Int_t n) { ctf.NEvents = n; }
@@ -187,14 +200,21 @@ private:
   Int_t SelectBranch(Int_t er, Double_t EneAvail);
   Bool_t SampleExcitation(const ExcitationBranch &branch, Int_t er,
                           Double_t EneAvail, Double_t &Ex);
-  // The table a talys branch samples in the strip being simulated.
-  const music::ExcitationTable &
-  BranchTable(const ExcitationBranch &branch) const;
+  // A talys_class event's channel, by cross section x open fraction at this
+  // CM energy; -1 when none is open.
+  Int_t SelectChannel(Double_t sqrtS);
 
-  // Per-strip TALYS tables and computed weights.
+  // Per-strip TALYS tables and the class channels drawn from them.
   void StripZRange(Int_t StpID, Double_t &MinZ, Double_t &MaxZ) const;
   Double_t MeanBeamEnergyAfter(Double_t energy, Double_t length);
   Bool_t PrepareStripTables();
+  Bool_t SelectChannels();
+  Bool_t BuildChannelParticles();
+  // A class product, owned by ownedParticles_; (0, 0) is a gamma.
+  Particle *NewProduct(const std::pair<Int_t, Int_t> &nucleus,
+                       Float_t dEdxScale);
+  std::string ChannelDescription(const ReactionChannel &channel) const;
+  std::string ChannelLegend() const;
   void PrintCompoundEexc(Double_t Kb, Double_t **DeltaEB);
 
   // Lifecycle / control.
@@ -210,10 +230,18 @@ private:
   Particle *Beam;
   Particle *Target;
   Particle *Compound;
+  // Per-step slots: the configured steps, or the event's channel's chain with
+  // idle particles past its end. ownedParticles_ owns what they point at.
   Particle **EvaP;
   Particle **EvaR;
   Int_t maxEvaporations;
   Int_t numEvaporations;
+  std::vector<Particle *> ownedParticles_;
+  std::vector<ReactionChannel> channels_;                    // talys_class only
+  std::vector<std::pair<Particle *, Particle *>> idleSlots_; // per step
+  std::vector<music::ElasticTable> stripElastic_;
+  std::vector<Double_t> stripDroppedMb_; // class channels below the threshold
+  std::vector<Double_t> channelOpen_;    // SelectChannel's scratch
   Double_t Kb_after_window;
   Double_t *minEx;
   music::PhysicsConfig physics_;
@@ -332,6 +360,8 @@ private:
   Int_t n_steps;         // configured reaction steps; on-disk array length
   Int_t requested_strip; // configured strip for this event (-1 = beam run)
   Int_t reaction_strip;  // actual reaction strip (-1 = no reaction occurred)
+  // Index into metadata/channels (-1 = no reaction occurred).
+  Int_t reaction_channel;
   ULong64_t event_index; // per-strip event index, stable across thread counts
   Float_t beam_energy_accel;    // this event's accelerator KE, spread included
   Float_t beam_energy_gas;      // KE at the gas surface (after entrance window)
@@ -451,8 +481,13 @@ private:
     // one implicit branch of weight 1 built from the scalars above.
     std::array<std::vector<ExcitationBranch>, MaxNumEvapPart> branches;
     std::array<Bool_t, MaxNumEvapPart> hasBranchTables{};
-    // A step with a talys-cache branch draws by per-strip computed weights.
-    std::array<Bool_t, MaxNumEvapPart> computedWeights{};
+    // reaction.talys_class: the final residue's element. Its channels come
+    // from talys-cache's per-strip tables instead of reaction.step.
+    TString talysClass = "";
+    Int_t classZ = -1;
+    Double_t classThetaCmMinDeg = 1.0; // elastic, when the class is the beam's
+    Float_t classResidueDedxScale = 1.0f;
+    Float_t classEvapDedxScale = 1.0f;
     Bool_t hasTalysBlock = kFALSE;
     music::TalysSettings talys;
     Double_t BeamEnergy = std::numeric_limits<Double_t>::quiet_NaN();

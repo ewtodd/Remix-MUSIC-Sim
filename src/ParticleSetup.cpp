@@ -57,6 +57,7 @@ void Simulator::SetEvapResAndPart(TString residueName, Int_t residueColor,
   particleName += std::to_string(numEvaporations);
   EvaP[numEvaporations] =
       new Particle(particleName, mp, Zp, /*SaveTrajectory=*/false);
+  ownedParticles_.push_back(EvaP[numEvaporations]);
   EvaP[numEvaporations]->SetTrajectoryAtt(static_cast<Short_t>(particleColor));
   EvaP[numEvaporations]->SetMedium(&gas_, physics_, dEdxScalePar);
   if (verbose_)
@@ -73,6 +74,7 @@ void Simulator::SetEvapResAndPart(TString residueName, Int_t residueColor,
   Int_t Zr = NuF->GetZ(residueName.Data());
   EvaR[numEvaporations] =
       new Particle(residueName, mr, Zr, /*SaveTrajectory=*/false);
+  ownedParticles_.push_back(EvaR[numEvaporations]);
   EvaR[numEvaporations]->SetTrajectoryAtt(static_cast<Short_t>(residueColor));
   EvaR[numEvaporations]->SetMedium(&gas_, physics_, dEdxScaleRes);
   if (verbose_)

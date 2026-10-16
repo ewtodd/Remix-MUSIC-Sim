@@ -24,9 +24,8 @@ max_eloss   = 10.0
 strip_first = 2
 strip_last  = 9
 
-# (a,a') with per-strip TALYS tables from talys-cache (a fake TALYS in the
-# suite). Weights are computed per strip: Rutherford above 120 degrees for the
-# elastic branch, the table's cross section for the inelastic one.
+# A talys step needs a level_table; TALYS's own channels per strip come from
+# reaction.talys_class.
 [[reaction.step]]
 residue_excitation   = "talys"
 angular_distribution = "isotropic"

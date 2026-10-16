@@ -1,0 +1,51 @@
+[gas]
+species     = "4He"
+pressure    = 220.0
+temperature = 293.0
+
+[beam]
+species     = "37Cl"
+energy      = 135.5
+energy_fwhm = 0.0
+
+[target]
+species  = "4He"
+compound = "41K"
+
+[windows.entrance]
+thickness_mg_cm2 = -1.0
+
+[windows.exit]
+thickness_mg_cm2 = -1.0
+
+[detector]
+eloss_bins  = 100
+max_eloss   = 10.0
+strip_first = 0
+strip_last  = 5
+
+# The an class: every channel of the fake TALYS ending in potassium, (a,g),
+# (a,gn), (a,n), and (a,2n), which opens above E_cm = 12 MeV. (a,g) and (a,2n)
+# each fall below the 1.2% threshold at some strip but not all, so both stay.
+[reaction]
+talys_class = "K"
+
+[physics]
+straggling = false
+
+[run]
+events_per_strip = 2000
+threads          = 2
+wait             = 0
+update           = 0
+max_time         = 2000.0
+sim_step         = 0.01
+method           = 0
+output           = "talys-class.root"
+file_opt         = "recreate"
+print_opt        = 0
+seed             = 113
+
+[talys]
+keywords             = ["bins 40"]
+min_channel_fraction = 0.012

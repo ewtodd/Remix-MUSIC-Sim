@@ -100,10 +100,8 @@ Simulator::Simulator(Int_t workerId) {
 }
 
 Simulator::~Simulator() {
-  for (Int_t i = 0; i < maxEvaporations; ++i) {
-    delete EvaP[i];
-    delete EvaR[i];
-  }
+  for (size_t i = 0; i < ownedParticles_.size(); ++i)
+    delete ownedParticles_[i];
   delete[] EvaP;
   delete[] EvaR;
   delete Beam;
@@ -395,7 +393,8 @@ Bool_t Simulator::SetupRun() {
   // Minimum parent excitation needed for each remaining decay step. When a
   // residue is configured as "forced", this recursively includes the
   // excitation required to reach every later step in the chain.
-  for (Int_t step = numEvaporations - 1; step >= 0; step--) {
+  for (Int_t step = numEvaporations - 1; ctf.talysClass.IsNull() && step >= 0;
+       step--) {
     Double_t mb = Beam->Mass;
     Double_t mt = Target->Mass;
     Double_t ml = EvaP[step]->Mass;
@@ -421,17 +420,28 @@ Bool_t Simulator::SetupRun() {
   return PrepareStripTables();
 }
 
+namespace {
+// SplitMix64's finaliser: a bijection spreading every input bit over the
+// output.
+ULong64_t Mix64(ULong64_t value) {
+  value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+  value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+  return value ^ (value >> 31);
+}
+} // namespace
+
 UInt_t Simulator::EventSeed(Int_t strip, ULong64_t eventIndex) const {
   // SplitMix64 gives each (master seed, strip, event index) tuple an
   // independent, deterministic TRandom3 seed. Event streams therefore do not
-  // depend on worker scheduling or worker count. TRandom3 treats zero as a
-  // request for nondeterministic auto-seeding, so map it to one explicitly.
-  ULong64_t value = ctf.Seed;
-  value ^= (static_cast<ULong64_t>(static_cast<UInt_t>(strip + 2)) << 32);
-  value ^= eventIndex + 0x9e3779b97f4a7c15ULL;
-  value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
-  value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
-  value ^= value >> 31;
+  // depend on worker scheduling or worker count. Each part is mixed in turn:
+  // XOR-ing them before one mix made nearby seeds share streams a few events
+  // apart. TRandom3 treats zero as a request for nondeterministic
+  // auto-seeding, so map it to one explicitly.
+  const ULong64_t golden = 0x9e3779b97f4a7c15ULL;
+  ULong64_t value = Mix64(ctf.Seed + golden);
+  value = Mix64(value + golden +
+                static_cast<ULong64_t>(static_cast<UInt_t>(strip + 2)));
+  value = Mix64(value + golden + eventIndex);
   UInt_t seed = static_cast<UInt_t>(value ^ (value >> 32));
   if (seed == 0)
     seed = 1;

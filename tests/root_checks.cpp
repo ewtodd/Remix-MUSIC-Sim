@@ -21,8 +21,10 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -100,8 +102,8 @@ bool Standard(const char *path, Long64_t expectedEntries) {
       return Fail(std::string(path) + " is missing metadata/" + record);
   const auto *resolved = dynamic_cast<TObjString *>(
       root.file->Get("metadata/resolved_configuration"));
-  if (!resolved || !HasLine(resolved->GetString(), "schema_version = 5"))
-    return Fail(std::string(path) + " does not declare output schema 5");
+  if (!resolved || !HasLine(resolved->GetString(), "schema_version = 6"))
+    return Fail(std::string(path) + " does not declare output schema 6");
   // Defaults change between builds, so a run is reproducible only if the
   // resolved values and the exact code revisions are recorded.
   const Int_t nResolvedKeys = 11;
@@ -877,11 +879,12 @@ double NumberAfter(const std::string &line, const std::string &key) {
                                  : std::atof(line.c_str() + at + key.size());
 }
 
-// Sum of a level table's weights: the third field of level rows, the fourth
-// of bin rows.
-double TableSum(const std::string &text) {
+// Sum of the level and bin rows in step 0 of channel `name` of a talys-cache
+// table, which must carry the channel's cross section; 0 if absent.
+double ChannelStepSum(const std::string &text, const std::string &name) {
   std::istringstream lines(text);
-  std::string line;
+  std::string line, channel;
+  int step = -1;
   double sum = 0.0;
   while (std::getline(lines, line)) {
     std::istringstream fields(line);
@@ -889,7 +892,13 @@ double TableSum(const std::string &text) {
     double a = 0.0, b = 0.0, c = 0.0;
     if (!(fields >> tag) || tag[0] == '#')
       continue;
-    if (tag == "level" && (fields >> a >> b))
+    if (tag == "channel" && (fields >> channel))
+      step = -1;
+    else if (tag == "step")
+      fields >> step;
+    else if (channel != name || step != 0)
+      continue;
+    else if (tag == "level" && (fields >> a >> b))
       sum += b;
     else if (tag == "bin" && (fields >> a >> b >> c))
       sum += c;
@@ -934,8 +943,9 @@ double ElasticIntegral(const std::string &text, double thetaMinDeg) {
   return sum;
 }
 
-// Per strip: weights are the stored table's elastic integral and level sum, and
-// branches, elastic angles past 150 deg, and vertex energies follow them.
+// An aa class run, per strip: the elastic and (a,a') weights are the stored
+// table's elastic integral and level sum, and channels, elastic angles past
+// 150 deg, and vertex energies follow them.
 bool ComputedWeights(const char *path, int chargeProduct, double thetaMinDeg) {
   RootFile root = Open(path);
   if (!root.truth)
@@ -956,7 +966,7 @@ bool ComputedWeights(const char *path, int chargeProduct, double thetaMinDeg) {
     tables[tablePath->GetString().Data()] = text->GetString().Data();
   }
 
-  const std::string prefix = "reaction_step_0_strip_";
+  const std::string prefix = "talys_strip_";
   std::map<int, double> inelasticShare;
   std::map<int, double> centreEnergy;
   std::map<int, double> elasticTail; // P(theta_cm > 150 deg | elastic)
@@ -967,11 +977,11 @@ bool ComputedWeights(const char *path, int chargeProduct, double thetaMinDeg) {
       continue;
     const int strip = std::atoi(line.c_str() + prefix.size());
     const double ecm = NumberAfter(line, "ecm_mev = ");
-    const size_t weightsAt = line.find("weights_mb = ");
+    const size_t weightsAt = line.find("channels_mb = ");
     double elastic = std::nan("");
     double inelastic = std::nan("");
     if (weightsAt == std::string::npos ||
-        std::sscanf(line.c_str() + weightsAt + 13, "%lf, %lf", &elastic,
+        std::sscanf(line.c_str() + weightsAt + 14, "%lf, %lf", &elastic,
                     &inelastic) != 2)
       return Fail("cannot read the weights in '" + line + "'");
     const size_t tableAt = line.find("table = ") + 8;
@@ -999,11 +1009,11 @@ bool ComputedWeights(const char *path, int chargeProduct, double thetaMinDeg) {
     md5.Final();
     if (md5Text != md5.AsString())
       return Fail("strip " + std::to_string(strip) + " records the wrong MD5");
-    const double sum = TableSum(stored->second);
-    if (!(std::fabs(inelastic - sum) <= 1e-9 * sum))
+    const double sum = ChannelStepSum(stored->second, "a");
+    if (!(std::fabs(inelastic - sum) <= 1e-7 * sum))
       return Fail("strip " + std::to_string(strip) + " inelastic weight " +
-                  std::to_string(inelastic) + " mb is not its table's sum " +
-                  std::to_string(sum));
+                  std::to_string(inelastic) +
+                  " mb is not its (a,a') channel's sum " + std::to_string(sum));
     inelasticShare[strip] = inelastic / (elastic + inelastic);
     centreEnergy[strip] = NumberAfter(line, "beam_energy_mev = ");
   }
@@ -1012,29 +1022,29 @@ bool ComputedWeights(const char *path, int chargeProduct, double thetaMinDeg) {
 
   Int_t requested = -1;
   Int_t reacted = -1;
-  Int_t branch[10]{};
+  Int_t channel = -1;
   root.truth->SetBranchAddress("requested_strip", &requested);
   root.truth->SetBranchAddress("reaction_strip", &reacted);
-  root.truth->SetBranchAddress("reaction_branch", branch);
+  root.truth->SetBranchAddress("reaction_channel", &channel);
   Float_t beamEnergy = 0.0f;
   root.truth->SetBranchAddress("beam_energy_reaction", &beamEnergy);
   Float_t theta[10]{};
   root.truth->SetBranchAddress("theta_cm", theta);
   std::map<int, std::pair<long, long>> elasticCounts; // {events, past 150}
   std::map<int, double> energySum;
-  std::map<int, std::pair<long, long>> counts; // strip -> {events, branch 1}
+  std::map<int, std::pair<long, long>> counts; // strip -> {events, (a,a')}
   for (Long64_t entry = 0; entry < root.truth->GetEntries(); ++entry) {
     root.truth->GetEntry(entry);
     if (reacted < 0)
-      return Fail("an event was rejected though its elastic branch was open");
+      return Fail("an event was rejected though its elastic channel was open");
     ++counts[requested].first;
     energySum[requested] += static_cast<double>(beamEnergy);
-    if (branch[0] == 0) {
+    if (channel == 0) {
       ++elasticCounts[requested].first;
       if (theta[0] > 150.0f)
         ++elasticCounts[requested].second;
     }
-    if (branch[0] == 1)
+    if (channel == 1)
       ++counts[requested].second;
   }
   for (std::map<int, double>::const_iterator share = inelasticShare.begin();
@@ -1045,9 +1055,9 @@ bool ComputedWeights(const char *path, int chargeProduct, double thetaMinDeg) {
     const double fraction = static_cast<double>(count.second) / n;
     if (count.first < 100 ||
         std::fabs(fraction - p) > 5.0 * std::sqrt(p * (1.0 - p) / n))
-      return Fail("strip " + std::to_string(share->first) +
-                  " drew branch 1 in " + std::to_string(fraction) +
-                  " of events, expected " + std::to_string(p));
+      return Fail("strip " + std::to_string(share->first) + " drew (a,a') in " +
+                  std::to_string(fraction) + " of events, expected " +
+                  std::to_string(p));
     // The vertex is uniform in the strip; one strip spans ~4 MeV of beam.
     const double meanEnergy = energySum[share->first] / n;
     if (std::fabs(meanEnergy - centreEnergy[share->first]) > 0.15)
@@ -1074,6 +1084,161 @@ bool ComputedWeights(const char *path, int chargeProduct, double thetaMinDeg) {
   return true;
 }
 
+// A class channel's steps, read from its description, e.g.
+// "37Cl(a,2n)39K: 1n + 40K, then 1n + 39K" -> {{"1n", "40K"}, {"1n", "39K"}}.
+std::vector<std::pair<std::string, std::string>>
+ChainSteps(const std::string &description) {
+  std::vector<std::pair<std::string, std::string>> steps;
+  std::string rest = description.substr(description.find(": ") + 2);
+  while (!rest.empty()) {
+    const size_t then = rest.find(", then ");
+    const std::string step = rest.substr(0, then);
+    const size_t plus = step.find(" + ");
+    steps.push_back(
+        std::make_pair(step.substr(0, plus), step.substr(plus + 3)));
+    rest = then == std::string::npos ? "" : rest.substr(then + 7);
+  }
+  return steps;
+}
+
+double ProductMass(NuclideFinder &finder, const std::string &name) {
+  return name == "gamma" ? 0.0 : finder.GetMass(name, "MeV/c^2");
+}
+
+// A talys_class run: per strip, channels are drawn in proportion to their
+// recorded cross sections; each event runs its channel's whole chain, every
+// step but the last leaving enough excitation for the next emission, and the
+// slots past the chain hold the sentinels. With unreactedOk, a beam may stop
+// short, but every strip must still have reactions.
+bool ClassChannels(const char *path, bool unreactedOk) {
+  RootFile root = Open(path);
+  if (!root.truth)
+    return false;
+  const TObjString *resolved = dynamic_cast<TObjString *>(
+      root.file->Get("metadata/resolved_configuration"));
+  const TObjString *legend =
+      dynamic_cast<TObjString *>(root.file->Get("metadata/channels"));
+  if (!resolved || !legend)
+    return Fail(std::string(path) + " lacks its channel metadata");
+  NuclideFinder finder;
+  std::vector<std::vector<std::pair<std::string, std::string>>> chains;
+  std::vector<std::vector<double>> thresholds; // per step, but the last
+  size_t longest = 0;
+  std::map<int, std::vector<double>> sigma; // strip -> per channel [mb]
+  std::istringstream lines(resolved->GetString().Data());
+  std::string line;
+  while (std::getline(lines, line)) {
+    if (line.rfind("reaction_channel_", 0) == 0) {
+      const size_t open = line.find('"');
+      const std::string description =
+          line.substr(open + 1, line.rfind('"') - open - 1);
+      if (!legend->GetString().Contains(
+              (std::to_string(chains.size()) + " = " + description).c_str()))
+        return Fail("metadata/channels lacks " + description);
+      chains.push_back(ChainSteps(description));
+      const std::vector<std::pair<std::string, std::string>> &chain =
+          chains.back();
+      longest = std::max(longest, chain.size());
+      thresholds.push_back(std::vector<double>());
+      for (size_t k = 0; k + 1 < chain.size(); ++k)
+        thresholds.back().push_back(ProductMass(finder, chain[k + 1].first) +
+                                    ProductMass(finder, chain[k + 1].second) -
+                                    ProductMass(finder, chain[k].second));
+    }
+    const size_t at = line.find("channels_mb = ");
+    if (line.rfind("talys_strip_", 0) != 0 || at == std::string::npos)
+      continue;
+    const int strip = std::atoi(line.c_str() + 12);
+    std::istringstream values(line.substr(at + 14));
+    double value = 0.0;
+    char comma = ',';
+    while (comma == ',' && (values >> value)) {
+      sigma[strip].push_back(value);
+      values >> comma;
+    }
+  }
+  if (chains.empty() || sigma.empty())
+    return Fail(std::string(path) + " records no class channels");
+
+  Int_t steps = 0, requested = -1, reacted = -1, channel = -1, residueStep = 0;
+  Float_t evapEnergy[20]{}, residueEnergy[20]{}, excitation[20]{}, theta[20]{};
+  Int_t branch[20]{}, evapTermination[20]{};
+  root.truth->SetBranchAddress("n_steps", &steps);
+  root.truth->SetBranchAddress("requested_strip", &requested);
+  root.truth->SetBranchAddress("reaction_strip", &reacted);
+  root.truth->SetBranchAddress("reaction_channel", &channel);
+  root.truth->SetBranchAddress("residue_step", &residueStep);
+  root.truth->SetBranchAddress("evap_energy", evapEnergy);
+  root.truth->SetBranchAddress("residue_energy", residueEnergy);
+  root.truth->SetBranchAddress("residue_excitation", excitation);
+  root.truth->SetBranchAddress("theta_cm", theta);
+  root.truth->SetBranchAddress("reaction_branch", branch);
+  root.truth->SetBranchAddress("evap_termination", evapTermination);
+  std::map<int, std::map<int, long>> counts;
+  std::map<int, long> events;
+  for (Long64_t entry = 0; entry < root.truth->GetEntries(); ++entry) {
+    root.truth->GetEntry(entry);
+    const std::string where = "entry " + std::to_string(entry);
+    if (static_cast<size_t>(steps) != longest)
+      return Fail(where + " has n_steps " + std::to_string(steps) +
+                  ", not the longest chain's " + std::to_string(longest));
+    // A beam that stops short still puts its strip in `events`.
+    if (unreactedOk && reacted < 0 && channel == -1) {
+      events.insert(std::make_pair(static_cast<int>(requested), 0L));
+      continue;
+    }
+    if (reacted < 0 || channel < 0 ||
+        channel >= static_cast<Int_t>(chains.size()))
+      return Fail(where + " did not react through a listed channel");
+    ++events[requested];
+    ++counts[requested][channel];
+    const size_t length = chains[channel].size();
+    if (residueStep != static_cast<Int_t>(length) - 1)
+      return Fail(where + " transports the residue of step " +
+                  std::to_string(residueStep));
+    for (size_t k = 0; k < longest; ++k) {
+      const bool active = k < length;
+      if (active && (evapEnergy[k] < 0.0f || residueEnergy[k] < 0.0f ||
+                     excitation[k] < 0.0f || branch[k] != 0 ||
+                     theta[k] == kAngleUnset || evapTermination[k] == 0))
+        return Fail(where + " step " + std::to_string(k) + " did not happen");
+      if (!active && (evapEnergy[k] != -2.0f || residueEnergy[k] != -2.0f ||
+                      excitation[k] != -2.0f || branch[k] != -1 ||
+                      theta[k] != kAngleUnset || evapTermination[k] != 0))
+        return Fail(where + " step " + std::to_string(k) +
+                    " past its chain is not at the sentinels");
+      if (active && k + 1 < length &&
+          static_cast<double>(excitation[k]) < thresholds[channel][k] - 1e-5)
+        return Fail(where + " step " + std::to_string(k) + " left " +
+                    std::to_string(excitation[k]) +
+                    " MeV, below the next emission's " +
+                    std::to_string(thresholds[channel][k]));
+    }
+  }
+  for (std::map<int, long>::const_iterator strip = events.begin();
+       strip != events.end(); ++strip)
+    if (strip->second == 0)
+      return Fail("strip " + std::to_string(strip->first) +
+                  " has no reactions");
+  for (std::map<int, std::vector<double>>::const_iterator strip = sigma.begin();
+       strip != sigma.end(); ++strip) {
+    double total = 0.0;
+    for (size_t c = 0; c < strip->second.size(); ++c)
+      total += strip->second[c];
+    const double n = static_cast<double>(events[strip->first]);
+    for (size_t c = 0; c < strip->second.size(); ++c) {
+      const double p = strip->second[c] / total;
+      const double fraction =
+          static_cast<double>(counts[strip->first][static_cast<int>(c)]) / n;
+      if (std::fabs(fraction - p) > 5.0 * std::sqrt(p * (1.0 - p) / n) + 1e-12)
+        return Fail("strip " + std::to_string(strip->first) + " drew channel " +
+                    std::to_string(c) + " in " + std::to_string(fraction) +
+                    " of events, expected " + std::to_string(p));
+    }
+  }
+  return true;
+}
+
 // metadata/<name> must exist and contain `text`.
 bool MetadataContains(const char *path, const char *name, const char *text) {
   std::unique_ptr<TFile> file(TFile::Open(path, "READ"));
@@ -1085,6 +1250,37 @@ bool MetadataContains(const char *path, const char *name, const char *text) {
   if (!value || !value->GetString().Contains(text))
     return Fail(std::string(path) + " metadata/" + name + " lacks '" + text +
                 "'");
+  return true;
+}
+
+// Runs of one control with different seeds must not replay each other's
+// events: at most 1% of `right`'s may share a strip, vertex, and CM angle.
+bool Independent(const char *left, const char *right) {
+  std::set<std::tuple<int, float, float>> seen;
+  int shared = 0, total = 0;
+  for (int side = 0; side < 2; ++side) {
+    RootFile root = Open(side == 0 ? left : right);
+    if (!root.truth)
+      return false;
+    Int_t strip = -1;
+    Float_t vertex = 0.0f, theta[20]{};
+    root.truth->SetBranchAddress("requested_strip", &strip);
+    root.truth->SetBranchAddress("vertex_z", &vertex);
+    root.truth->SetBranchAddress("theta_cm", theta);
+    for (Long64_t entry = 0; entry < root.truth->GetEntries(); ++entry) {
+      root.truth->GetEntry(entry);
+      const std::tuple<int, float, float> event(strip, vertex, theta[0]);
+      if (side == 0) {
+        seen.insert(event);
+      } else {
+        ++total;
+        shared += seen.count(event) ? 1 : 0;
+      }
+    }
+  }
+  if (total == 0 || shared > total / 100)
+    return Fail(std::to_string(shared) + " of " + std::to_string(total) +
+                " events of " + right + " replay events of " + left);
   return true;
 }
 
@@ -1140,6 +1336,8 @@ int main(int argc, char **argv) {
       Fail("coarse/fine transport does not converge at the boundary");
   } else if (mode == "compare" && argc == 4)
     ok = Reproducible(argv[2], argv[3]);
+  else if (mode == "independent" && argc == 4)
+    ok = Independent(argv[2], argv[3]);
   else if (mode == "control-text" && argc == 4)
     ok = ControlText(argv[2], argv[3]);
   else if (mode == "cm-angles" && argc == 3)
@@ -1148,6 +1346,11 @@ int main(int argc, char **argv) {
     ok = LevelTable(argv[2], argv[3], argv[4]);
   else if (mode == "computed-weights" && argc == 5)
     ok = ComputedWeights(argv[2], std::stoi(argv[3]), std::stod(argv[4]));
+  else if (mode == "class-channels" && argc == 3)
+    ok = ClassChannels(argv[2], false);
+  else if (mode == "class-channels" && argc == 4 &&
+           std::string(argv[3]) == "unreacted-ok")
+    ok = ClassChannels(argv[2], true);
   else if (mode == "metadata-contains" && argc == 5)
     ok = MetadataContains(argv[2], argv[3], argv[4]);
   else if (mode == "alter-resolved" && argc == 3)

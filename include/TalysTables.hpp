@@ -14,6 +14,10 @@ namespace music {
 struct TalysSettings {
   Int_t alphaOmp = 0; // 0 = 9 (Atomki-V2) if a potential exists, else 2
   std::vector<std::string> keywords; // appended after the defaults
+  // A class channel is kept if, at some selected strip, it reaches both this
+  // share of the class's cross section and this absolute size.
+  Double_t minChannelFraction = 1e-3;
+  Double_t minChannelMb = 1e-4;
 };
 
 // One per-strip table a run needs, named by the MD5 of its exact TALYS input.
@@ -49,12 +53,6 @@ std::string TalysDeck(Int_t Z, Int_t A, Double_t alphaLabMeV, Int_t alphaOmp,
 // The comment block a cached table carries, so a reader can confirm the table
 // was made from this input.
 std::string TalysDeckComment(const std::string &deck);
-
-// Level-table rows (mb) for the residue (Z, A) after binary alpha emission;
-// a closed channel gives no rows and sigmaMb = 0.
-Bool_t TalysLevelRows(const std::string &talysOut,
-                      const std::string &population, Int_t Z, Int_t A,
-                      std::string &rows, Double_t &sigmaMb, std::string &error);
 
 // Rutherford cross section above theta_cm = thetaMinDeg [mb]: the integral of
 // what the rutherford angular model samples.

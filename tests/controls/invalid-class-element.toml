@@ -24,33 +24,9 @@ max_eloss   = 10.0
 strip_first = 2
 strip_last  = 9
 
-# (a,a') with per-strip TALYS tables from talys-cache (a fake TALYS in the
-# suite). Weights are computed per strip: Rutherford above 120 degrees for the
-# elastic branch, the table's cross section for the inelastic one.
-[[reaction.step]]
-residue_excitation   = "forced"
-angular_distribution = "isotropic"
-
-[reaction.step.evap]
-name = "n"
-
-[reaction.step.res]
-name = "40K"
-
-[[reaction.step]]
-[reaction.step.evap]
-name = "4He"
-
-[reaction.step.res]
-name = "36Cl"
-
-[[reaction.step.branch]]
-residue_excitation   = "uniform"
-angular_distribution = "isotropic"
-
-[[reaction.step.branch]]
-residue_excitation   = "talys"
-angular_distribution = "isotropic"
+# Calcium (Z = 20) is above the 41K compound (Z = 19).
+[reaction]
+talys_class = "Ca"
 
 [physics]
 straggling = false

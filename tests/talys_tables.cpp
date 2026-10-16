@@ -1,11 +1,14 @@
 #include "ExcitationTable.hpp"
+#include "TalysCascade.hpp"
 #include "TalysTables.hpp"
 
 #include <TMath.h>
 #include <TRandom3.h>
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -19,15 +22,6 @@ Bool_t Fail(const std::string &message) {
 
 Bool_t Near(Double_t actual, Double_t expected, Double_t relative) {
   return std::fabs(actual - expected) <= relative * std::fabs(expected);
-}
-
-// The text with its first `from` replaced; empty if `from` is absent.
-std::string Replace(std::string text, const std::string &from,
-                    const std::string &to) {
-  const size_t at = text.find(from);
-  if (at == std::string::npos)
-    return "";
-  return text.replace(at, from.size(), to);
 }
 
 // The closed form against a direct integral of (k/4E)^2 / sin^4(theta/2) over
@@ -67,7 +61,7 @@ Bool_t CheckKeywords() {
   const std::vector<std::string> refused = {
       "energy 5",   "  Projectile a", "alphaomp 2", "outpopulation n",
       "mass 37",    "element 17",     "",           "bins 60 # coarse",
-      "outangle n", "fileelastic n"};
+      "outangle n", "fileelastic n",  "channels n", "outdecay n"};
   for (size_t i = 0; i < refused.size(); ++i)
     if (music::TalysKeywordProblem(refused[i]).empty())
       return Fail("keyword '" + refused[i] + "' was not refused");
@@ -75,6 +69,14 @@ Bool_t CheckKeywords() {
 }
 
 // The deck's lines in order, without line terminators.
+// Lines joined into one text, each ended as a file's would be.
+std::string Text(const std::vector<std::string> &lines) {
+  std::ostringstream text;
+  for (size_t i = 0; i < lines.size(); ++i)
+    text << lines[i] << std::endl;
+  return text.str();
+}
+
 std::vector<std::string> Lines(const std::string &text) {
   std::vector<std::string> lines;
   std::istringstream input(text);
@@ -88,14 +90,15 @@ Bool_t CheckDeck() {
   const std::vector<std::string> deck =
       Lines(music::TalysDeck(17, 37, 9.396226, 2, "", {"bins 60"}));
   const std::vector<std::string> defaults = music::TalysDefaultKeywords();
-  const size_t expected = 4 + defaults.size() + 5;
+  const size_t expected = 4 + defaults.size() + 7;
   if (deck.size() != expected || deck[0] != "projectile a" ||
       deck[1] != "element 17" || deck[2] != "mass 37" ||
       deck[3] != "energy 9.396226" || deck[4] != defaults[0] ||
-      deck[expected - 5] != "alphaomp 2" || deck[expected - 4] != "bins 60" ||
-      deck[expected - 3] != "outpopulation y" ||
-      deck[expected - 2] != "outangle y" ||
-      deck[expected - 1] != "fileelastic y")
+      deck[expected - 7] != "alphaomp 2" || deck[expected - 6] != "bins 60" ||
+      deck[expected - 5] != "outpopulation y" ||
+      deck[expected - 4] != "outangle y" ||
+      deck[expected - 3] != "fileelastic y" ||
+      deck[expected - 2] != "channels y" || deck[expected - 1] != "outdecay y")
     return Fail("the TALYS input has the wrong lines or order");
   // A control's keywords follow the defaults, so TALYS keeps the control's.
   const std::vector<std::string> atomki =
@@ -110,76 +113,101 @@ Bool_t CheckDeck() {
   return kTRUE;
 }
 
-Bool_t ExpectRowsError(const std::string &talysOut,
-                       const std::string &population, Int_t Z, Int_t A,
-                       const std::string &message, const std::string &what) {
-  std::string rows, error;
-  Double_t sigma = 0.0;
-  if (talysOut.empty())
-    return Fail(what + ": the fixture edit did not apply");
-  if (music::TalysLevelRows(talysOut, population, Z, A, rows, sigma, error))
-    return Fail(what + " was accepted");
-  if (error.find(message) == std::string::npos)
-    return Fail(what + " failed with '" + error + "', not '" + message + "'");
+// One step's table as {bin: mb} in a readable form for messages.
+std::string Bins(const std::map<Int_t, Double_t> &table) {
+  std::ostringstream out;
+  for (std::map<Int_t, Double_t>::const_iterator b = table.begin();
+       b != table.end(); ++b)
+    out << " " << b->first << ":" << b->second;
+  return out.str();
+}
+
+// The fake TALYS cascade for 37Cl at E_cm = 13 MeV: its channels are worked
+// by hand in tests/fake-talys.sh, and it has all three TALYS format traps.
+Bool_t CheckCascade(const std::string &dir) {
+  std::string talysOut, error;
+  std::ifstream population(dir + "/populationE0014.405.out");
+  music::Cascade cascade;
+  if (!population || !music::ReadFileText(dir + "/talys.out", talysOut) ||
+      !music::ReadCascade(population, 19, 22, cascade, error))
+    return Fail("cannot read the fake cascade in " + dir + ": " + error);
+  // Trap 1: 22 mb sit in 40K's 1 MeV population, 2 of them via 41K's gamma.
+  const music::CascadeKey level{19, 21, 1, 2, 1};
+  if (!cascade.feeding.count(level) ||
+      !Near(cascade.feeding.at(level), 20.0, 1e-9))
+    return Fail("feeding from another nucleus was not removed");
+
+  struct Expected {
+    const char *emitted;
+    Double_t sigma;
+    std::vector<std::map<Int_t, Double_t>> steps;
+  };
+  const std::vector<Expected> expected = {
+      {"a", 240.0, {{{1, 120.0}, {2, 72.0}, {3, 48.0}}}},
+      {"g", 0.5, {{{2, 0.5}}}},
+      {"gn", 2.0, {{{1, 2.0}}, {{1, 2.0}}}},
+      {"n", 35.25, {{{0, 10.0}, {1, 20.0}, {2, 3.75}, {3, 1.5}}}},
+      {"nn", 15.75, {{{2, 11.25}, {3, 4.5}}, {{0, 15.75}}}},
+      {"p", 5.0, {{{0, 5.0}}}}};
+  const std::vector<music::CascadeChannel> channels =
+      music::CascadeChannels(cascade);
+  if (channels.size() != expected.size())
+    return Fail("the fake cascade gives " + std::to_string(channels.size()) +
+                " channels, not 6");
+  for (size_t c = 0; c < channels.size(); ++c) {
+    const music::CascadeChannel &got = channels[c];
+    const Expected &want = expected[c];
+    Bool_t same = got.emitted == want.emitted &&
+                  Near(got.sigmaMb, want.sigma, 1e-6) &&
+                  got.steps.size() == want.steps.size();
+    for (size_t k = 0; same && k < got.steps.size(); ++k) {
+      same = got.steps[k].size() == want.steps[k].size();
+      for (std::map<Int_t, Double_t>::const_iterator b = want.steps[k].begin();
+           same && b != want.steps[k].end(); ++b)
+        same = got.steps[k].count(b->first) &&
+               Near(got.steps[k].at(b->first), b->second, 1e-6);
+    }
+    if (!same)
+      return Fail("channel " + got.emitted + " is " +
+                  std::to_string(got.sigmaMb) + " mb with step 0" +
+                  Bins(got.steps[0]) + "; expected " + want.emitted);
+  }
+
+  std::map<std::string, Double_t> sigma;
+  Double_t gammaFirst = 0.0;
+  if (!music::ExclusiveCrossSections(talysOut, sigma, gammaFirst, error) ||
+      !music::CheckChannels(channels, sigma, gammaFirst, error))
+    return Fail("the fake cascade fails TALYS's 6a check: " + error);
+  std::map<std::string, Double_t> wrong = sigma;
+  wrong["n"] += 1.0;
+  if (music::CheckChannels(channels, wrong, gammaFirst, error) ||
+      error.find("(a,n)") == std::string::npos)
+    return Fail("a cascade that misses 6a's (a,n) was accepted");
+  if (music::CheckChannels(channels, sigma, gammaFirst + 1.0, error))
+    return Fail("a cascade that misses 6a's gamma-first total was accepted");
+
+  // The table text reads back to the same channels and bins.
+  std::vector<music::TalysChannel> read;
+  const std::string rows = music::ChannelTableRows(cascade, channels);
+  if (!music::ParseChannelTable(rows, "fake table", read, error) ||
+      read.size() != channels.size())
+    return Fail("the channel table does not read back: " + error);
+  const music::TalysChannel &n = read[3];
+  if (n.emitted != "n" || !Near(n.sigmaMb, 35.25, 1e-6) ||
+      n.residues[0] != std::make_pair(19, 40) ||
+      n.steps[0].levels.size() != 2 || n.steps[0].bins.size() != 2 ||
+      n.steps[0].bins[0][0] != 7.75 || n.steps[0].bins[0][1] != 8.25)
+    return Fail("the (a,n) channel reads back wrong");
+  const std::vector<std::string> broken = {
+      Text({"channel n 1.0", "level 0 1.0"}),
+      Text({"channel nn 1.0", "step 0 19 40", "level 0 1"}),
+      Text({"channel n 1.0", "step 1 19 40", "level 0 1"}),
+      Text({"channel x 1.0", "step 0 1 1"})};
+  for (size_t i = 0; i < broken.size(); ++i)
+    if (music::ParseChannelTable(broken[i], "broken", read, error))
+      return Fail("a malformed channel table was accepted: " + broken[i]);
   return kTRUE;
 }
-
-// Real TALYS 2.2 output for alpha + 37Cl at E_cm = 8.65 MeV, trimmed, behind
-// a synthetic 37Ar isobar; it and the 41K and second parity blocks are decoys.
-Bool_t CheckRows(const std::string &fixtures) {
-  std::string talysOut, population;
-  if (!music::ReadFileText(fixtures + "/talys-cl37.out", talysOut) ||
-      !music::ReadFileText(fixtures + "/talys-cl37-population.out", population))
-    return Fail("cannot read the TALYS fixtures in " + fixtures);
-
-  std::string rows, error;
-  Double_t sigma = 0.0;
-  if (!music::TalysLevelRows(talysOut, population, 17, 37, rows, sigma, error))
-    return Fail("the 37Cl fixture was refused: " + error);
-  if (!Near(sigma, 1.435315186e+01, 1e-9))
-    return Fail("the 37Cl cross section is " + std::to_string(sigma));
-  const std::vector<std::string> lines = Lines(rows);
-  if (lines.size() != 100 || lines[0] != "level 1.726580 3.319079000e+00")
-    return Fail("the 37Cl rows are wrong");
-  music::ExcitationTable table;
-  if (!table.Parse(rows, "fixture rows", error))
-    return Fail("the rows do not parse as a level table: " + error);
-  if (table.levels.size() != 30 || table.bins.size() != 70 ||
-      !Near(table.sum, sigma, 1e-9) || table.bins[0][0] != 5.2287)
-    return Fail("the rows parse to the wrong table");
-
-  std::string closedRows;
-  const std::string closed =
-      Replace(talysOut, "alpha   = 1.43531E+01", "alpha   = 0.00000E+00");
-  if (closed.empty() ||
-      !music::TalysLevelRows(closed, population, 17, 37, closedRows, sigma,
-                             error) ||
-      !closedRows.empty() || sigma != 0.0)
-    return Fail("a closed channel did not give an empty table");
-  music::ExcitationTable empty;
-  Bool_t ok = kTRUE;
-  TRandom3 rng(1);
-  if (!empty.Parse(closedRows, "closed", error, kTRUE) || empty.sum != 0.0 ||
-      empty.AllowedWeight(100.0) != 0.0 ||
-      empty.Sample(100.0, &rng, ok) != 0.0 || ok)
-    return Fail("an empty talys-cache table is not a closed channel");
-
-  return ExpectRowsError(Replace(talysOut, "alpha   = 1.43531E+01",
-                                 "alpha   = 1.53531E+01"),
-                         population, 17, 37, "does not match",
-                         "a population that misses the binary alpha total") &&
-         ExpectRowsError(talysOut, population, 18, 40, "no population of",
-                         "a residue absent from the population file") &&
-         ExpectRowsError(Replace(talysOut, "congratulates", "regrets"),
-                         population, 17, 37, "TALYS did not finish",
-                         "an unfinished TALYS run") &&
-         ExpectRowsError(talysOut,
-                         Replace(population, "bin size [MeV]:  4.273605E-02",
-                                 "bin size [MeV]:  5.273605E-02"),
-                         17, 37, "do not start at the last discrete level",
-                         "bins that are not centred where TALYS puts them");
-}
-
 // Real TALYS 2.2 elastic angular distribution for alpha + 37Cl at E_cm =
 // 8.6476 MeV: shape elastic matches Rutherford, compound elastic is added.
 Bool_t CheckElasticRows(const std::string &fixtures) {
@@ -318,12 +346,13 @@ Bool_t CheckElasticTable(const std::string &fixtures) {
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc != 2) {
-    std::cerr << "usage: talys_tables <fixtures-dir>" << std::endl;
+  if (argc != 3) {
+    std::cerr << "usage: talys_tables <fixtures-dir> <fake-cascade-dir>"
+              << std::endl;
     return 2;
   }
   if (!CheckRutherford() || !CheckKeywords() || !CheckDeck() ||
-      !CheckRows(argv[1]) || !CheckElasticRows(argv[1]) ||
+      !CheckCascade(argv[2]) || !CheckElasticRows(argv[1]) ||
       !CheckElasticTable(argv[1]))
     return 1;
   std::cout << "talys_tables: all checks passed" << std::endl;

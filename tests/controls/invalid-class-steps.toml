@@ -1,0 +1,59 @@
+[gas]
+species     = "4He"
+pressure    = 220.0
+temperature = 293.0
+
+[beam]
+species     = "37Cl"
+energy      = 92.0
+energy_fwhm = 0.0
+
+[target]
+species  = "4He"
+compound = "41K"
+
+[windows.entrance]
+thickness_mg_cm2 = -1.0
+
+[windows.exit]
+thickness_mg_cm2 = -1.0
+
+[detector]
+eloss_bins  = 100
+max_eloss   = 10.0
+strip_first = 2
+strip_last  = 9
+
+[reaction]
+talys_class      = "Cl"
+theta_cm_min_deg = 120.0
+
+# The class's chains come from TALYS, so it takes no steps.
+[[reaction.step]]
+residue_excitation   = "ground"
+angular_distribution = "rutherford"
+
+[reaction.step.evap]
+name = "4He"
+
+[reaction.step.res]
+name = "37Cl"
+
+[physics]
+straggling = false
+
+[run]
+events_per_strip = 400
+threads          = 2
+wait             = 0
+update           = 0
+max_time         = 2000.0
+sim_step         = 0.01
+method           = 0
+output           = "talys-cache.root"
+file_opt         = "recreate"
+print_opt        = 0
+seed             = 111
+
+[talys]
+keywords = ["bins 40"]

@@ -24,24 +24,10 @@ max_eloss   = 10.0
 strip_first = 2
 strip_last  = 9
 
-# (a,a') with per-strip TALYS tables from talys-cache (a fake TALYS in the
-# suite). Weights are computed per strip: Rutherford above 120 degrees for the
-# elastic branch, the table's cross section for the inelastic one.
-[[reaction.step]]
-[reaction.step.evap]
-name = "3He"
-
-[reaction.step.res]
-name = "37Cl"
-
-[[reaction.step.branch]]
-residue_excitation   = "ground"
-angular_distribution = "rutherford"
-theta_cm_min_deg     = 120.0
-
-[[reaction.step.branch]]
-residue_excitation   = "talys"
-angular_distribution = "isotropic"
+# A class run needs an alpha target: TALYS runs alpha on the beam nucleus.
+[reaction]
+talys_class      = "Cl"
+theta_cm_min_deg = 120.0
 
 [physics]
 straggling = false

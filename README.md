@@ -46,9 +46,9 @@ bash tests/run-tests.sh
 ```
 
 It finds everything under `result/bin` by default; the `MUSICSIM_BIN`,
-`CONVERTER_BIN`, `TALYSCACHE_BIN`, and `*_CHECK_BIN` environment variables
-override each path. The suite runs `talys-cache` against a stand-in for
-TALYS, so it needs neither TALYS nor its data.
+`CONVERTER_BIN`, `TALYSCACHE_BIN`, `SRIMCACHE_BIN`, and `*_CHECK_BIN`
+environment variables override each path. The suite runs `talys-cache` and
+`srim-cache` against stand-ins for TALYS and SRIM, so it needs neither.
 
 For working on the sources inside the dev shell (`nix develop`), the Makefile
 targets are still there: `make -j2` builds by hand, `make -j2 check` runs the
@@ -190,7 +190,7 @@ seed             = 12345
 `events_per_strip` is literal: selecting strips 3 through 13 with 10,000 events
 writes 110,000 entries. `seed` must be in `[1, 4294967295]`. The same
 `(seed, requested strip, event_index)` tuple produces the same event regardless
-of worker count or scheduling.
+of worker count or scheduling, and different seeds give independent events.
 
 `run.update = 1` enables interactive ROOT visualization; `run.wait = 1` pauses
 between visualized events. These options are unavailable with multiple
@@ -231,9 +231,8 @@ The excitation model is selected independently for each step:
   permit the remaining configured decay chain. It is rejected on the final
   step.
 - `talys`: excitation is drawn from the level table named by `level_table`,
-  a path resolved relative to the control file's directory. Without
-  `level_table`, each strip uses a table TALYS computes for it (see
-  [Per-strip TALYS tables](#per-strip-talys-tables)).
+  a path resolved relative to the control file's directory. For TALYS's own
+  channels and tables per strip, use a [TALYS class](#talys-classes) instead.
 
 The angular model is also per step:
 
@@ -274,9 +273,9 @@ weight               = 0.01
 
 Branch weights are user-supplied cross-section ratios within the simulated
 acceptance (for example, Rutherford integrated above `theta_cm_min_deg`
-against the Talys inelastic cross section). The simulator derives them only
-for per-strip TALYS tables, below. A `talys` branch's weight is its cross
-section with the whole table open.
+against the Talys inelastic cross section); a TALYS class, below, takes them
+from TALYS instead. A `talys` branch's weight is its cross section with the
+whole table open.
 
 A level table is whitespace-separated text with `#` comments. `ground 0 w`
 and `level E_ex w` rows are point masses; `bin lo hi w` is a uniform
@@ -302,64 +301,83 @@ with weight `> 0`; its other branches may be inelastic. `rutherford` is valid
 only on step 0, in a branch or not: later steps are decays of a moving
 residue, not scattering off the beam.
 
-### Per-strip TALYS tables
+### TALYS classes
 
-A `talys` branch without `level_table` samples, in each reaction strip, a
-table TALYS computed for that strip, and the step's weights are computed per
-strip. The step must be step 0 of an (a,a') reaction (a `4He` target listed
-as `evap`, the beam as `res`) with exactly two branches and no `weight` keys:
+MUSIC sorts reactions by the residue's charge, so it cannot tell (a,n) from
+(a,2n): after 87Rb + a, both leave yttrium. A TALYS class simulates that
+mixture. Instead of `[[reaction.step]]` tables, `[reaction]` names the final
+residue's element:
 
 ```toml
-[[reaction.step.branch]] # elastic
-residue_excitation   = "ground"
-angular_distribution = "rutherford"
-theta_cm_min_deg     = 10.0
-
-[[reaction.step.branch]] # inelastic, one TALYS table per strip
-residue_excitation   = "talys"
-angular_distribution = "isotropic"
+[reaction]
+talys_class        = "Y"  # every TALYS channel ending in yttrium
+theta_cm_min_deg   = 30.0 # the elastic cut; only in the beam's class
+residue_dedx_scale = 1.0  # every residue; default 1
+evap_dedx_scale    = 1.0  # every light product; default 1
 ```
 
-Each strip's weights, in mb, are:
+The class is every exclusive channel TALYS gives that ends in that element.
+For 87Rb at E_cm 14 MeV, "Y" is (a,g), (a,n), (a,2n), and (a,gn), which emits
+a gamma first; "Sr" is (a,p), (a,np), (a,pn), and (a,d); "Rb" is mainly (a,a')
+and elastic. A channel is a chain of steps in TALYS's emission order, so (a,np)
+and (a,pn) are separate channels. A gamma step emits a photon, transported
+like a neutron. The target must be `4He`, the run must be reacted, and
+`run.update` must be 0.
 
-- elastic: TALYS's elastic cross section above that branch's
-  `theta_cm_min_deg`, shape plus compound elastic, since both leave the
-  residue in its ground state;
-- inelastic: the strip's TALYS (a,a') cross section, the sum of its table.
+Each strip has one TALYS table, computed at the CM energy of the mean beam at
+the strip's centre: no straggling, integrated in `sim_step` slices as the
+transport does. It gives each channel's exclusive cross section and, for each
+step, the excitation of the residue that step leaves, in mb, from TALYS's full
+decay cascade. Each event draws one channel, with probability proportional to
+its cross section times the open fraction of its first step's table at the
+vertex, as for weighted branches, and runs that channel's chain. Each step's
+excitation is drawn from its table between a floor and the energy available.
+The floor is the lowest excitation from which the rest of the chain can
+happen: the next emission's separation energy plus the lowest state its own
+table can reach. The open fraction is taken above that floor and normalised,
+so a fully open channel weighs its cross section.
 
-The elastic branch also draws θ_cm from that strip's TALYS distribution
-instead of pure Rutherford, still with one random draw. TALYS tabulates it as
-a ratio to Rutherford every 2°. Within each 2° cell the ratio is held at its
-mean and the angle is exact Rutherford, so the weight is exactly the integral
-of what is sampled. Near and above the Coulomb barrier this matters at large
-angles. For 37Cl at E_cm 8.65 MeV, elastic above 60° is 0.39 of Rutherford
-and above 120° 0.17; above 10° it is within 2%.
+In the beam's class, elastic scattering above `theta_cm_min_deg` (default 1°)
+is a channel too: TALYS's shape plus compound elastic cross section, with θ_cm
+drawn from TALYS's distribution in one random draw. TALYS tabulates it as a
+ratio to Rutherford every 2°. Within each 2° cell the ratio is held at its mean
+and the angle is exact Rutherford, so the weight is exactly the integral of
+what is sampled. Near and above the Coulomb barrier this matters at large
+angles: for 37Cl at E_cm 8.65 MeV, elastic above 60° is 0.39 of Rutherford and
+above 120° 0.17; above 10° it is within 2%. Every other step is isotropic.
 
-E_cm is the CM energy of the mean beam energy at the strip's centre: no
-straggling, integrated in `sim_step` slices as the transport does. The open
-fraction still applies at each vertex. The inelastic branch must be
-`isotropic`, since its weight is angle-integrated.
+`[talys] min_channel_fraction` (default 0.001) and `min_channel_mb` (default
+1e-4 mb, 100 nb) leave out channels too small to matter: a channel is kept
+only if, at one selected strip, its cross section reaches both that fraction of
+the class's, elastic excluded, and that size. Each strip's left-out cross
+section is recorded.
 
-Strips where the simulation cannot use TALYS are warned about. `talys-cache`
-prints them as it runs, and `musicsim` prints each as a `musicsim WARNING:`
-line at startup and keeps it in `metadata/warnings`:
+Strips where a class cannot be simulated as TALYS describes are warned about.
+`musicsim` prints each as a `musicsim WARNING:` line at startup and keeps it in
+`metadata/warnings`:
 
-- a strip below the first excited level has no (a,a') channel, so every
-  reaction there is elastic;
-- TALYS gives no elastic angular distribution far below the barrier (all
-  zeros, from E_cm of about 0.1 MeV down), so elastic there is pure
-  Rutherford, which it is in practice;
-- a strip whose centre lies beyond the mean beam's range gets no table, and
-  any beam that straggles that far scatters elastically with Rutherford
-  angles. Its resolved-configuration line says so instead of giving weights.
+- TALYS has no channel ending in the element open at the strip's energy, so
+  its events do not react, or, in the beam's class, scatter only elastically;
+- TALYS gives no elastic angular distribution far below the barrier (all zeros,
+  from E_cm of about 0.1 MeV down), so elastic there is pure Rutherford, which
+  it is in practice;
+- a strip whose centre lies beyond the mean beam's range gets no table. Beam
+  that straggles that far scatters elastically with Rutherford angles in the
+  beam's class, and does not react in any other. Its resolved-configuration
+  line says so instead of giving cross sections;
+- a channel whose tables leave no state from which its chain can finish is left
+  out of that strip;
+- the left-out channels add up to more than `min_channel_fraction` of the
+  class.
 
-A beam meant to stop in the detector is the usual way to meet all three.
+A beam meant to stop in the detector is the usual way to meet the first three.
 
 `musicsim` only reads these tables, and stops with a message naming the
 missing one. Generate them first; like `srim-cache`, it skips tables that
 already exist:
 
 ```bash
+./result/bin/srim-cache path/to/control.toml # when physics.stopping reads SRIM
 ./result/bin/talys-cache path/to/control.toml
 ```
 
@@ -368,27 +386,32 @@ TALYS for alpha on the beam nucleus at rest, at the alpha energy with the
 strip's E_cm, for each strip's table not yet cached. Tables go in `talys/`
 under the directory of `run.output`, beside the SRIM tables. A table's file
 name ends in the MD5 of its exact TALYS input, so a change to the beam, gas,
-geometry, strips, or `[talys]` settings gives new tables, while identical
-inputs share one. Each table also records its input, and `musicsim` refuses a
-table whose recorded input is not the strip's. Run `srim-cache` first when
-`physics.stopping` needs SRIM tables, since the strip energies depend on them.
+geometry, strips, or TALYS settings gives new tables, while identical inputs
+share one: the an, ap, and aa controls of one beam use the same tables. Each
+table also records its input, and `musicsim` refuses a table whose recorded
+input is not the strip's. Run `srim-cache` first when `physics.stopping` reads
+SRIM tables, since the strip energies depend on them. Only the TALYS tables
+name the class's products, so `talys-cache` then makes their SRIM tables too.
 
-A table holds the residue's population right after binary alpha emission,
-from TALYS's `outpopulation` output: discrete levels as `level` rows and
-continuum bins as `bin` rows, weights in mb, ground state excluded. Its sum
-must match TALYS's binary alpha cross section to 0.1%. Below the first excited
-level the channel is closed: there are no such rows and the weight is 0. The
-table also holds `elastic θ ratio` rows from TALYS's elastic angular
-distribution (`outangle`, `fileelastic`). TALYS's shape elastic must match
+A table holds every exclusive channel TALYS gives at that energy: a
+`channel <emitted> <mb>` row, then per step a `step <k> <Z> <A>` row and its
+`level` and `bin` rows, then `elastic θ ratio` rows. It comes from TALYS's
+`channels`, `outpopulation`, and `outdecay` output. Each channel's cross
+section must match TALYS's exclusive cross sections (its section 6a) to 0.1%,
+and each step's rows must sum to it. TALYS's shape elastic must match
 Rutherford at the strip's E_cm to 1%, which catches a wrong frame or energy.
+The decay output this needs is about 2 GB for 87Rb; it is streamed, then
+deleted.
 
-The optional `[talys]` table configures TALYS and is an error without such a
-branch:
+The optional `[talys]` table configures TALYS and the class, and is an error
+without `talys_class`:
 
 ```toml
 [talys]
-alpha_omp = 9          # default: 9 when an Atomki-V2 potential exists for the beam nucleus, else 2
-keywords  = ["bins 40"] # appended to the defaults; TALYS keeps a keyword's last value
+alpha_omp            = 9           # default: 9 when an Atomki-V2 potential exists for the beam nucleus, else 2
+keywords             = ["bins 40"] # appended to the defaults; TALYS keeps a keyword's last value
+min_channel_fraction = 0.001
+min_channel_mb       = 1e-4
 ```
 
 `alpha_omp` 2 is McFadden-Satchler and 9 is Atomki-V2, which covers Z 26–83.
@@ -397,10 +420,10 @@ The defaults are the MUSIC analysis's shared TALYS settings: `ldmodel 1`,
 `popeps 1.e-30`, `elow 1.e-06`, `widthfluc 20`, `widthmode 1`,
 `preequilibrium n`, `bins 80`, `equidistant y`, `segment 4`. A keyword may not
 set `projectile`, `element`, `mass`, `energy`, `alphaomp`, `outpopulation`,
-`outangle`, or `fileelastic`. TALYS is `TALYS_BIN`, else the one the flake
-built in; the potentials are in `TALYS_ATOMKI_V2_DIR`, else the flake's.
-Tables are keyed by TALYS input, not by TALYS build, so delete `talys/` after
-changing TALYS.
+`outangle`, `fileelastic`, `channels`, or `outdecay`. TALYS is `TALYS_BIN`,
+else the one the flake built in; the potentials are in `TALYS_ATOMKI_V2_DIR`,
+else the flake's. Tables are keyed by TALYS input, not by TALYS build, so
+delete `talys/` after changing TALYS.
 
 ### Layers and stopping-power models
 
@@ -534,14 +557,15 @@ equal-length trees. `events_MeV` has `MC` as a friend.
 
 | Branches | Meaning |
 | --- | --- |
-| `n_steps`, `event_index` | Configured reaction-step count and deterministic per-strip event identity. |
+| `n_steps`, `event_index` | Configured reaction-step count, or a TALYS class's longest chain, and deterministic per-strip event identity. |
 | `requested_strip`, `reaction_strip` | Configured vertex strip and actual successful reaction strip; the latter is `-1` when no reaction occurred. |
+| `reaction_channel` | Index into `metadata/channels`: the TALYS class channel the event ran, or `0` for configured steps; `-1` when no reaction occurred. |
 | `beam_energy_accel`, `beam_energy_gas`, `beam_energy_reaction`, `beam_energy_exit` | Beam kinetic-energy chain in MeV. |
 | `vertex_x`, `vertex_y`, `vertex_z` | Successful reaction vertex in cm. |
 | `beam_stop_x/y/z`, `beam_stop_strip`, `beam_termination` | Final beam state and termination. |
 | `evap_energy[n_steps]`, `residue_energy[n_steps]` | Per-step product kinetic energies at creation. |
 | `theta_cm[n_steps]`, `phi_cm[n_steps]` | Per-step sampled center-of-mass angles in degrees. |
-| `residue_excitation[n_steps]`, `reaction_branch[n_steps]` | Per-step residue excitation at creation in MeV (`-2` when no reaction), and the index of the drawn branch (`0` for a step without branch tables, `-1` when no reaction). |
+| `residue_excitation[n_steps]`, `reaction_branch[n_steps]` | Per-step residue excitation at creation in MeV (`-2` when no reaction), and the index of the drawn branch (`0` for a step without branch tables or of a TALYS class, `-1` when no reaction). |
 | `evap_theta/phi[n_steps]`, `residue_theta/phi[n_steps]` | Per-step lab angles in degrees. |
 | `evap_energy_exit[n_steps]`, `evap_stop_x/y/z[n_steps]`, `evap_stop_strip[n_steps]`, `evap_termination[n_steps]` | Light-product final states. |
 | `residue_energy_exit[n_steps]` | Exit-energy slots; only the surviving residue can be populated. |
@@ -560,6 +584,7 @@ downstream face. Angles use `-1000`, which lies outside every valid angle.
 | --- | --- | --- |
 | `requested_strip` | `-1`: unreacted run (`strip = -1`). | The configured vertex strip, whether or not a reaction happened. |
 | `reaction_strip` | `-1`: no reaction (unreacted run, beam ended before the vertex, or chain rejected). | Equal to `requested_strip`. |
+| `reaction_channel` | `-1`: no reaction. | The channel the event ran, as listed in `metadata/channels`. |
 | `beam_energy_accel` | None. | This event's accelerator KE, including the `energy_fwhm` draw. The nominal value is in `metadata`. |
 | `beam_energy_gas` | None. `0` means the beam stopped in the degrader or entrance window. | KE entering the gas. |
 | `beam_energy_reaction` | `-2`: no reaction. | Beam KE at the vertex. |
@@ -568,7 +593,7 @@ downstream face. Angles use `-1000`, which lies outside every valid angle.
 | `beam_stop_x/y/z` | `(0, 0, -1000)`: beam consumed by a reaction. | Final beam position; the crossing point for exits. |
 | `beam_stop_strip` | `-2`: beam consumed by a reaction. `-1`: stopped in a dead layer, or ended any way other than stopping. | Readout strip 0..17 where the beam stopped. |
 | `beam_termination` | None; always a termination code. Reacted events report `1`. | |
-| `evap_energy`, `residue_energy` | `-2`: the step did not happen. A rejected chain leaves every step at `-2`. | Lab KE at creation. |
+| `evap_energy`, `residue_energy` | `-2`: the step did not happen. A rejected chain leaves every step at `-2`, as do the steps past a TALYS class event's chain. | Lab KE at creation. |
 | `theta_cm`, `evap_theta`, `residue_theta` | `-1000`: the step did not happen. | Angle in degrees, in `[0, 180]`. |
 | `phi_cm`, `evap_phi`, `residue_phi` | `-1000`: the step did not happen. | Angle in degrees, in `[-180, 180]`. |
 | `evap_energy_exit` | `-2`: not transported. `-1`: transported but did not exit downstream. | KE after the exit window; neutrals keep their KE. |
@@ -594,19 +619,21 @@ mean: 0 not propagated, 1 reached the requested vertex, 2 stopped, 3 downstream
 exit, 4 upstream exit, 5 side exit, 6 timeout, and 7 invalid state.
 
 The `metadata` directory also stores the software version, the control path,
-the exact control text as read at startup, each level table as read at
-startup (`level_table_N`, with its path in `level_table_N_path`), the
-resolved configuration (schema version 5), the straggling model, and any
-startup warnings (`warnings`, written only when there are some). Worker
+the exact control text as read at startup, each level table and TALYS table as
+read at startup (`level_table_N`, with its path in `level_table_N_path`), the
+resolved configuration (schema version 6), what each `reaction_channel` value
+means (`channels`), the straggling model, and any startup warnings
+(`warnings`, written only when there are some). Worker
 threads use these copies, so a file edited mid-run cannot reach part of the
 run.
 
 The resolved configuration records every physics default actually applied
 (`z_effective`, `low_energy`, `straggling_z_effective`, `sim_step_cm`,
 `max_time_ns`, `beam_energy_fwhm_mev`, ...), each reaction step's branches
-with their models, weights, and level-table paths and MD5s, each strip's
-beam energy, E_cm, computed weights, and TALYS table path and MD5
-(`reaction_step_0_strip_N`), and
+with their models, weights, and level-table paths and MD5s, a TALYS class's
+settings and channels (`reaction_channel_N`), each strip's beam energy, E_cm,
+channel cross sections in channel order, left-out cross section, and TALYS
+table path and MD5 (`talys_strip_N`), and
 `git_revision` (a `-dirty` suffix means uncommitted changes),
 `catima_revision`, and `catima_global`. Defaults can change between builds, so
 a control file alone does not determine the physics.
@@ -614,9 +641,8 @@ a control file alone does not determine the physics.
 An update run appends only if both the control text and the resolved
 configuration (except `total_entries`) match the file. A file is therefore
 never extended by a different build, with different defaults, or with an
-edited level table. Schema 5 added
-the `residue_excitation` and `reaction_branch` truth branches, so an update
-run also refuses any older file; regenerate it instead.
+edited level table. Schema 6 added the `reaction_channel` truth branch, so an
+update run also refuses any older file; regenerate it instead.
 
 ## Physics scope and limitations
 
@@ -632,10 +658,23 @@ run also refuses any older file; regenerate it instead.
 - `forced` and `uniform` excitation are continuum models. `talys` samples
   discrete level energies and continuum bins from a precomputed table, but
   carries no spin/parity, widths, gamma decay, or lifetimes. A `level_table`
-  is computed at one beam energy, and per-strip TALYS tables at each strip's
-  centre, not per vertex. Branch weights are fixed user inputs except with
-  per-strip tables, where they follow each strip's energy and the elastic
-  angles follow TALYS too; their inelastic angles are isotropic.
+  is computed at one beam energy, and a TALYS class's tables at each strip's
+  centre, not per vertex. Branch weights are fixed user inputs.
+- A TALYS class follows TALYS's cascade only through its tables. A step's
+  table is the residue's population right after that emission. If the residue
+  gamma-decays before its next emission, that step starts from the pre-gamma
+  excitation, so the gamma's energy goes into the next emission's kinematics.
+  Only the first gamma of a gamma-first channel is emitted as a particle. Each
+  step's excitation is drawn from its own table, cut by the energy available
+  and the floor, and is otherwise uncorrelated with the previous state. TALYS's
+  spins and parities are used only to build the tables, and its non-elastic
+  angles are replaced by isotropic ones.
+- Within a strip, a class channel's energy dependence comes only from its
+  states closing as the vertex energy falls below the strip centre, as for
+  weighted branches. Near a channel's threshold this matters: for 87Rb at
+  E_cm 3.9 MeV, (a,n) is closed over the downstream third of the strip, and
+  (a,g) runs in 35% of the yttrium class's events against 18% of its cross
+  section at the centre.
 - Detector response includes only the selected independent Gaussian noise
   model; thresholds, saturation, gain drift, correlations, digitization, and
   non-Gaussian electronics response are absent.

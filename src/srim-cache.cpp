@@ -1,12 +1,10 @@
-// srim-cache — generate the SRIM stopping tables one control file needs.
+// srim-cache — generate the SRIM tables one control file needs.
 //
 // musicsim reads SRIM tables but never creates them: generating one drives the
 // SRIM SR-Module under wine, which is slow and needs a toolchain the simulator
 // has no business carrying. This tool does that step once, up front, so the
 // simulation itself only ever reads a table that is already there. The
-// generator is SRIM-nix's make-srim-table: the flake compiles its store path
-// in, SRIM_TABLE_BIN in the environment overrides it, and with neither the
-// name is looked up on PATH.
+// generator is SRIM-nix's make-srim-table (see SrimGenerator.hpp).
 //
 //   srim-cache <control.toml>
 //
@@ -14,114 +12,14 @@
 // table that already exists, so running it over a whole batch of control files
 // is cheap:
 // each distinct (ion, gas, pressure, temperature) is built once and then shared
-// by every control file that asks for it.
-//
-// Table naming and location must match EnergyLoss::BuildTables exactly:
-//   <dir of run.output>/<ion>_in_<gas>_<P>Torr_<T>K.srim
-#include <cerrno>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+// by every control file that asks for it. A talys_class's products are only
+// known from its TALYS tables, so talys-cache builds theirs.
 #include <iostream>
 #include <set>
-#include <spawn.h>
 #include <string>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <toml++/toml.hpp>
-#include <vector>
 
-extern char **environ;
-
-#ifndef MUSICSIM_SRIM_TABLE_BIN
-#define MUSICSIM_SRIM_TABLE_BIN ""
-#endif
-
-namespace {
-
-// The table generator: the environment first, then the path the build
-// compiled in, then a bare name for PATH.
-std::string TableGenerator() {
-  const char *env = std::getenv("SRIM_TABLE_BIN");
-  if (env && env[0] != '\0')
-    return env;
-  if (MUSICSIM_SRIM_TABLE_BIN[0] != '\0')
-    return MUSICSIM_SRIM_TABLE_BIN;
-  return "make-srim-table";
-}
-
-bool FileExists(const std::string &p) {
-  struct stat st;
-  return ::stat(p.c_str(), &st) == 0;
-}
-
-// SRIM needs a real ion. Reaction steps also name things like "n" or "gamma",
-// which deposit nothing and have no stopping table; skip anything that is not
-// mass-number-then-symbol.
-bool IsIonName(const std::string &s) {
-  size_t i = 0;
-  while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])))
-    i++;
-  if (i == 0 || i == s.size())
-    return false;
-  for (size_t k = i; k < s.size(); k++)
-    if (!std::isalpha(static_cast<unsigned char>(s[k])))
-      return false;
-  return true;
-}
-
-std::string DirOf(const std::string &path) {
-  size_t slash = path.find_last_of('/');
-  return (slash == std::string::npos) ? std::string(".")
-                                      : path.substr(0, slash);
-}
-
-std::string NumberArg(double value) {
-  char text[64];
-  std::snprintf(text, sizeof(text), "%g", value);
-  return text;
-}
-
-bool RunGenerator(const std::string &generator, const std::string &ion,
-                  const std::string &gas, double pressure, double temperature,
-                  const std::string &output) {
-  std::vector<std::string> args = {generator,
-                                   "--ion",
-                                   ion,
-                                   "--gas",
-                                   gas,
-                                   "--pressure",
-                                   NumberArg(pressure),
-                                   "--temp",
-                                   NumberArg(temperature),
-                                   "--out",
-                                   output};
-  std::vector<char *> argv;
-  argv.reserve(args.size() + 1);
-  for (std::string &arg : args)
-    argv.push_back(arg.data());
-  argv.push_back(nullptr);
-
-  pid_t child = -1;
-  const int spawnError = ::posix_spawnp(&child, generator.c_str(), nullptr,
-                                        nullptr, argv.data(), environ);
-  if (spawnError != 0) {
-    std::cerr << "srim-cache: cannot start generator '" << generator
-              << "': " << std::strerror(spawnError) << std::endl;
-    return false;
-  }
-  int status = 0;
-  while (::waitpid(child, &status, 0) < 0) {
-    if (errno == EINTR)
-      continue;
-    std::cerr << "srim-cache: waitpid failed: " << std::strerror(errno)
-              << std::endl;
-    return false;
-  }
-  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
-}
-
-} // namespace
+#include "SrimGenerator.hpp"
 
 int main(int argc, char **argv) {
   if (argc != 2) {
@@ -161,52 +59,32 @@ int main(int argc, char **argv) {
 
   // Every ion that will traverse the gas: the beam, the target nucleus it can
   // recoil off, and each reaction step's ejectile and residue.
-  std::set<std::string> ions;
-  auto add = [&ions](const std::string &n) {
-    if (IsIonName(n))
-      ions.insert(n);
-  };
-  add(tbl["beam"]["species"].value_or(std::string("")));
-  add(tbl["target"]["species"].value_or(std::string("")));
-  if (auto *steps = tbl["reaction"]["step"].as_array()) {
-    for (auto &&s : *steps) {
-      if (auto *st = s.as_table()) {
-        add((*st)["evap"]["name"].value_or(std::string("")));
-        add((*st)["res"]["name"].value_or(std::string("")));
+  std::vector<std::string> names;
+  names.push_back(tbl["beam"]["species"].value_or(std::string("")));
+  names.push_back(tbl["target"]["species"].value_or(std::string("")));
+  if (const toml::array *steps = tbl["reaction"]["step"].as_array()) {
+    for (size_t s = 0; s < steps->size(); ++s) {
+      if (const toml::table *step = (*steps)[s].as_table()) {
+        names.push_back((*step)["evap"]["name"].value_or(std::string("")));
+        names.push_back((*step)["res"]["name"].value_or(std::string("")));
       }
     }
   }
+  std::set<std::string> ions;
+  for (size_t n = 0; n < names.size(); ++n)
+    if (music::IsSrimIon(names[n]))
+      ions.insert(names[n]);
   if (ions.empty()) {
     std::cerr << "srim-cache: no ion names found in " << ctrl << std::endl;
     return 1;
   }
 
-  char tag[128];
-  snprintf(tag, sizeof(tag), "%s_%gTorr_%gK", gas.c_str(), pressure,
-           temperature);
-  const std::string dir = DirOf(output);
-
-  int built = 0, kept = 0, failed = 0;
-  for (const std::string &ion : ions) {
-    const std::string out = dir + "/" + ion + "_in_" + tag + ".srim";
-    if (FileExists(out)) {
-      kept++;
-      continue;
-    }
-    std::cout << "srim-cache: generating " << out << std::endl;
-    const std::string generator = TableGenerator();
-    if (!RunGenerator(generator, ion, gas, pressure, temperature, out) ||
-        !FileExists(out)) {
-      std::cerr << "srim-cache: FAILED to generate " << out
-                << "\n  (generator: " << generator
-                << "; set SRIM_TABLE_BIN or build through the flake)"
-                << std::endl;
-      failed++;
-      continue;
-    }
-    built++;
-  }
-  std::cout << "srim-cache: " << built << " generated, " << kept
-            << " already cached, " << failed << " failed" << std::endl;
-  return failed ? 1 : 0;
+  const size_t slash = output.find_last_of('/');
+  const std::string dir =
+      slash == std::string::npos ? std::string(".") : output.substr(0, slash);
+  const music::SrimCounts counts = music::EnsureSrimTables(
+      "srim-cache", ions, gas, pressure, temperature, dir);
+  std::cout << "srim-cache: " << counts.built << " generated, " << counts.kept
+            << " already cached, " << counts.failed << " failed" << std::endl;
+  return counts.failed ? 1 : 0;
 }
