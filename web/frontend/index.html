@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Remix-MUSIC-Sim web</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <h1>Remix-MUSIC-Sim</h1>
+        <span class="subtitle">interactive simulator viewer</span>
+        <button id="toggle-drawer" class="btn ghost">Controls</button>
+      </header>
+      <main class="layout">
+        <aside id="drawer" class="drawer">
+          <section class="panel">
+            <h2>Reaction</h2>
+            <select id="reaction-select"></select>
+            <select id="control-select"></select>
+            <button id="load-control-btn" class="btn">Load control</button>
+          </section>
+          <section class="panel">
+            <h2>Run</h2>
+            <button id="run-btn" class="btn primary">Run simulation</button>
+            <button id="cancel-btn" class="btn" hidden>Stop</button>
+            <div id="run-status" class="status"></div>
+            <pre id="run-log" class="log" hidden></pre>
+          </section>
+          <details id="control-drawer" class="panel">
+            <summary class="panel-summary">Edit control</summary>
+            <div id="controls"></div>
+          </details>
+        </aside>
+
+        <section id="stage" class="stage">
+          <div id="results" class="panel vis">
+            <div class="vis-head">
+              <h2>Trace</h2>
+              <span id="trace-meta" class="muted"></span>
+            </div>
+            <div class="vis-placeholder">Run a simulation to see the per-strip trace.</div>
+            <div class="vis-body" hidden>
+              <div class="trace-controls">
+                <label>
+                  Event
+                  <input id="event-slider" type="range" min="0" max="0" value="0" />
+                  <span id="event-label">0</span>
+                </label>
+                <label class="inline">
+                  <input id="normalize-view" type="checkbox" />
+                  <span>Normalize (1 a.u. per strip)</span>
+                </label>
+              </div>
+              <canvas id="trace-canvas" width="640" height="360"></canvas>
+            </div>
+          </div>
+
+          <div id="results3d" class="panel vis">
+            <div class="vis-head">
+              <h2>3D path</h2>
+              <span id="ev3d-meta" class="muted"></span>
+            </div>
+            <div class="vis-placeholder">Run a simulation to see the detector and particle paths.</div>
+            <div class="vis-body" hidden>
+              <div class="trace-controls">
+                <label>
+                  Event
+                  <input id="ev3d-slider" type="range" min="0" max="0" value="0" />
+                  <span id="ev3d-label">0</span>
+                </label>
+                <label class="inline"><input id="ev3d-overlay" type="checkbox" /><span>Overlay all</span></label>
+                <span id="ev3d-products" class="product-toggles"></span>
+              </div>
+              <div id="path3d-container" class="path3d"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

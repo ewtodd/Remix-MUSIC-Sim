@@ -1,0 +1,14 @@
+# Per-run workdirs are generated, never committed.
+runs/
+
+# Backend runtime / tooling
+backend/.venv/
+backend/.pytest_cache/
+**/__pycache__/
+*.pyc
+backend/server.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/vite.log

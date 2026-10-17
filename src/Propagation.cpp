@@ -450,4 +450,22 @@ void Simulator::FinalizeEvent(Int_t eventIndexInSlice) {
   residue_termination =
       residue_step >= 0 ? static_cast<Int_t>(residueTermination_[residue_step])
                         : static_cast<Int_t>(TerminationReason::NotPropagated);
+
+  // Per-strip beam-gain normalization. Multiply each readout strip's dE by the
+  // gain ctf.stripGains[strip] (0 drops the strip). Applied to the events_MeV
+  // tree values only; Cathode is a full-plate sum with no per-strip meaning, so
+  // it is left in MeV. Skip entirely when disabled or all gains are 1.0.
+  if (ctf.normalizePerStrip) {
+    if (ctf.stripGains[0] != 1.0)
+      Strip0dE *= static_cast<Float_t>(ctf.stripGains[0]);
+    if (ctf.stripGains[17] != 1.0)
+      Strip17dE *= static_cast<Float_t>(ctf.stripGains[17]);
+    for (Int_t s = 0; s < N_SEG_STRIPS; ++s) {
+      const Double_t g = ctf.stripGains[s + 1];
+      if (g != 1.0) {
+        LeftdE[s] *= static_cast<Float_t>(g);
+        RightdE[s] *= static_cast<Float_t>(g);
+      }
+    }
+  }
 }

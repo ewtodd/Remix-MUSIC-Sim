@@ -482,13 +482,53 @@ Int_t Simulator::loadCtrlText(
   if (const auto *detector = requireTable("detector"))
     CheckKeys(*detector,
               {"eloss_bins", "max_eloss", "strip", "strip_first", "strip_last",
-               "noise_sigma_mev", "resolution_fwhm_percent"},
+               "noise_sigma_mev", "resolution_fwhm_percent",
+               "normalize_per_strip", "strip_gains"},
               "detector.", errors);
   readInt("detector.eloss_bins", next.ELossBins, kTRUE);
   readDouble("detector.max_eloss", next.MaxELoss, kTRUE);
   readInt("detector.strip", next.strip);
   readInt("detector.strip_first", next.stripFirst);
   readInt("detector.strip_last", next.stripLast);
+
+  // Per-strip normalization (beam-reference gains). normalize_per_strip = true
+  // enables it; strip_gains = [18 values, one per readout strip 0..17] supplies
+  // the multiplier for each strip (0 = drop the strip).
+  {
+    const auto normNode = tbl.at_path("detector.normalize_per_strip");
+    if (normNode) {
+      if (auto v = normNode.value<Bool_t>())
+        next.normalizePerStrip = *v;
+      else
+        errors.push_back("'detector.normalize_per_strip' must be a boolean");
+    }
+    const auto gainsNode = tbl.at_path("detector.strip_gains");
+    if (gainsNode) {
+      const auto *arr = gainsNode.as_array();
+      if (!arr) {
+        errors.push_back(
+            "'detector.strip_gains' must be an array of 18 numbers");
+      } else {
+        if (arr->size() != 18) {
+          errors.push_back(
+              "'detector.strip_gains' must have exactly 18 values");
+        } else {
+          Int_t gi = 0;
+          for (const auto &g : *arr) {
+            auto v = g.value<Double_t>();
+            if (!v) {
+              errors.push_back(
+                  "'detector.strip_gains' entries must be numbers");
+              break;
+            }
+            if (!std::isfinite(*v) || *v < 0.0)
+              errors.push_back("'detector.strip_gains' entries must be >= 0");
+            next.stripGains[gi++] = *v;
+          }
+        }
+      }
+    }
+  }
 
   auto loadNoise = [&](const char *key, Int_t mode) {
     const std::string path = std::string("detector.") + key;

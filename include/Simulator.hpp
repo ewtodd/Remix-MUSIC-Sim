@@ -523,6 +523,12 @@ private:
     Int_t noiseMode = 0;
     std::array<Double_t, kNumElectrodes> Noise;
     Double_t NoiseCathode = -1;
+    // Per-strip normalization to 1 a.u. (beam-reference gains). When
+    // normalizePerStrip is true and stripGains is set (18 values, one per
+    // readout strip 0..17), the per-strip dE in the events_MeV tree is
+    // multiplied by that strip's gain. Strips with gain 0 are dropped.
+    Bool_t normalizePerStrip = false;
+    std::array<Double_t, 18> stripGains;
     Int_t NEvents = 10; // events per selected strip
     Int_t Wait = 0;
     Int_t Update = 0;
@@ -537,6 +543,7 @@ private:
 
     controlFileParams() {
       Noise.fill(-1.0);
+      stripGains.fill(1.0);
       dEdxScaleRes.fill(1.0f);
       dEdxScaleEvap.fill(1.0f);
       colorRes.fill(416);

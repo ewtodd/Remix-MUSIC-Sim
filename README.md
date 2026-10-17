@@ -141,6 +141,15 @@ strip_last  = 13
 resolution_fwhm_percent = 5.0
 # noise_sigma_mev = 0.05
 
+# Optional per-strip normalization to 1 a.u. (beam-reference gains). When
+# normalize_per_strip = true, every event's per-strip dE in the events_MeV tree
+# is multiplied by the strip's gain from strip_gains (18 values, strip 0..17).
+# A gain of 0 drops that strip's contribution; the Cathode full-plate sum is
+# left in MeV (it has no per-strip meaning). Omit both keys to disable.
+# normalize_per_strip = true
+# strip_gains = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+#                1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
 [[reaction.step]]
 residue_excitation  = "ground"
 angular_distribution = "rutherford"
@@ -184,7 +193,7 @@ seed             = 12345
 | `gas` | `species`, `pressure`, `temperature` | Pressure may be zero to disable gas loss; temperature must be positive. |
 | `beam` | `species`, `energy` | `energy_fwhm = 0`, `dedx_scale = 1`; energy and scale must be positive. |
 | `target` | `species`, `compound` | Both are required even for an unreacted-beam run. |
-| `detector` | `eloss_bins`, `max_eloss`, and one strip selector | `strip = -1` is unreacted; otherwise use `strip = 0..17` or a complete `strip_first`/`strip_last` range. |
+| `detector` | `eloss_bins`, `max_eloss`, and one strip selector | `strip = -1` is unreacted; otherwise use `strip = 0..17` or a complete `strip_first`/`strip_last` range. `normalize_per_strip = false`, `strip_gains = [1.0 × 18]` (per-strip beam-gain multipliers). |
 | `run` | `events_per_strip`, `output`, `seed` | `threads = 1`, `wait = 0`, `update = 0`, `max_time = 2000`, `sim_step = 0.001`, `method = 0`, `file_opt = "recreate"`, `print_opt = 0`. |
 
 `events_per_strip` is literal: selecting strips 3 through 13 with 10,000 events
